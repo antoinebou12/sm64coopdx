@@ -3,16 +3,23 @@ name: Switch portlibs probe
 on:
   push:
     branches:
-      - 'agent/switch-portlibs-**'
+      - main
+      - 'agent/main-upstream-prs-switch'
     paths:
       - Makefile.switch-portlibs
+      - src/pc/gfx/**
+      - src/pc/audio/**
+      - src/pc/controller/**
       - tools/switch/portlibs_probe.c
       - .github/workflows/build-switch-portlibs.yml
   pull_request:
     branches:
-      - agent/switch-foundation
+      - main
     paths:
       - Makefile.switch-portlibs
+      - src/pc/gfx/**
+      - src/pc/audio/**
+      - src/pc/controller/**
       - tools/switch/portlibs_probe.c
       - .github/workflows/build-switch-portlibs.yml
   workflow_dispatch:
@@ -31,26 +38,22 @@ jobs:
   portlibs-probe:
     name: SDL2 + GLES2 + curl + zlib
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 15
     container:
       image: devkitpro/devkita64:latest
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
-      - name: Refresh devkitPro packages
-        shell: bash
-        run: |
-          set -euo pipefail
-          dkp-pacman -Syu --noconfirm
-          dkp-pacman -S --needed --noconfirm switch-sdl2 switch-curl switch-zlib
-
-      - name: Report dependency versions
+      - name: Verify packaged dependencies
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p build/switch-portlibs
+          test -f "${DEVKITPRO}/portlibs/switch/include/SDL2/SDL.h"
           {
             echo "git_sha=${GITHUB_SHA}"
             aarch64-none-elf-gcc --version | head -n 1
@@ -67,7 +70,7 @@ jobs:
         run: |
           set -euo pipefail
           make -f Makefile.switch-portlibs clean
-          make -f Makefile.switch-portlibs probe
+          make -f Makefile.switch-portlibs -j2 probe
 
       - name: Validate outputs
         shell: bash
@@ -80,11 +83,10 @@ jobs:
           test -s "${prefix}.nacp"
           test "$(dd if="${prefix}.nro" bs=1 skip=16 count=4 2>/dev/null)" = "NRO0"
           aarch64-none-elf-readelf -h "${prefix}.elf" | tee build/switch-portlibs/ELF_HEADER.txt
-          sha256sum "${prefix}.nro" "${prefix}.elf" "${prefix}.map" "${prefix}.nacp" \
-            | tee build/switch-portlibs/SHA256SUMS.txt
+          sha256sum "${prefix}.nro" "${prefix}.elf" "${prefix}.map" "${prefix}.nacp" | tee build/switch-portlibs/SHA256SUMS.txt
 
       - name: Upload portlibs artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: switch-portlibs-${{ github.sha }}
           if-no-files-found: error
