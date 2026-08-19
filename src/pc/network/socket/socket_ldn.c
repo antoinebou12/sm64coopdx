@@ -1,10 +1,11 @@
 #ifdef __SWITCH__
 
-// Isolated on purpose: this file includes ONLY <switch.h> (libnx) and
-// standard/socket headers, never any project header. <switch.h>'s u64/s64
-// typedefs (long) conflict with this project's own PR/ultratypes.h u64/s64
-// (long long) - same width, but C treats them as distinct types, so the
-// two cannot be included in the same translation unit. The NetworkSystem
+// Isolated on purpose: this file includes ONLY <switch.h> (libnx),
+// standard/socket headers and socket_ldn_util.h, never a project header that
+// reaches PR/ultratypes.h. <switch.h>'s u64/s64 typedefs (long) conflict with
+// this project's own u64/s64 (long long) - same width, but C treats them as
+// distinct types, so the two cannot be included in the same translation unit.
+// socket_ldn_util.h is deliberately free of those typedefs. The NetworkSystem
 // glue lives in socket_ldn_glue.c and calls the plain-C-typed functions
 // below instead of touching libnx types directly.
 
@@ -20,26 +21,18 @@
 #include <arpa/inet.h>
 #include <switch.h>
 
+#include "socket_ldn_util.h"
+
 // LDN is only the association/discovery layer. Game packets use ordinary
 // UDP over the IPv4 subnet assigned by the LDN service. This avoids the
 // action-frame payload limit and keeps the hot data path in BSD sockets.
-#define LDN_PACKET_LENGTH 3000
-#define LDN_UNKNOWN_LOCAL_INDEX ((unsigned char)-1)
-#define LDN_MAX_PLAYERS 16
 #define LDN_UDP_PORT 7777
 
 extern void network_receive(unsigned char localIndex, void* addr, unsigned char* data, unsigned short dataLength);
 extern char configPlayerName[];
 
 static void ldn_fill_user_name(char* dst, unsigned int dstLen) {
-    if (dst == NULL || dstLen == 0) { return; }
-    unsigned int o = 0;
-    for (unsigned int i = 0; configPlayerName[i] != '\0' && o + 1 < dstLen; i++) {
-        unsigned char c = (unsigned char)configPlayerName[i];
-        if (c >= 0x20 && c <= 0x7E) { dst[o++] = (char)c; }
-    }
-    dst[o] = '\0';
-    if (o == 0) { snprintf(dst, dstLen, "Player"); }
+    ldn_util_sanitize_user_name(configPlayerName, dst, dstLen);
 }
 
 static bool sLdnInitialized = false;
@@ -52,7 +45,7 @@ static int sLdnNetworkCount = 0;
 
 static int sUdpSocket = -1;
 static struct in_addr sOwnAddr;
-static struct in_addr sLdnAddr[LDN_MAX_PLAYERS];
+static LdnPeerTable sPeers;
 
 static int sSendOkCount = 0;
 static int sSendFailCount = 0;
@@ -79,10 +72,8 @@ static void ldn_log(const char* fmt, ...) {
     fclose(f);
 }
 
-static struct in_addr ldn_to_in_addr(LdnIpv4Address ldnAddr) {
-    struct in_addr a;
-    a.s_addr = __builtin_bswap32(ldnAddr.addr);
-    return a;
+static uint32_t ldn_to_net_addr(LdnIpv4Address ldnAddr) {
+    return ldn_util_addr_to_network_order(ldnAddr.addr);
 }
 
 static void ldn_refresh_nodes(void) {
@@ -103,7 +94,7 @@ static void ldn_refresh_nodes(void) {
     }
 
     if (!sIsServer && netInfo.node_count >= 1 && netInfo.nodes[0].is_connected) {
-        sLdnAddr[0] = ldn_to_in_addr(netInfo.nodes[0].ip_addr);
+        sPeers.addr[0] = ldn_to_net_addr(netInfo.nodes[0].ip_addr);
     }
 }
 
@@ -118,7 +109,7 @@ static bool ldn_udp_open(void) {
         ldn_log("[LDN] ldnGetIpv4Address failed 0x%x (mod=%04x desc=%04x)", rc, R_MODULE(rc), R_DESCRIPTION(rc));
         return false;
     }
-    sOwnAddr = ldn_to_in_addr(ownLdnAddr);
+    sOwnAddr.s_addr = ldn_to_net_addr(ownLdnAddr);
 
     sUdpSocket = socket(AF_INET, SOCK_DGRAM, 0);
     if (sUdpSocket < 0) {
@@ -146,7 +137,7 @@ static bool ldn_udp_open(void) {
         return false;
     }
 
-    memset(sLdnAddr, 0, sizeof(sLdnAddr));
+    ldn_util_peers_reset(&sPeers);
     sConnectedCount = 0;
     ldn_refresh_nodes();
     sLastHeartbeatTick = svcGetSystemTick();
@@ -160,7 +151,7 @@ static void ldn_udp_close(void) {
         close(sUdpSocket);
         sUdpSocket = -1;
     }
-    memset(sLdnAddr, 0, sizeof(sLdnAddr));
+    ldn_util_peers_reset(&sPeers);
 }
 
 bool ldn_initialize_impl(bool isServer) {
@@ -251,45 +242,39 @@ void ldn_update_impl(void) {
         sLastHeartbeatTick = nowTick;
     }
 
-    unsigned char recvBuf[LDN_PACKET_LENGTH + 1];
+    unsigned char recvBuf[LDN_UTIL_PACKET_LENGTH + 1];
     for (;;) {
         struct sockaddr_in from;
         socklen_t fromLen = sizeof(from);
-        ssize_t len = recvfrom(sUdpSocket, recvBuf, LDN_PACKET_LENGTH, 0, (struct sockaddr*)&from, &fromLen);
+        ssize_t len = recvfrom(sUdpSocket, recvBuf, LDN_UTIL_PACKET_LENGTH, 0, (struct sockaddr*)&from, &fromLen);
         if (len <= 0) { break; }
-        if (len >= LDN_PACKET_LENGTH) {
+        if (!ldn_util_recv_length_valid((long)len)) {
             ldn_log("[LDN] dropping oversized datagram: %ld", (long)len);
             continue;
         }
         sRecvOkCount++;
 
-        sLdnAddr[0] = from.sin_addr;
-        unsigned char localIndex = LDN_UNKNOWN_LOCAL_INDEX;
-        for (int i = 1; i < LDN_MAX_PLAYERS; i++) {
-            if (sLdnAddr[i].s_addr != 0 && sLdnAddr[i].s_addr == from.sin_addr.s_addr) {
-                localIndex = (unsigned char)i;
-                break;
-            }
-        }
-        network_receive(localIndex, &sLdnAddr[0], recvBuf, (unsigned short)len);
+        sPeers.addr[0] = from.sin_addr.s_addr;
+        unsigned char localIndex = ldn_util_peer_index_for_addr(&sPeers, from.sin_addr.s_addr);
+        network_receive(localIndex, &sPeers.addr[0], recvBuf, (unsigned short)len);
     }
 }
 
 int ldn_send_impl(unsigned char localIndex, void* address, unsigned char* data, unsigned short dataLength) {
     if (!sLdnInitialized || !sLdnConnected || sUdpSocket < 0) { return -1; }
-    if (localIndex >= LDN_MAX_PLAYERS || dataLength >= LDN_PACKET_LENGTH) { return -1; }
+    if (!ldn_util_send_length_valid(localIndex, dataLength)) { return -1; }
 
-    struct in_addr dest = sLdnAddr[localIndex];
+    uint32_t dest = sPeers.addr[localIndex];
     if (localIndex == 0 && address != NULL) {
-        dest = *(struct in_addr*)address;
+        dest = *(const uint32_t*)address;
     }
-    if (dest.s_addr == 0) { return -1; }
+    if (dest == 0) { return -1; }
 
     struct sockaddr_in to;
     memset(&to, 0, sizeof(to));
     to.sin_family = AF_INET;
     to.sin_port = htons(LDN_UDP_PORT);
-    to.sin_addr = dest;
+    to.sin_addr.s_addr = dest;
 
     ssize_t sent = sendto(sUdpSocket, data, dataLength, 0, (struct sockaddr*)&to, sizeof(to));
     if (sent < 0 || sent != dataLength) {
@@ -301,25 +286,23 @@ int ldn_send_impl(unsigned char localIndex, void* address, unsigned char* data, 
 }
 
 void* ldn_dup_addr_impl(unsigned char localIndex) {
-    if (localIndex >= LDN_MAX_PLAYERS) { localIndex = 0; }
-    struct in_addr* copy = malloc(sizeof(struct in_addr));
-    if (copy) { *copy = sLdnAddr[localIndex]; }
+    if (localIndex >= LDN_UTIL_MAX_PLAYERS) { localIndex = 0; }
+    uint32_t* copy = malloc(sizeof(uint32_t));
+    if (copy) { *copy = sPeers.addr[localIndex]; }
     return copy;
 }
 
 bool ldn_match_addr_impl(void* a, void* b) {
     if (a == NULL || b == NULL) { return false; }
-    return ((struct in_addr*)a)->s_addr == ((struct in_addr*)b)->s_addr;
+    return ldn_util_addr_equal(*(const uint32_t*)a, *(const uint32_t*)b);
 }
 
 void ldn_save_id_impl(unsigned char localIndex) {
-    if (localIndex == 0 || localIndex >= LDN_MAX_PLAYERS) { return; }
-    sLdnAddr[localIndex] = sLdnAddr[0];
+    ldn_util_peer_save(&sPeers, localIndex);
 }
 
 void ldn_clear_id_impl(unsigned char localIndex) {
-    if (localIndex == 0 || localIndex >= LDN_MAX_PLAYERS) { return; }
-    sLdnAddr[localIndex].s_addr = 0;
+    ldn_util_peer_clear(&sPeers, localIndex);
 }
 
 void ldn_prepare_reconnect_impl(void) {
@@ -328,12 +311,8 @@ void ldn_prepare_reconnect_impl(void) {
     // CoopDX player slots are rebuilt after a rehost/rejoin, while the local
     // wireless association itself remains valid. Drop stale slot bindings but
     // retain the client's host address in slot 0.
-    for (int i = 1; i < LDN_MAX_PLAYERS; i++) {
-        sLdnAddr[i].s_addr = 0;
-    }
-    if (sIsServer) {
-        sLdnAddr[0].s_addr = 0;
-    } else {
+    ldn_util_peers_clear_for_reconnect(&sPeers, sIsServer);
+    if (!sIsServer) {
         ldn_refresh_nodes();
     }
     sSendOkCount = sSendFailCount = sRecvOkCount = 0;

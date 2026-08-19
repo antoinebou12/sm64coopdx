@@ -52,6 +52,12 @@ jobs:
           echo "${DEVKITPRO}/devkitA64/bin" >> "$GITHUB_PATH"
           echo "${DEVKITPRO}/tools/bin" >> "$GITHUB_PATH"
 
+      - name: Run Switch unit tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/switch/tests/run_tests.py
+
       - name: Report toolchain
         shell: bash
         run: |
@@ -104,6 +110,7 @@ jobs:
           make -f Makefile.switch-game -j2 \
             build/us_switch/src/pc/network/network.o \
             build/us_switch/src/pc/network/socket/socket_ldn.o \
+            build/us_switch/src/pc/network/socket/socket_ldn_util.o \
             build/us_switch/src/pc/network/socket/socket_ldn_glue.o \
             build/us_switch/src/pc/djui/djui_panel_host.o \
             build/us_switch/src/pc/djui/djui_panel_ldn_browser.o \
@@ -111,6 +118,7 @@ jobs:
           for obj in \
             build/us_switch/src/pc/network/network.o \
             build/us_switch/src/pc/network/socket/socket_ldn.o \
+            build/us_switch/src/pc/network/socket/socket_ldn_util.o \
             build/us_switch/src/pc/network/socket/socket_ldn_glue.o \
             build/us_switch/src/pc/djui/djui_panel_host.o \
             build/us_switch/src/pc/djui/djui_panel_ldn_browser.o \
