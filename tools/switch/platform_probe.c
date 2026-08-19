@@ -1,6 +1,8 @@
 #include <switch.h>
 #include <stdio.h>
 
+#include "pc/controller/controller_switch.h"
+#include "pc/platform/switch/switch_input.h"
 #include "pc/platform/switch/switch_platform.h"
 
 static int platform_probe_main(int argc, char **argv) {
@@ -16,13 +18,25 @@ static int platform_probe_main(int argc, char **argv) {
         return 1;
     }
 
+    if (!switch_input_init()) {
+        puts("switch_input_init failed");
+        switch_platform_shutdown(&state);
+        consoleExit(NULL);
+        return 2;
+    }
+
+    switch_input_poll();
+
     printf("application_mode=%d\n", state.application_mode ? 1 : 0);
     printf("docked=%d\n", state.docked ? 1 : 0);
     printf("suspended=%d\n", state.suspended ? 1 : 0);
     printf("hos_version=0x%08x\n", state.hos_version);
     printf("data_root=%s\n", switch_platform_data_root());
     printf("game_stack_bytes=%u\n", (unsigned int)SWITCH_PLATFORM_GAME_STACK_SIZE);
+    printf("controllers=%u\n", (unsigned int)controller_switch_connected_count());
 
+    switch_input_rumble_stop_all();
+    switch_input_shutdown();
     switch_platform_shutdown(&state);
     consoleExit(NULL);
     return 0;
