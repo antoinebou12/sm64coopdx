@@ -8,12 +8,16 @@
 #include "djui_panel_join_ldn.h"
 #include "djui_panel_join_message.h"
 #include "djui_panel_menu.h"
+#include "pc/configfile.h"
 #include "pc/network/network.h"
 #include "pc/network/socket/socket_ldn.h"
 
 static struct DjuiPaginated* sPages;
 static struct DjuiFlowLayout* sLayout;
 static struct DjuiButton* sRefresh;
+
+static void lobby_hover_noop(UNUSED struct DjuiBase* caller) {
+}
 
 static void join_selected(struct DjuiBase* caller) {
     if (caller == NULL) return;
@@ -28,6 +32,7 @@ static void join_selected(struct DjuiBase* caller) {
     configNetworkSystem = NS_LDN;
     if (!network_init(NT_CLIENT, false)) {
         djui_popup_create("Local wireless connection failed", 2);
+        network_ldn_cancel_scan();
         return;
     }
     djui_panel_join_message_create(caller);
@@ -67,8 +72,8 @@ static void refresh_list(UNUSED struct DjuiBase* caller) {
                 "Nearby Nintendo Switch session",
                 current >= maximum,
                 join_selected,
-                NULL,
-                NULL);
+                lobby_hover_noop,
+                lobby_hover_noop);
             entry->base.tag = i;
         }
     }
