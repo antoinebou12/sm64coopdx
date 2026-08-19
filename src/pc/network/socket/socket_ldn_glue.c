@@ -8,6 +8,7 @@
 extern bool ldn_initialize_impl(bool isServer);
 extern void ldn_update_impl(void);
 extern int ldn_send_impl(unsigned char localIndex, void* addr, unsigned char* data, unsigned short dataLength);
+extern void ldn_prepare_reconnect_impl(void);
 extern void ldn_shutdown_impl(void);
 extern void* ldn_dup_addr_impl(unsigned char localIndex);
 extern bool ldn_match_addr_impl(void* addr1, void* addr2);
@@ -43,6 +44,9 @@ static bool ns_ldn_initialize(enum NetworkType networkType, UNUSED bool reconnec
 }
 
 static void ns_ldn_update(void) {
+    // Match socket.c: never deliver packets into a torn-down CoopDX session
+    // during the short rehost/reconnect window.
+    if (gNetworkType == NT_NONE) { return; }
     ldn_update_impl();
 }
 
@@ -62,8 +66,14 @@ static void ns_ldn_get_lobby_secret(char* destination, u32 destLength) {
     }
 }
 
-static void ns_ldn_shutdown(UNUSED bool reconnecting) {
-    ldn_shutdown_impl();
+static void ns_ldn_shutdown(bool reconnecting) {
+    if (reconnecting) {
+        // network_rehost_begin/network_reconnect_begin rebuild the CoopDX
+        // session but do not need to renegotiate the physical radio link.
+        ldn_prepare_reconnect_impl();
+    } else {
+        ldn_shutdown_impl();
+    }
 }
 
 struct NetworkSystem gNetworkSystemLdn = {
