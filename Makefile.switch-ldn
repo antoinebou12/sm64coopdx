@@ -1,0 +1,60 @@
+# Nintendo Switch LDN compile/link probe.
+
+ifeq ($(strip $(DEVKITPRO)),)
+$(error "Please set DEVKITPRO, for example /opt/devkitpro")
+endif
+
+LIBNX      := $(DEVKITPRO)/libnx
+DEVKITA64  := $(DEVKITPRO)/devkitA64
+TOOLS      := $(DEVKITPRO)/tools/bin
+CC         := $(DEVKITA64)/bin/aarch64-none-elf-gcc
+ELF2NRO    := $(TOOLS)/elf2nro
+NACPTOOL   := $(TOOLS)/nacptool
+
+BUILD_DIR  := build/switch-ldn
+TARGET     := $(BUILD_DIR)/sm64coopdx-switch-ldn
+SOURCES    := tools/switch/ldn_probe.c src/pc/network/socket/socket_ldn_backend.c
+OBJECTS    := $(patsubst %.c,$(BUILD_DIR)/%.o,$(SOURCES))
+ELF        := $(TARGET).elf
+NACP       := $(TARGET).nacp
+NRO        := $(TARGET).nro
+
+ARCH       := -march=armv8-a+crc+crypto -mtune=cortex-a57 -mtp=soft -fPIE
+CFLAGS     := -std=gnu11 -O2 -g -Wall -Wextra -Werror -ffunction-sections -fdata-sections \
+              $(ARCH) -D__SWITCH__ -I$(LIBNX)/include -Isrc
+LDFLAGS    := -specs=$(LIBNX)/switch.specs -g $(ARCH) -Wl,--gc-sections \
+              -Wl,-Map,$(TARGET).map -L$(LIBNX)/lib
+LIBS       := -lnx -lm
+
+.PHONY: all probe toolchain-check clean
+
+all: probe
+
+probe: toolchain-check $(NRO)
+	@echo "Built $(NRO)"
+
+toolchain-check:
+	@test -x "$(CC)" || (echo "Missing devkitA64 compiler: $(CC)" && exit 1)
+	@test -f "$(LIBNX)/switch.specs" || (echo "Missing libnx switch.specs" && exit 1)
+	@test -x "$(ELF2NRO)" || (echo "Missing elf2nro: $(ELF2NRO)" && exit 1)
+	@test -x "$(NACPTOOL)" || (echo "Missing nacptool: $(NACPTOOL)" && exit 1)
+
+$(BUILD_DIR)/%.o: %.c
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) -MMD -MP -MF $(@:.o=.d) -c $< -o $@
+
+$(ELF): $(OBJECTS)
+	@mkdir -p $(dir $@)
+	$(CC) $(LDFLAGS) $(OBJECTS) $(LIBS) -o $@
+
+$(NACP):
+	@mkdir -p $(dir $@)
+	$(NACPTOOL) --create "SM64CoopDX LDN Probe" "SM64CoopDX contributors" "0.0.1" $@
+
+$(NRO): $(ELF) $(NACP)
+	$(ELF2NRO) $(ELF) $@ --nacp=$(NACP)
+
+clean:
+	rm -rf $(BUILD_DIR)
+
+-include $(OBJECTS:.o=.d)
