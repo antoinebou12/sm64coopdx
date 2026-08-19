@@ -14,8 +14,24 @@ static void djui_panel_join_public_lobbies(struct DjuiBase* caller) {
 }
 #endif
 
+#ifdef __SWITCH__
+extern void djui_panel_ldn_browser_create(struct DjuiBase* caller);
+#endif
+
 void djui_panel_join_create(struct DjuiBase* caller) {
-#ifndef COOPNET
+#ifdef __SWITCH__
+    // Do not replace normal networking on Switch. Local wireless is an
+    // additional transport, while direct IP remains available for LAN/WAN.
+    struct DjuiThreePanel* panel = djui_panel_menu_create(DLANG(JOIN, JOIN_TITLE), false);
+    struct DjuiBase* body = djui_three_panel_get_body(panel);
+    {
+        djui_button_create(body, "LOCAL WIRELESS", DJUI_BUTTON_STYLE_NORMAL, djui_panel_ldn_browser_create);
+        djui_button_create(body, DLANG(JOIN, DIRECT), DJUI_BUTTON_STYLE_NORMAL, djui_panel_join_direct_create);
+        djui_button_create(body, DLANG(MENU, BACK), DJUI_BUTTON_STYLE_BACK, djui_panel_menu_back);
+    }
+
+    djui_panel_add(caller, panel, NULL);
+#elif !defined(COOPNET)
     djui_panel_join_direct_create(caller);
 #else
     struct DjuiThreePanel* panel = djui_panel_menu_create(DLANG(JOIN, JOIN_TITLE), false);
