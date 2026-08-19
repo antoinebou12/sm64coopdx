@@ -7,6 +7,7 @@
 #include "djui_panel_menu.h"
 #include "pc/network/network.h"
 #include "pc/network/socket/socket_ldn.h"
+#include "pc/configfile.h"
 #include "pc/debuglog.h"
 
 static struct DjuiFlowLayout* sRoomLayout = NULL;
@@ -17,6 +18,7 @@ static bool sKeepLdnAlive = false;
 // out is important because an open LDN station can interfere with returning
 // to normal infrastructure/direct-IP networking.
 extern void ldn_shutdown_impl(void);
+extern void djui_panel_do_host(bool reconnecting, bool playSound);
 
 static void djui_panel_ldn_refresh(UNUSED struct DjuiBase* caller);
 
@@ -37,7 +39,7 @@ static void djui_panel_ldn_connect(struct DjuiBase* caller) {
     }
 
     network_reset_reconnect_and_rehost();
-    gNetworkSystem = &gNetworkSystemLdn;
+    network_set_system(NS_LDN);
     if (!network_init(NT_CLIENT, false)) {
         gNetworkSystem->shutdown(false);
         djui_popup_create("Local wireless connected, but CoopDX\nnetwork initialization failed.", 3);
@@ -55,19 +57,12 @@ static void djui_panel_ldn_host(UNUSED struct DjuiBase* caller) {
     if (sBusy) { return; }
     sBusy = true;
 
-    // Local wireless is intentionally separate from normal Socket hosting.
-    // Existing save/mod/server settings are reused; only the transport changes.
+    // Let the standard host lifecycle do save-slot setup, mod activation,
+    // fake-level initialization, transitions and future rehosts. The Switch
+    // network overlay teaches network_set_system() how to resolve NS_LDN.
     network_reset_reconnect_and_rehost();
-    gNetworkSystem = &gNetworkSystemLdn;
-    if (!network_init(NT_SERVER, false)) {
-        djui_popup_create("Could not create a local wireless room.", 3);
-        sBusy = false;
-        return;
-    }
-
-    sKeepLdnAlive = true;
-    djui_panel_shutdown();
-    sBusy = false;
+    configNetworkSystem = NS_LDN;
+    djui_panel_do_host(false, true);
 }
 
 static void djui_panel_ldn_rebuild_rooms(void) {
