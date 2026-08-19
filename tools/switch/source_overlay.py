@@ -197,6 +197,14 @@ def overlay_network(text: str) -> str:
 
     text = replace_once(
         text,
+        "enum NetworkSystemType sNetworkReconnectType = NS_SOCKET;\n",
+        "enum NetworkSystemType sNetworkReconnectType = NS_SOCKET;\n"
+        "static u8 sNetworkReconnectAttempts = 0;\n",
+        "network reconnect attempt state",
+    )
+
+    text = replace_once(
+        text,
         "    switch (nsType) {\n"
         "        case NS_SOCKET:  gNetworkSystem = &gNetworkSystemSocket; break;\n"
         "#ifdef COOPNET\n"
@@ -219,6 +227,36 @@ def overlay_network(text: str) -> str:
 
     text = replace_once(
         text,
+        "    if (!rc && inNetworkType != NT_NONE) {\n"
+        "        LOG_ERROR(\"failed to initialize network system\");\n"
+        "        djui_popup_create(DLANG(NOTIF, DISCONNECT_CLOSED), 2);\n"
+        "        return false;\n"
+        "    }\n",
+        "    if (!rc && inNetworkType != NT_NONE) {\n"
+        "        LOG_ERROR(\"failed to initialize network system\");\n"
+        "        if (!reconnecting) {\n"
+        "            djui_popup_create(DLANG(NOTIF, DISCONNECT_CLOSED), 2);\n"
+        "        }\n"
+        "        return false;\n"
+        "    }\n",
+        "network suppress reconnect popup spam",
+    )
+
+    text = replace_once(
+        text,
+        "    sNetworkReconnectTimer = 0;\n"
+        "    sNetworkRehostTimer = 0;\n"
+        "    sNetworkReconnectType = NS_SOCKET;\n",
+        "    sNetworkReconnectTimer = 0;\n"
+        "    sNetworkRehostTimer = 0;\n"
+        "    sNetworkReconnectType = NS_SOCKET;\n"
+        "    sNetworkReconnectAttempts = 0;\n",
+        "network reset reconnect attempts",
+    )
+
+    text = replace_once(
+        text,
+        "    sNetworkReconnectTimer = 2 * 30;\n\n"
         "#ifdef COOPNET\n"
         "    sNetworkReconnectType = (gNetworkSystem == &gNetworkSystemCoopNet)\n"
         "                          ? NS_COOPNET\n"
@@ -226,6 +264,8 @@ def overlay_network(text: str) -> str:
         "#else\n"
         "    sNetworkReconnectType = NS_SOCKET;\n"
         "#endif\n",
+        "    sNetworkReconnectTimer = 2 * 30;\n"
+        "    sNetworkReconnectAttempts = 0;\n\n"
         "#ifdef __SWITCH__\n"
         "    if (gNetworkSystem == &gNetworkSystemLdn) {\n"
         "        sNetworkReconnectType = NS_LDN;\n"
@@ -247,29 +287,67 @@ def overlay_network(text: str) -> str:
 
     text = replace_once(
         text,
+        "static void network_reconnect_update(void) {\n"
+        "    if (sNetworkReconnectTimer <= 0) { return; }\n"
+        "    if (--sNetworkReconnectTimer != 0) { return; }\n\n"
         "    if (sNetworkReconnectType == NS_SOCKET) {\n"
         "        network_set_system(NS_SOCKET);\n"
         "    } else if (sNetworkReconnectType == NS_COOPNET) {\n"
         "        network_set_system(NS_COOPNET);\n"
-        "    }\n",
-        "    if (sNetworkReconnectType == NS_SOCKET) {\n"
-        "        network_set_system(NS_SOCKET);\n"
-        "    } else if (sNetworkReconnectType == NS_COOPNET) {\n"
-        "        network_set_system(NS_COOPNET);\n"
-        "#ifdef __SWITCH__\n"
-        "    } else if (sNetworkReconnectType == NS_LDN) {\n"
-        "        network_set_system(NS_LDN);\n"
-        "#endif\n"
-        "    }\n",
-        "network restore LDN reconnect type",
+        "    }\n\n"
+        "    network_init(NT_CLIENT, true);\n\n"
+        "    network_send_mod_list_request();\n"
+        "}\n",
+        "static void network_reconnect_update(void) {\n"
+        "    if (sNetworkReconnectTimer <= 0) { return; }\n"
+        "    if (--sNetworkReconnectTimer != 0) { return; }\n\n"
+        "    network_set_system(sNetworkReconnectType);\n\n"
+        "    if (!network_init(NT_CLIENT, true)) {\n"
+        "        if (gNetworkSystem != NULL) {\n"
+        "            gNetworkSystem->shutdown(true);\n"
+        "        }\n"
+        "        sNetworkReconnectAttempts++;\n"
+        "        if (sNetworkReconnectAttempts >= 5) {\n"
+        "            if (gNetworkSystem != NULL) {\n"
+        "                gNetworkSystem->shutdown(false);\n"
+        "            }\n"
+        "            network_reset_reconnect_and_rehost();\n"
+        "            djui_popup_create(DLANG(NOTIF, DISCONNECT_CLOSED), 2);\n"
+        "            return;\n"
+        "        }\n\n"
+        "        u8 shift = sNetworkReconnectAttempts - 1;\n"
+        "        if (shift > 3) { shift = 3; }\n"
+        "        sNetworkReconnectTimer = 30U << shift;\n"
+        "        LOG_INFO(\"reconnect attempt %u failed, retrying in %u frames\",\n"
+        "                 sNetworkReconnectAttempts, sNetworkReconnectTimer);\n"
+        "        return;\n"
+        "    }\n\n"
+        "    sNetworkReconnectAttempts = 0;\n"
+        "    network_send_mod_list_request();\n"
+        "}\n",
+        "network bounded reconnect backoff",
     )
 
+    return text
+
+
+def overlay_network_player(text: str) -> str:
+    text = replace_once(
+        text,
+        "            LOG_INFO(\"dropping due to no server connectivity\");\n"
+        "            network_shutdown(false, false, true, false);\n",
+        "            LOG_INFO(\"server connectivity lost; attempting reconnect\");\n"
+        "            network_reconnect_begin();\n"
+        "            return;\n",
+        "network player timeout reconnect",
+    )
     return text
 
 
 OVERLAYS = {
     "mario": overlay_mario,
     "network": overlay_network,
+    "network_player": overlay_network_player,
 }
 
 
