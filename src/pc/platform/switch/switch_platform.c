@@ -56,6 +56,12 @@ bool switch_platform_init(SwitchPlatformState *state) {
 
     memset(state, 0, sizeof(*state));
 
+    const Result socket_rc = socketInitializeDefault();
+    if (R_FAILED(socket_rc)) {
+        return false;
+    }
+    state->socket_initialized = true;
+
     const AppletType applet_type = appletGetAppletType();
     state->application_mode = applet_type == AppletType_Application ||
                               applet_type == AppletType_SystemApplication;
@@ -76,6 +82,12 @@ void switch_platform_shutdown(SwitchPlatformState *state) {
     }
 
     appletUnhook(&sAppletHookCookie);
+
+    if (state->socket_initialized) {
+        socketExit();
+        state->socket_initialized = false;
+    }
+
     state->initialized = false;
     sState = NULL;
 }
