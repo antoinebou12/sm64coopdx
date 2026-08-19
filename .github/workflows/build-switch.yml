@@ -1,0 +1,48 @@
+name: Build Nintendo Switch
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main, dev, "agent/switch-dev-rebase" ]
+  pull_request:
+    branches: [ main, dev ]
+
+jobs:
+  switch-portability:
+    name: devkitA64 portability smoke build
+    runs-on: ubuntu-latest
+    container: devkitpro/devkita64:latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Verify Switch toolchain
+        shell: bash
+        run: |
+          set -euxo pipefail
+          source /opt/devkitpro/switchvars.sh
+          aarch64-none-elf-gcc --version
+          test -f /opt/devkitpro/portlibs/switch/include/SDL2/SDL.h
+          test -f /opt/devkitpro/libnx/include/switch.h
+
+      - name: Compile Switch-specific and graphics boundary objects
+        shell: bash
+        run: |
+          set -euxo pipefail
+          source /opt/devkitpro/switchvars.sh
+          make -f Makefile.nx -j2 \
+            build_nx/src/pc/nx_thread.o \
+            build_nx/src/pc/mumble/mumble_nx.o \
+            build_nx/src/pc/network/socket/socket_ldn.o \
+            build_nx/src/pc/djui/djui_panel_ldn_browser.o \
+            build_nx/src/pc/gfx/gfx_window_opengl.o
+
+      - name: Validate NX link recipe without ROM-derived assets
+        shell: bash
+        run: |
+          set -euxo pipefail
+          source /opt/devkitpro/switchvars.sh
+          make -f Makefile.nx -n sm64coopdx_nx.elf >/tmp/nx-link-plan.txt
+          test -s /tmp/nx-link-plan.txt
