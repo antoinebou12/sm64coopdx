@@ -3,6 +3,7 @@
 
 #include "platform.h"
 #include "pc/configfile.h"
+#include "pc/gfx/gfx_window_manager.h"
 
 enum NetworkType {
     NT_NONE,
@@ -14,9 +15,6 @@ enum NetworkType {
 #define PORT_MAX_LEN 16
 
 struct CLIOptions {
-#if defined(_WIN32)
-    bool console;
-#endif
     char savePath[SYS_MAX_PATH];
     char configFile[SYS_MAX_PATH];
     unsigned int fullscreen;
@@ -38,7 +36,7 @@ struct CLIOptions {
     char** enableMods;
     bool headless;
 #if defined(_WIN32)
-    int backend;
+    enum GfxWindowBackend backend;
 #endif
 };
 

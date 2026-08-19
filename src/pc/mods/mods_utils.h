@@ -16,6 +16,7 @@ bool str_starts_with(const char *string, const char *prefix);
 bool str_ends_with(const char *string, const char *suffix);
 
 bool path_ends_with(const char* path, const char* suffix);
+bool path_ends_with_filepath(const char *path, const char *filepath);
 
 char* extract_lua_field(char* fieldName, char* buffer);
 

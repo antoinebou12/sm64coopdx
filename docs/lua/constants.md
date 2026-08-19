@@ -2,6 +2,7 @@
 
 # Supported Constants
 - [area.h](#areah)
+    - [enum MenuOption](#enum-MenuOption)
 - [behavior_table.h](#behavior_tableh)
     - [enum BehaviorId](#enum-BehaviorId)
 - [camera.h](#camerah)
@@ -11,6 +12,8 @@
     - [enum CharacterType](#enum-CharacterType)
     - [enum CharacterSound](#enum-CharacterSound)
 - [controller_mouse.h](#controller_mouseh)
+- [course_defines.h](#course_definesh)
+    - [enum CourseNum](#enum-CourseNum)
 - [dialog_ids.h](#dialog_idsh)
     - [enum DialogId](#enum-DialogId)
 - [djui_console.h](#djui_consoleh)
@@ -32,6 +35,8 @@
 - [gfx_pc.h](#gfx_pch)
     - [enum ShaderFlag](#enum-ShaderFlag)
 - [graph_node.h](#graph_nodeh)
+- [hardcoded.h](#hardcodedh)
+    - [enum PauseExitMode](#enum-PauseExitMode)
 - [interaction.c](#interactionc)
 - [interaction.h](#interactionh)
     - [enum InteractionType](#enum-InteractionType)
@@ -41,7 +46,13 @@
 - [level_defines.h](#level_definesh)
     - [enum LevelNum](#enum-LevelNum)
 - [level_update.h](#level_updateh)
+    - [enum TimerControl](#enum-TimerControl)
+    - [enum WarpOperation](#enum-WarpOperation)
+    - [enum SpecialWarpDestination](#enum-SpecialWarpDestination)
+    - [enum WarpFlags](#enum-WarpFlags)
     - [enum MarioSpawnType](#enum-MarioSpawnType)
+    - [enum WarpNodes](#enum-WarpNodes)
+    - [enum WarpType](#enum-WarpType)
     - [enum HUDDisplayFlag](#enum-HUDDisplayFlag)
 - [lighting_engine.h](#lighting_engineh)
     - [enum LEMode](#enum-LEMode)
@@ -55,6 +66,7 @@
     - [enum MarioCapGSCId](#enum-MarioCapGSCId)
     - [enum MarioGrabPosGSCId](#enum-MarioGrabPosGSCId)
 - [mod_fs.h](#mod_fsh)
+    - [enum ModFsErrorCode](#enum-ModFsErrorCode)
     - [enum ModFsFileIntType](#enum-ModFsFileIntType)
     - [enum ModFsFileFloatType](#enum-ModFsFileFloatType)
     - [enum ModFsFileSeek](#enum-ModFsFileSeek)
@@ -70,6 +82,7 @@
 - [obj_behaviors.c](#obj_behaviorsc)
 - [obj_behaviors_2.h](#obj_behaviors_2h)
 - [object_constants.h](#object_constantsh)
+    - [enum CoinType](#enum-CoinType)
 - [object_list_processor.h](#object_list_processorh)
     - [enum ObjectList](#enum-ObjectList)
 - [os_cont.h](#os_conth)
@@ -82,6 +95,9 @@
     - [enum SeqId](#enum-SeqId)
 - [sm64.h](#sm64h)
 - [smlua_audio_utils.h](#smlua_audio_utilsh)
+    - [enum ModAudioType](#enum-ModAudioType)
+    - [enum ModAudioFlags](#enum-ModAudioFlags)
+    - [enum ModAudioChannel](#enum-ModAudioChannel)
 - [smlua_hooks.h](#smlua_hooksh)
     - [enum LuaHookedEventType](#enum-LuaHookedEventType)
 - [smlua_misc_utils.h](#smlua_misc_utilsh)
@@ -90,6 +106,8 @@
     - [enum ActSelectHudPart](#enum-ActSelectHudPart)
 - [smlua_model_utils.h](#smlua_model_utilsh)
     - [enum ModelExtendedId](#enum-ModelExtendedId)
+- [smlua_text_utils.h](#smlua_text_utilsh)
+    - [enum DialogType](#enum-DialogType)
 - [sounds.h](#soundsh)
 - [surface_load.h](#surface_loadh)
 - [surface_terrains.h](#surface_terrainsh)
@@ -115,6 +133,21 @@
 - WARP_TRANSITION_FADE_INTO_MARIO
 - WARP_TRANSITION_FADE_FROM_BOWSER
 - WARP_TRANSITION_FADE_INTO_BOWSER
+
+### [enum MenuOption](#MenuOption)
+| Identifier | Value |
+| :--------- | :---- |
+| MENU_OPT_NONE | 0 |
+| MENU_OPT_1 | 1 |
+| MENU_OPT_2 | 2 |
+| MENU_OPT_3 | 3 |
+| MENU_OPT_DEFAULT | MENU_OPT_1 |
+| MENU_OPT_CONTINUE | MENU_OPT_1 |
+| MENU_OPT_EXIT_COURSE | ((MENU_OPT_CONTINUE) + 1) |
+| MENU_OPT_CAMERA_ANGLE_R | ((MENU_OPT_CONTINUE) + 2) |
+| MENU_OPT_EXIT_TO_CASTLE | ((MENU_OPT_CONTINUE) + 3) |
+| MENU_OPT_SAVE_AND_CONTINUE | MENU_OPT_1 |
+| MENU_OPT_CONTINUE_DONT_SAVE | ((MENU_OPT_SAVE_AND_CONTINUE) + 1) |
 - VERSION_REGION
 
 [:arrow_up_small:](#)
@@ -955,6 +988,46 @@
 
 <br />
 
+## [course_defines.h](#course_defines.h)
+
+### [enum CourseNum](#CourseNum)
+| Identifier | Value |
+| :--------- | :---- |
+| COURSE_NONE | 0 |
+| COURSE_BOB | 1 |
+| COURSE_WF | 2 |
+| COURSE_JRB | 3 |
+| COURSE_CCM | 4 |
+| COURSE_BBH | 5 |
+| COURSE_HMC | 6 |
+| COURSE_LLL | 7 |
+| COURSE_SSL | 8 |
+| COURSE_DDD | 9 |
+| COURSE_SL | 10 |
+| COURSE_WDW | 11 |
+| COURSE_TTM | 12 |
+| COURSE_THI | 13 |
+| COURSE_TTC | 14 |
+| COURSE_RR | 15 |
+| COURSE_BITDW | 16 |
+| COURSE_BITFS | 17 |
+| COURSE_BITS | 18 |
+| COURSE_PSS | 19 |
+| COURSE_COTMC | 20 |
+| COURSE_TOTWC | 21 |
+| COURSE_VCUTM | 22 |
+| COURSE_WMOTR | 23 |
+| COURSE_SA | 24 |
+| COURSE_CAKE_END | 25 |
+| COURSE_END | 26 |
+| COURSE_COUNT | COURSE_END - 1 |
+| COURSE_MAX | COURSE_COUNT |
+| COURSE_MIN | 1 |
+
+[:arrow_up_small:](#)
+
+<br />
+
 ## [dialog_ids.h](#dialog_ids.h)
 
 ### [enum DialogId](#DialogId)
@@ -1138,6 +1211,7 @@
 <br />
 
 ## [djui_console.h](#djui_console.h)
+- MAX_CONSOLE_INPUT_LENGTH
 
 ### [enum ConsoleMessageLevel](#ConsoleMessageLevel)
 | Identifier | Value |
@@ -1410,6 +1484,22 @@
 
 <br />
 
+## [hardcoded.h](#hardcoded.h)
+
+### [enum PauseExitMode](#PauseExitMode)
+| Identifier | Value |
+| :--------- | :---- |
+| PAUSE_EXIT_VANILLA | 0 |
+| PAUSE_EXIT_COURSE | 1 |
+| PAUSE_EXIT_TO_CASTLE | 2 |
+| PAUSE_EXIT_BOTH | 3 |
+- STARS_NEEDED_FOR_DIALOG_COUNT
+- EXCLAMATION_BOX_MAX_SIZE
+
+[:arrow_up_small:](#)
+
+<br />
+
 ## [interaction.c](#interaction.c)
 
 [:arrow_up_small:](#)
@@ -1583,33 +1673,56 @@
 <br />
 
 ## [level_update.h](#level_update.h)
-- TIMER_CONTROL_SHOW
-- TIMER_CONTROL_START
-- TIMER_CONTROL_STOP
-- TIMER_CONTROL_HIDE
-- WARP_OP_NONE
-- WARP_OP_LOOK_UP
-- WARP_OP_SPIN_SHRINK
-- WARP_OP_WARP_DOOR
-- WARP_OP_WARP_OBJECT
-- WARP_OP_TELEPORT
-- WARP_OP_STAR_EXIT
-- WARP_OP_DEATH
-- WARP_OP_WARP_FLOOR
-- WARP_OP_GAME_OVER
-- WARP_OP_CREDITS_END
-- WARP_OP_DEMO_NEXT
-- WARP_OP_CREDITS_START
-- WARP_OP_CREDITS_NEXT
-- WARP_OP_DEMO_END
-- WARP_OP_FORCE_SYNC
-- WARP_OP_EXIT
-- WARP_OP_TRIGGERS_LEVEL_SELECT
-- SPECIAL_WARP_CAKE
-- SPECIAL_WARP_GODDARD
-- SPECIAL_WARP_GODDARD_GAMEOVER
-- SPECIAL_WARP_TITLE
-- SPECIAL_WARP_LEVEL_SELECT
+
+### [enum TimerControl](#TimerControl)
+| Identifier | Value |
+| :--------- | :---- |
+| TIMER_CONTROL_SHOW | 0 |
+| TIMER_CONTROL_START | 1 |
+| TIMER_CONTROL_STOP | 2 |
+| TIMER_CONTROL_HIDE | 3 |
+
+### [enum WarpOperation](#WarpOperation)
+| Identifier | Value |
+| :--------- | :---- |
+| WARP_OP_NONE | 0 |
+| WARP_OP_LOOK_UP | 1 |
+| WARP_OP_SPIN_SHRINK | 2 |
+| WARP_OP_WARP_DOOR | 3 |
+| WARP_OP_WARP_OBJECT | 4 |
+| WARP_OP_TELEPORT | 5 |
+| WARP_OP_TRIGGERS_LEVEL_SELECT | 0x10 |
+| WARP_OP_STAR_EXIT | 17 |
+| WARP_OP_DEATH | 18 |
+| WARP_OP_WARP_FLOOR | 19 |
+| WARP_OP_GAME_OVER | 20 |
+| WARP_OP_CREDITS_END | 21 |
+| WARP_OP_DEMO_NEXT | 22 |
+| WARP_OP_CREDITS_START | 23 |
+| WARP_OP_CREDITS_NEXT | 24 |
+| WARP_OP_DEMO_END | 25 |
+| WARP_OP_FORCE_SYNC | 26 |
+| WARP_OP_EXIT | 27 |
+
+### [enum SpecialWarpDestination](#SpecialWarpDestination)
+| Identifier | Value |
+| :--------- | :---- |
+| WARP_SPECIAL_LEVEL_SELECT | -9 |
+| WARP_SPECIAL_INTRO_SPLASH_SCREEN | -8 |
+| WARP_SPECIAL_SWITCH_FILE | -7 |
+| WARP_SPECIAL_MARIO_HEAD_DIZZY | -3 |
+| WARP_SPECIAL_MARIO_HEAD_REGULAR | -2 |
+| WARP_SPECIAL_ENDING | -1 |
+| WARP_SPECIAL_NONE | 0 |
+
+### [enum WarpFlags](#WarpFlags)
+| Identifier | Value |
+| :--------- | :---- |
+| WARP_FLAG_NONE | (0 << 0) |
+| WARP_FLAG_DOOR_PULLED | (1 << 0) |
+| WARP_FLAG_DOOR_FLIP_MARIO | (1 << 1) |
+| WARP_FLAG_DOOR_IS_WARP | (1 << 2) |
+| WARP_FLAG_EXIT_COURSE | (1 << 3) |
 
 ### [enum MarioSpawnType](#MarioSpawnType)
 | Identifier | Value |
@@ -1635,22 +1748,27 @@
 | MARIO_SPAWN_LAUNCH_DEATH | 37 |
 | MARIO_SPAWN_UNUSED_38 | 38 |
 | MARIO_SPAWN_FADE_FROM_BLACK | 39 |
-- MARIO_SPAWN_UNKNOWN_02
-- MARIO_SPAWN_UNKNOWN_03
-- MARIO_SPAWN_UNKNOWN_27
-- WARP_NODE_F0
-- WARP_NODE_DEATH
-- WARP_NODE_F2
-- WARP_NODE_WARP_FLOOR
-- WARP_NODE_CREDITS_START
-- WARP_NODE_CREDITS_NEXT
-- WARP_NODE_CREDITS_END
-- WARP_NODE_CREDITS_MIN
-- WARP_TYPE_NOT_WARPING
-- WARP_TYPE_CHANGE_LEVEL
-- WARP_TYPE_CHANGE_AREA
-- WARP_TYPE_SAME_AREA
-- WARP_ARG_EXIT_COURSE
+
+### [enum WarpNodes](#WarpNodes)
+| Identifier | Value |
+| :--------- | :---- |
+| WARP_NODE_MAIN_ENTRY | 0x0A |
+| WARP_NODE_DEFAULT | 0xF0 |
+| WARP_NODE_DEATH | 0xF1 |
+| WARP_NODE_LOOK_UP | 0xF2 |
+| WARP_NODE_WARP_FLOOR | 0xF3 |
+| WARP_NODE_CREDITS_MIN | 0xF8 |
+| WARP_NODE_CREDITS_START | 0xF8 |
+| WARP_NODE_CREDITS_NEXT | 0xF9 |
+| WARP_NODE_CREDITS_END | 0xFA |
+
+### [enum WarpType](#WarpType)
+| Identifier | Value |
+| :--------- | :---- |
+| WARP_TYPE_NOT_WARPING | 0 |
+| WARP_TYPE_CHANGE_LEVEL | 1 |
+| WARP_TYPE_CHANGE_AREA | 2 |
+| WARP_TYPE_SAME_AREA | 3 |
 - PRESS_START_DEMO_TIMER
 - PAINTING_WARP_INDEX_START
 - PAINTING_WARP_INDEX_FA
@@ -2186,6 +2304,33 @@
 - MOD_FS_URI_PREFIX
 - MOD_FS_URI_FORMAT
 
+### [enum ModFsErrorCode](#ModFsErrorCode)
+| Identifier | Value |
+| :--------- | :---- |
+| MOD_FS_ERR_NONE | 0 |
+| MOD_FS_ERR_ALLOC_FAILED | 1 |
+| MOD_FS_ERR_ALREADY_EXISTS | 2 |
+| MOD_FS_ERR_NOT_FOUND | 3 |
+| MOD_FS_ERR_INVALID_POINTER | 4 |
+| MOD_FS_ERR_INVALID_PARAMETER | 5 |
+| MOD_FS_ERR_FILE_INVALID_INDEX | 6 |
+| MOD_FS_ERR_FILE_TYPE_NOT_ALLOWED | 7 |
+| MOD_FS_ERR_TOTAL_SIZE_EXCEEDED | 8 |
+| MOD_FS_ERR_NUM_FILES_EXCEEDED | 9 |
+| MOD_FS_ERR_FILEPATH_EMPTY | 10 |
+| MOD_FS_ERR_FILEPATH_LEN_EXCEEDED | 11 |
+| MOD_FS_ERR_FILEPATH_RESERVED | 12 |
+| MOD_FS_ERR_FILEPATH_INVALID_CHAR | 13 |
+| MOD_FS_ERR_FILEPATH_MALFORMED | 14 |
+| MOD_FS_ERR_FILEPATH_INVALID_EXTENSION | 15 |
+| MOD_FS_ERR_READ_INVALID_MODPATH | 16 |
+| MOD_FS_ERR_READ_ZIP | 17 |
+| MOD_FS_ERR_READ_PROPERTIES | 18 |
+| MOD_FS_ERR_READ_FILE_TRUNCATED | 19 |
+| MOD_FS_ERR_READ_EOF | 20 |
+| MOD_FS_ERR_WRITE_ZIP | 21 |
+| MOD_FS_ERR_WRITE_NOT_ACTIVE_MOD | 22 |
+
 ### [enum ModFsFileIntType](#ModFsFileIntType)
 | Identifier | Value |
 | :--------- | :---- |
@@ -2422,6 +2567,13 @@
 - BOBOMB_ACT_EXPLODE
 - BOBOMB_ACT_LAVA_DEATH
 - BOBOMB_ACT_DEATH_PLANE_DEATH
+
+### [enum CoinType](#CoinType)
+| Identifier | Value |
+| :--------- | :---- |
+| COIN_TYPE_NONE | 0 |
+| COIN_TYPE_YELLOW | 1 |
+| COIN_TYPE_BLUE | 2 |
 - HIDDEN_BLUE_COIN_ACT_INACTIVE
 - HIDDEN_BLUE_COIN_ACT_WAITING
 - HIDDEN_BLUE_COIN_ACT_ACTIVE
@@ -3507,10 +3659,27 @@
 <br />
 
 ## [smlua_audio_utils.h](#smlua_audio_utils.h)
-- MOD_AUDIO_CHANNEL_MASTER
-- MOD_AUDIO_CHANNEL_MUSIC
-- MOD_AUDIO_CHANNEL_SFX
-- MOD_AUDIO_CHANNEL_ENV
+
+### [enum ModAudioType](#ModAudioType)
+| Identifier | Value |
+| :--------- | :---- |
+| MA_TYPE_NONE | 0 |
+| MA_TYPE_SAMPLE | 1 |
+| MA_TYPE_STREAM | 2 |
+
+### [enum ModAudioFlags](#ModAudioFlags)
+| Identifier | Value |
+| :--------- | :---- |
+| MA_FLAGS_LOADED | (1 << 2) |
+| MA_FLAGS_COPY | (1 << 6) |
+
+### [enum ModAudioChannel](#ModAudioChannel)
+| Identifier | Value |
+| :--------- | :---- |
+| MA_CHANNEL_MUSIC | 0 |
+| MA_CHANNEL_SFX | 1 |
+| MA_CHANNEL_ENV | 2 |
+| MA_CHANNEL_MASTER | 3 |
 
 [:arrow_up_small:](#)
 
@@ -4028,6 +4197,23 @@
 | E_MODEL_WARIOS_WING_CAP | 379 |
 | E_MODEL_WARIOS_WINGED_METAL_CAP | 380 |
 | E_MODEL_MAX | 381 |
+
+[:arrow_up_small:](#)
+
+<br />
+
+## [smlua_text_utils.h](#smlua_text_utils.h)
+- MAX_ACTS
+- MAX_ACTS_AND_100_COINS
+
+### [enum DialogType](#DialogType)
+| Identifier | Value |
+| :--------- | :---- |
+| DIALOG_TYPE_DEFAULT | 0 |
+| DIALOG_TYPE_BOSS_START | 1 |
+| DIALOG_TYPE_BOSS_STOP | 2 |
+| DIALOG_TYPE_RACE | 3 |
+| DIALOG_TYPE_STAR_SOUND | 4 |
 
 [:arrow_up_small:](#)
 
@@ -4752,10 +4938,8 @@
 - ANIM_FLAG_BONE_TRANS
 - ANIM_FLAG_BONE_SCALE
 - OBJECT_MAX_BHV_STACK
-- OBJECT_NUM_REGULAR_FIELDS
-- OBJECT_NUM_CUSTOM_FIELDS
-- OBJECT_CUSTOM_FIELDS_START
 - OBJECT_NUM_FIELDS
+- OBJECT_CUSTOM_FIELDS_START
 
 ### [enum MarioAnimPart](#MarioAnimPart)
 | Identifier | Value |

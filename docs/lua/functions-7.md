@@ -1952,6 +1952,27 @@ Gets the current area's networked timer
 
 <br />
 
+## [get_network_area_random_seed](#get_network_area_random_seed)
+
+### Description
+Gets the current area's networked random seed
+
+### Lua Example
+`local integerValue = get_network_area_random_seed()`
+
+### Parameters
+- None
+
+### Returns
+- `integer`
+
+### C Prototype
+`u32 get_network_area_random_seed(void);`
+
+[:arrow_up_small:](#)
+
+<br />
+
 ## [get_area_update_counter](#get_area_update_counter)
 
 ### Description
@@ -3116,6 +3137,31 @@ Retrieves the animated part rotation associated to `animPart` from the MarioStat
 
 <br />
 
+## [get_mario_anim_part_mtx](#get_mario_anim_part_mtx)
+
+### Description
+Retrieves the animated part matrix associated to `animPart` from the MarioState `m` and stores it into `mtx`. Returns `true` on success or `false` on failure
+
+### Lua Example
+`local booleanValue = get_mario_anim_part_mtx(m, animPart, mtx)`
+
+### Parameters
+| Field | Type |
+| ----- | ---- |
+| m | [MarioState](structs.md#MarioState) |
+| animPart | `integer` |
+| mtx | [Mat4](structs.md#Mat4) |
+
+### Returns
+- `boolean`
+
+### C Prototype
+`bool get_mario_anim_part_mtx(struct MarioState *m, u32 animPart, VEC_OUT Mat4 mtx);`
+
+[:arrow_up_small:](#)
+
+<br />
+
 ## [get_current_save_file_num](#get_current_save_file_num)
 
 ### Description
@@ -3521,16 +3567,16 @@ Gets the CoopNet ID of a player with `localIndex` if CoopNet is being used and t
 Gets the master volume level
 
 ### Lua Example
-`local numberValue = get_volume_master()`
+`local integerValue = get_volume_master()`
 
 ### Parameters
 - None
 
 ### Returns
-- `number`
+- `integer`
 
 ### C Prototype
-`f32 get_volume_master(void);`
+`u8 get_volume_master(void);`
 
 [:arrow_up_small:](#)
 
@@ -3542,16 +3588,16 @@ Gets the master volume level
 Gets the volume level of music
 
 ### Lua Example
-`local numberValue = get_volume_level()`
+`local integerValue = get_volume_level()`
 
 ### Parameters
 - None
 
 ### Returns
-- `number`
+- `integer`
 
 ### C Prototype
-`f32 get_volume_level(void);`
+`u8 get_volume_level(void);`
 
 [:arrow_up_small:](#)
 
@@ -3563,16 +3609,16 @@ Gets the volume level of music
 Gets the volume level of sound effects
 
 ### Lua Example
-`local numberValue = get_volume_sfx()`
+`local integerValue = get_volume_sfx()`
 
 ### Parameters
 - None
 
 ### Returns
-- `number`
+- `integer`
 
 ### C Prototype
-`f32 get_volume_sfx(void);`
+`u8 get_volume_sfx(void);`
 
 [:arrow_up_small:](#)
 
@@ -3584,16 +3630,16 @@ Gets the volume level of sound effects
 Gets the volume level of environment sounds effects
 
 ### Lua Example
-`local numberValue = get_volume_env()`
+`local integerValue = get_volume_env()`
 
 ### Parameters
 - None
 
 ### Returns
-- `number`
+- `integer`
 
 ### C Prototype
-`f32 get_volume_env(void);`
+`u8 get_volume_env(void);`
 
 [:arrow_up_small:](#)
 
@@ -3610,13 +3656,13 @@ Sets the master volume level
 ### Parameters
 | Field | Type |
 | ----- | ---- |
-| volume | `number` |
+| volume | `integer` |
 
 ### Returns
 - None
 
 ### C Prototype
-`void set_volume_master(f32 volume);`
+`void set_volume_master(u8 volume);`
 
 [:arrow_up_small:](#)
 
@@ -3633,13 +3679,13 @@ Sets the volume level of music
 ### Parameters
 | Field | Type |
 | ----- | ---- |
-| volume | `number` |
+| volume | `integer` |
 
 ### Returns
 - None
 
 ### C Prototype
-`void set_volume_level(f32 volume);`
+`void set_volume_level(u8 volume);`
 
 [:arrow_up_small:](#)
 
@@ -3656,13 +3702,13 @@ Sets the volume level of sound effects
 ### Parameters
 | Field | Type |
 | ----- | ---- |
-| volume | `number` |
+| volume | `integer` |
 
 ### Returns
 - None
 
 ### C Prototype
-`void set_volume_sfx(f32 volume);`
+`void set_volume_sfx(u8 volume);`
 
 [:arrow_up_small:](#)
 
@@ -3679,13 +3725,13 @@ Sets the volume level of environment sounds effects
 ### Parameters
 | Field | Type |
 | ----- | ---- |
-| volume | `number` |
+| volume | `integer` |
 
 ### Returns
 - None
 
 ### C Prototype
-`void set_volume_env(f32 volume);`
+`void set_volume_env(u8 volume);`
 
 [:arrow_up_small:](#)
 
@@ -4104,7 +4150,7 @@ You can change the fields of the object in `objSetupFunction`
 - [Object](structs.md#Object)
 
 ### C Prototype
-`struct Object* spawn_sync_object(enum BehaviorId behaviorId, enum ModelExtendedId modelId, f32 x, f32 y, f32 z, LuaFunction objSetupFunction);`
+`struct Object* spawn_sync_object(enum BehaviorId behaviorId, enum ModelExtendedId modelId, f32 x, f32 y, f32 z, OPTIONAL LuaFunction objSetupFunction);`
 
 [:arrow_up_small:](#)
 
@@ -4133,7 +4179,7 @@ You can change the fields of the object in `objSetupFunction`
 - [Object](structs.md#Object)
 
 ### C Prototype
-`struct Object* spawn_non_sync_object(enum BehaviorId behaviorId, enum ModelExtendedId modelId, f32 x, f32 y, f32 z, LuaFunction objSetupFunction);`
+`struct Object* spawn_non_sync_object(enum BehaviorId behaviorId, enum ModelExtendedId modelId, f32 x, f32 y, f32 z, OPTIONAL LuaFunction objSetupFunction);`
 
 [:arrow_up_small:](#)
 
@@ -4873,6 +4919,35 @@ Sets the signed 16-bit integer value of the object field and sub field correspon
 
 <br />
 
+## [obj_get_field_info_from_name](#obj_get_field_info_from_name)
+
+### Description
+Gets the object field info (index, sub-index and type) from a field name and a specific mod (if provided). Returns `true` if the field is found, `false` otherwise.
+Supported types are `s32`, `u32`, `f32`, `s16`.
+This function works with custom object fields as well and is meant to be used with functions that take a field index as parameter, like `obj_get_first_with_behavior_id_and_field_s32` or `obj_get_field_s32`
+
+### Lua Example
+`local booleanValue, fieldIndex, fieldSubIndex, fieldType = obj_get_field_info_from_name(fieldName, mod)`
+
+### Parameters
+| Field | Type |
+| ----- | ---- |
+| fieldName | `string` |
+| mod | [Mod](structs.md#Mod) |
+
+### Returns
+- `boolean`
+- `integer`
+- `integer`
+- `string`
+
+### C Prototype
+`bool obj_get_field_info_from_name(const char *fieldName, OPTIONAL struct Mod *mod, RET s32 *fieldIndex, RET s32 *fieldSubIndex, RET const char **fieldType);`
+
+[:arrow_up_small:](#)
+
+<br />
+
 ## [obj_get_temp_spawn_particles_info](#obj_get_temp_spawn_particles_info)
 
 ### Description
@@ -5467,6 +5542,76 @@ Allocates a new dialog entry
 
 ### C Prototype
 `s32 smlua_text_utils_allocate_dialog(void);`
+
+[:arrow_up_small:](#)
+
+<br />
+
+## [smlua_text_utils_dialog_get_type](#smlua_text_utils_dialog_get_type)
+
+### Description
+Gets the type of a `dialogId`
+
+### Lua Example
+`local enumValue = smlua_text_utils_dialog_get_type(dialogId)`
+
+### Parameters
+| Field | Type |
+| ----- | ---- |
+| dialogId | [enum DialogId](constants.md#enum-DialogId) |
+
+### Returns
+- [enum DialogType](constants.md#enum-DialogType)
+
+### C Prototype
+`enum DialogType smlua_text_utils_dialog_get_type(enum DialogId dialogId);`
+
+[:arrow_up_small:](#)
+
+<br />
+
+## [smlua_text_utils_dialog_set_type](#smlua_text_utils_dialog_set_type)
+
+### Description
+Sets the type of a `dialogId`
+
+### Lua Example
+`smlua_text_utils_dialog_set_type(dialogId, dialogType)`
+
+### Parameters
+| Field | Type |
+| ----- | ---- |
+| dialogId | [enum DialogId](constants.md#enum-DialogId) |
+| dialogType | [enum DialogType](constants.md#enum-DialogType) |
+
+### Returns
+- None
+
+### C Prototype
+`void smlua_text_utils_dialog_set_type(enum DialogId dialogId, enum DialogType dialogType);`
+
+[:arrow_up_small:](#)
+
+<br />
+
+## [smlua_text_utils_dialog_reset_type](#smlua_text_utils_dialog_reset_type)
+
+### Description
+Resets the type of a `dialogId`
+
+### Lua Example
+`smlua_text_utils_dialog_reset_type(dialogId)`
+
+### Parameters
+| Field | Type |
+| ----- | ---- |
+| dialogId | [enum DialogId](constants.md#enum-DialogId) |
+
+### Returns
+- None
+
+### C Prototype
+`void smlua_text_utils_dialog_reset_type(enum DialogId dialogId);`
 
 [:arrow_up_small:](#)
 
@@ -6303,13 +6448,13 @@ Stops cap music completely
 <br />
 
 
-## [cur_obj_play_sound_1](#cur_obj_play_sound_1)
+## [cur_obj_play_sound_if_visible](#cur_obj_play_sound_if_visible)
 
 ### Description
 Plays a sound if the current object is visible
 
 ### Lua Example
-`cur_obj_play_sound_1(soundMagic)`
+`cur_obj_play_sound_if_visible(soundMagic)`
 
 ### Parameters
 | Field | Type |
@@ -6320,19 +6465,19 @@ Plays a sound if the current object is visible
 - None
 
 ### C Prototype
-`void cur_obj_play_sound_1(s32 soundMagic);`
+`void cur_obj_play_sound_if_visible(s32 soundMagic);`
 
 [:arrow_up_small:](#)
 
 <br />
 
-## [cur_obj_play_sound_2](#cur_obj_play_sound_2)
+## [cur_obj_play_sound_and_rumble_if_visible](#cur_obj_play_sound_and_rumble_if_visible)
 
 ### Description
-Plays a sound if the current object is visible and queues rumble for specific sounds
+Plays a sound if the current object is visible and queues rumble for the following sounds: `SOUND_OBJ_BOWSER_WALK`, `SOUND_OBJ_POUNDING_LOUD`, `SOUND_OBJ_WHOMP_LOWPRIO`
 
 ### Lua Example
-`cur_obj_play_sound_2(soundMagic)`
+`cur_obj_play_sound_and_rumble_if_visible(soundMagic)`
 
 ### Parameters
 | Field | Type |
@@ -6343,7 +6488,7 @@ Plays a sound if the current object is visible and queues rumble for specific so
 - None
 
 ### C Prototype
-`void cur_obj_play_sound_2(s32 soundMagic);`
+`void cur_obj_play_sound_and_rumble_if_visible(s32 soundMagic);`
 
 [:arrow_up_small:](#)
 
@@ -6368,56 +6513,6 @@ Create a sound spawner for objects that need a sound play once.
 
 ### C Prototype
 `void create_sound_spawner(s32 soundMagic);`
-
-[:arrow_up_small:](#)
-
-<br />
-
-## [calc_dist_to_volume_range_1](#calc_dist_to_volume_range_1)
-
-### Description
-Unused vanilla function, calculates a volume based on `distance`.
-If `distance` is less than 500 then 127, if `distance` is greater than 1500 then 0, if `distance` is between 500 and 1500 then it ranges linearly from 60 to 124.
-What an even more strange and confusing function
-
-### Lua Example
-`local integerValue = calc_dist_to_volume_range_1(distance)`
-
-### Parameters
-| Field | Type |
-| ----- | ---- |
-| distance | `number` |
-
-### Returns
-- `integer`
-
-### C Prototype
-`s32 calc_dist_to_volume_range_1(f32 distance);`
-
-[:arrow_up_small:](#)
-
-<br />
-
-## [calc_dist_to_volume_range_2](#calc_dist_to_volume_range_2)
-
-### Description
-Unused vanilla function, calculates a volume based on `distance`.
-If `distance` is less than 1300 then 127, if `distance` is greater than 2300 then 0, if `distance` is between 1300 and 2300 then it ranges linearly from 60 to 127.
-What a strange and confusing function
-
-### Lua Example
-`local integerValue = calc_dist_to_volume_range_2(distance)`
-
-### Parameters
-| Field | Type |
-| ----- | ---- |
-| distance | `number` |
-
-### Returns
-- `integer`
-
-### C Prototype
-`s32 calc_dist_to_volume_range_2(f32 distance);`
 
 [:arrow_up_small:](#)
 
@@ -6832,6 +6927,29 @@ Checks if a surface has force
 
 <br />
 
+
+## [sync_object_get_random_seed](#sync_object_get_random_seed)
+
+### Description
+Retrieves the random seed of a sync object from its sync ID
+
+### Lua Example
+`local integerValue = sync_object_get_random_seed(syncId)`
+
+### Parameters
+| Field | Type |
+| ----- | ---- |
+| syncId | `integer` |
+
+### Returns
+- `integer`
+
+### C Prototype
+`u16 sync_object_get_random_seed(u32 syncId);`
+
+[:arrow_up_small:](#)
+
+<br />
 
 ## [sync_object_get_object](#sync_object_get_object)
 
