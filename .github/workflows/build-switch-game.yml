@@ -98,6 +98,7 @@ jobs:
           python3 tools/switch/source_overlay.py platform src/pc/platform.c build/switch-ci/overlays/platform.c
           python3 tools/switch/source_overlay.py controller_bind src/pc/controller/controller_bind_mapping.c build/switch-ci/overlays/controller_bind_mapping.c
           python3 tools/switch/source_overlay.py djui_controls src/pc/djui/djui_panel_controls.c build/switch-ci/overlays/djui_panel_controls.c
+          python3 tools/switch/source_overlay.py loading src/pc/loading.c build/switch-ci/overlays/loading.c
           python3 tools/switch/ci_source_check.py
 
       - name: Validate probe outputs
