@@ -81,10 +81,11 @@ SWITCH_OVERLAY_DIR            := $(BUILD_DIR)/switch-overlay
 SWITCH_MARIO_SOURCE           := $(SWITCH_OVERLAY_DIR)/src/game/mario.c
 SWITCH_AREA_SOURCE            := $(SWITCH_OVERLAY_DIR)/src/game/area.c
 SWITCH_RENDERING_SOURCE       := $(SWITCH_OVERLAY_DIR)/src/game/rendering_graph_node.c
+SWITCH_OBJ_BEHAVIORS_SOURCE   := $(SWITCH_OVERLAY_DIR)/src/game/obj_behaviors.c
 SWITCH_NETWORK_SOURCE         := $(SWITCH_OVERLAY_DIR)/src/pc/network/network.c
 SWITCH_NETWORK_PLAYER_SOURCE  := $(SWITCH_OVERLAY_DIR)/src/pc/network/network_player.c
 SWITCH_OVERLAY_SOURCES        := $(SWITCH_MARIO_SOURCE) $(SWITCH_AREA_SOURCE) $(SWITCH_RENDERING_SOURCE) \
-                                 $(SWITCH_NETWORK_SOURCE) $(SWITCH_NETWORK_PLAYER_SOURCE)
+                                 $(SWITCH_OBJ_BEHAVIORS_SOURCE) $(SWITCH_NETWORK_SOURCE) $(SWITCH_NETWORK_PLAYER_SOURCE)
 
 .PHONY: switch-deps switch-overlays switch-game switch-nro switch-toolchain-check
 
@@ -110,6 +111,9 @@ $(SWITCH_AREA_SOURCE): src/game/area.c tools/switch/render_overlay.py
 $(SWITCH_RENDERING_SOURCE): src/game/rendering_graph_node.c tools/switch/render_overlay.py
 	$(PYTHON) tools/switch/render_overlay.py rendering $< $@
 
+$(SWITCH_OBJ_BEHAVIORS_SOURCE): src/game/obj_behaviors.c tools/switch/gameplay_overlay.py
+	$(PYTHON) tools/switch/gameplay_overlay.py obj_behaviors $< $@
+
 $(SWITCH_NETWORK_SOURCE): src/pc/network/network.c tools/switch/source_overlay.py
 	$(PYTHON) tools/switch/source_overlay.py network $< $@
 
@@ -133,6 +137,11 @@ $(BUILD_DIR)/src/game/area.o: $(SWITCH_AREA_SOURCE)
 $(BUILD_DIR)/src/game/rendering_graph_node.o: $(SWITCH_RENDERING_SOURCE)
 	$(call print,Compiling Switch overlay:,$<,$@)
 	$(V)$(CC_CHECK) $(PROF_FLAGS) $(CC_CHECK_CFLAGS) -MMD -MP -MT $@ -MF $(BUILD_DIR)/src/game/rendering_graph_node.d $<
+	$(V)$(CC) $(PROF_FLAGS) -c $(CFLAGS) -o $@ $<
+
+$(BUILD_DIR)/src/game/obj_behaviors.o: $(SWITCH_OBJ_BEHAVIORS_SOURCE)
+	$(call print,Compiling Switch overlay:,$<,$@)
+	$(V)$(CC_CHECK) $(PROF_FLAGS) $(CC_CHECK_CFLAGS) -MMD -MP -MT $@ -MF $(BUILD_DIR)/src/game/obj_behaviors.d $<
 	$(V)$(CC) $(PROF_FLAGS) -c $(CFLAGS) -o $@ $<
 
 $(BUILD_DIR)/src/pc/network/network.o: $(SWITCH_NETWORK_SOURCE)
