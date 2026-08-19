@@ -52,7 +52,8 @@ SWITCH_EXCLUDE_C := \
     src/pc/audio/audio_sdl.c \
     src/pc/controller/controller_sdl.c \
     src/pc/controller/controller_mouse.c \
-    src/pc/gfx/gfx_window_manager.c
+    src/pc/gfx/gfx_window_manager.c \
+    src/pc/terminal.c
 SWITCH_EXCLUDE_CPP := \
     src/pc/gfx/gfx_direct3d11.cpp \
     src/pc/gfx/gfx_direct3d_common.cpp \
@@ -77,7 +78,7 @@ override BACKEND_LDFLAGS := $(shell $(SDL2_CONFIG) --libs 2>/dev/null)
 override LDFLAGS := -specs=$(LIBNX)/switch.specs $(SWITCH_ARCH) -fPIE \
     -Wl,--gc-sections -Wl,-Map,$(BUILD_DIR)/sm64coopdx.map \
     -L$(LIBNX)/lib -L$(PORTLIBS)/lib -Lbuild/switch-deps/lua/lib \
-    $(BACKEND_LDFLAGS) -l:liblua53.a -lcurl -lz -lGLESv2 -lEGL -lglapi -ldrm_nouveau -lnx -lm -pthread
+    $(BACKEND_LDFLAGS) -l:liblua53.a -lcurl -lz -lGLESv2 -lEGL -lglapi -ldrm_nouveau -lnx -lm
 
 include Makefile
 
