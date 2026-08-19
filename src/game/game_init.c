@@ -26,6 +26,8 @@
 #include <prevent_bss_reordering.h>
 #include "bettercamera.h"
 #include "hud.h"
+#include "local_multiplayer.h"
+#include "pc/controller/controller_api.h"
 #include "pc/controller/controller_mouse.h"
 
 // FIXME: I'm not sure all of these variables belong in this file, but I don't
@@ -417,7 +419,7 @@ void run_demo_inputs(void) {
             gControllers[1].controllerData->button = 0;
         }
 
-        // the timer variable being 0 at the current input means the demo is over.
+        // the timer being 0 at the current input means the demo is over.
         // set the button to the END_DEMO mask to end the demo.
         if (gCurrDemoInput->timer == 0) {
             gControllers[0].controllerData->stick_x = 0;
@@ -459,19 +461,19 @@ void run_demo_inputs(void) {
 
 // update the controller struct with available inputs if present.
 void read_controller_inputs(void) {
-    // If any controllers are plugged in, update the
-    // controller information.
     if (gControllerBits) {
         osRecvMesg(&gSIEventMesgQueue, &D_80339BEC, OS_MESG_BLOCK);
-        osContGetReadData(gInteractableOverridePad ? &gInteractablePad : &gControllerPads[0]);
+        if (gInteractableOverridePad) {
+            osContGetReadData(&gInteractablePad);
+        } else {
+            controller_read_local_pads(&gControllerPads[0], LOCAL_MULTIPLAYER_MAX_PLAYERS);
+        }
     }
     run_demo_inputs();
 
-    for (s32 i = 0; i < 1; i++) {
+    for (s32 i = 0; i < LOCAL_MULTIPLAYER_MAX_PLAYERS; i++) {
         struct Controller *controller = &gControllers[i];
 
-        // if we're receiving inputs, update the controller struct
-        // with the new button info.
         if (controller->controllerData != NULL) {
             controller->rawStickX = controller->controllerData->stick_x;
             controller->rawStickY = controller->controllerData->stick_y;
@@ -479,38 +481,12 @@ void read_controller_inputs(void) {
             controller->extStickY = controller->controllerData->ext_stick_y;
             controller->buttonPressed = (~controller->buttonDown & controller->controllerData->button);
             controller->buttonReleased = (~controller->controllerData->button & controller->buttonDown);
-            // 0.5x A presses are a good meme
             controller->buttonDown = controller->controllerData->button;
             adjust_analog_stick(controller);
-        } else if (i != 0) {
-            // otherwise, if the controllerData is NULL, 0 out all of the inputs.
-            controller->rawStickX = 0;
-            controller->rawStickY = 0;
-            controller->extStickX = 0;
-            controller->extStickY = 0;
-            controller->buttonPressed = 0;
-            controller->buttonReleased = 0;
-            controller->buttonDown = 0;
-            controller->stickX = 0;
-            controller->stickY = 0;
-            controller->stickMag = 0;
         }
-
     }
 
-    // For some reason, player 1's inputs are copied to player 3's port. This
-    // potentially may have been a way the developers "recorded" the inputs
-    // for demos, despite record_demo existing.
-    /*gPlayer3Controller->rawStickX = gPlayer1Controller->rawStickX;
-    gPlayer3Controller->rawStickY = gPlayer1Controller->rawStickY;
-    gPlayer3Controller->stickX = gPlayer1Controller->stickX;
-    gPlayer3Controller->stickY = gPlayer1Controller->stickY;
-    gPlayer3Controller->stickMag = gPlayer1Controller->stickMag;
-    gPlayer3Controller->buttonPressed = gPlayer1Controller->buttonPressed;
-    gPlayer3Controller->buttonReleased = gPlayer1Controller->buttonReleased;
-    gPlayer3Controller->buttonDown = gPlayer1Controller->buttonDown;*/
-
-    // Mouse Input
+    // Mouse Input remains associated with local player 1.
     u32 prev_mouse_window_buttons = mouse_window_buttons;
     controller_mouse_read_window();
     mouse_window_buttons_pressed = ~prev_mouse_window_buttons & mouse_window_buttons;
@@ -524,35 +500,21 @@ void read_controller_inputs(void) {
 
 // initialize the controller structs to point at the OSCont information.
 void init_controllers(void) {
-    s16 port, cont;
+    local_multiplayer_reset();
 
-    // set controller 1 to point to the set of status/pads for input 1 and
-    // init the controllers.
-    gControllers[0].statusData = &gControllerStatuses[0];
-    gControllers[0].controllerData = &gControllerPads[0];
     osContInit(&gSIEventMesgQueue, &gControllerBits, &gControllerStatuses[0]);
+
+    // Keep all four local controller slots wired. Desktop backends only fill
+    // slot 0; the native Switch backend can fill No1/Handheld through No4.
+    for (s16 port = 0; port < LOCAL_MULTIPLAYER_MAX_PLAYERS; port++) {
+        gControllers[port].port = port;
+        gControllers[port].statusData = &gControllerStatuses[port];
+        gControllers[port].controllerData = &gControllerPads[port];
+    }
 
     // strangely enough, the EEPROM probe for save data is done in this function.
     // save pak detection?
     gEepromProbe = osEepromProbe(&gSIEventMesgQueue);
-
-    // loop over the 4 ports and link the controller structs to the appropriate
-    // status and pad. Interestingly, although there are pointers to 3 controllers,
-    // only 2 are connected here. The third seems to have been reserved for debug
-    // purposes and was never connected in the retail ROM, thus gPlayer3Controller
-    // cannot be used, despite being referenced in various code.
-    for (cont = 0, port = 0; port < 4 && cont < 2; port++) {
-        // is controller plugged in?
-        if (gControllerBits & (1 << port)) {
-            // the game allows you to have just 1 controller plugged
-            // into any port in order to play the game. this was probably
-            // so if any of the ports didn't work, you can have controllers
-            // plugged into any of them and it will work.
-            gControllers[cont].port = port;
-            gControllers[cont].statusData = &gControllerStatuses[port];
-            gControllers[cont++].controllerData = &gControllerPads[port];
-        }
-    }
 
     // load bettercam settings from the config file
     newcam_init_settings();
