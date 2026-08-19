@@ -77,10 +77,11 @@ SWITCH_NACP     := $(BUILD_DIR)/sm64coopdx.nacp
 SWITCH_NRO      := $(BUILD_DIR)/sm64coopdx.nro
 SWITCH_VERSION  ?= 1.5.1-switch
 
-SWITCH_OVERLAY_DIR     := $(BUILD_DIR)/switch-overlay
-SWITCH_MARIO_SOURCE    := $(SWITCH_OVERLAY_DIR)/src/game/mario.c
-SWITCH_NETWORK_SOURCE  := $(SWITCH_OVERLAY_DIR)/src/pc/network/network.c
-SWITCH_OVERLAY_SOURCES := $(SWITCH_MARIO_SOURCE) $(SWITCH_NETWORK_SOURCE)
+SWITCH_OVERLAY_DIR            := $(BUILD_DIR)/switch-overlay
+SWITCH_MARIO_SOURCE           := $(SWITCH_OVERLAY_DIR)/src/game/mario.c
+SWITCH_NETWORK_SOURCE         := $(SWITCH_OVERLAY_DIR)/src/pc/network/network.c
+SWITCH_NETWORK_PLAYER_SOURCE  := $(SWITCH_OVERLAY_DIR)/src/pc/network/network_player.c
+SWITCH_OVERLAY_SOURCES        := $(SWITCH_MARIO_SOURCE) $(SWITCH_NETWORK_SOURCE) $(SWITCH_NETWORK_PLAYER_SOURCE)
 
 .PHONY: switch-deps switch-overlays switch-game switch-nro switch-toolchain-check
 
@@ -103,6 +104,9 @@ $(SWITCH_MARIO_SOURCE): src/game/mario.c tools/switch/source_overlay.py
 $(SWITCH_NETWORK_SOURCE): src/pc/network/network.c tools/switch/source_overlay.py
 	$(PYTHON) tools/switch/source_overlay.py network $< $@
 
+$(SWITCH_NETWORK_PLAYER_SOURCE): src/pc/network/network_player.c tools/switch/source_overlay.py
+	$(PYTHON) tools/switch/source_overlay.py network_player $< $@
+
 switch-overlays: $(SWITCH_OVERLAY_SOURCES)
 
 # Explicit object recipes override the generic %.c pattern only for the files
@@ -115,6 +119,11 @@ $(BUILD_DIR)/src/game/mario.o: $(SWITCH_MARIO_SOURCE)
 $(BUILD_DIR)/src/pc/network/network.o: $(SWITCH_NETWORK_SOURCE)
 	$(call print,Compiling Switch overlay:,$<,$@)
 	$(V)$(CC_CHECK) $(PROF_FLAGS) $(CC_CHECK_CFLAGS) -MMD -MP -MT $@ -MF $(BUILD_DIR)/src/pc/network/network.d $<
+	$(V)$(CC) $(PROF_FLAGS) -c $(CFLAGS) -o $@ $<
+
+$(BUILD_DIR)/src/pc/network/network_player.o: $(SWITCH_NETWORK_PLAYER_SOURCE)
+	$(call print,Compiling Switch overlay:,$<,$@)
+	$(V)$(CC_CHECK) $(PROF_FLAGS) $(CC_CHECK_CFLAGS) -MMD -MP -MT $@ -MF $(BUILD_DIR)/src/pc/network/network_player.d $<
 	$(V)$(CC) $(PROF_FLAGS) -c $(CFLAGS) -o $@ $<
 
 # Prevent -j builds from reaching the final linker before Switch-only generated
