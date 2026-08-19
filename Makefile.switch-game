@@ -79,9 +79,12 @@ SWITCH_VERSION  ?= 1.5.1-switch
 
 SWITCH_OVERLAY_DIR            := $(BUILD_DIR)/switch-overlay
 SWITCH_MARIO_SOURCE           := $(SWITCH_OVERLAY_DIR)/src/game/mario.c
+SWITCH_AREA_SOURCE            := $(SWITCH_OVERLAY_DIR)/src/game/area.c
+SWITCH_RENDERING_SOURCE       := $(SWITCH_OVERLAY_DIR)/src/game/rendering_graph_node.c
 SWITCH_NETWORK_SOURCE         := $(SWITCH_OVERLAY_DIR)/src/pc/network/network.c
 SWITCH_NETWORK_PLAYER_SOURCE  := $(SWITCH_OVERLAY_DIR)/src/pc/network/network_player.c
-SWITCH_OVERLAY_SOURCES        := $(SWITCH_MARIO_SOURCE) $(SWITCH_NETWORK_SOURCE) $(SWITCH_NETWORK_PLAYER_SOURCE)
+SWITCH_OVERLAY_SOURCES        := $(SWITCH_MARIO_SOURCE) $(SWITCH_AREA_SOURCE) $(SWITCH_RENDERING_SOURCE) \
+                                 $(SWITCH_NETWORK_SOURCE) $(SWITCH_NETWORK_PLAYER_SOURCE)
 
 .PHONY: switch-deps switch-overlays switch-game switch-nro switch-toolchain-check
 
@@ -101,6 +104,12 @@ switch-deps: switch-toolchain-check
 $(SWITCH_MARIO_SOURCE): src/game/mario.c tools/switch/source_overlay.py
 	$(PYTHON) tools/switch/source_overlay.py mario $< $@
 
+$(SWITCH_AREA_SOURCE): src/game/area.c tools/switch/render_overlay.py
+	$(PYTHON) tools/switch/render_overlay.py area $< $@
+
+$(SWITCH_RENDERING_SOURCE): src/game/rendering_graph_node.c tools/switch/render_overlay.py
+	$(PYTHON) tools/switch/render_overlay.py rendering $< $@
+
 $(SWITCH_NETWORK_SOURCE): src/pc/network/network.c tools/switch/source_overlay.py
 	$(PYTHON) tools/switch/source_overlay.py network $< $@
 
@@ -114,6 +123,16 @@ switch-overlays: $(SWITCH_OVERLAY_SOURCES)
 $(BUILD_DIR)/src/game/mario.o: $(SWITCH_MARIO_SOURCE)
 	$(call print,Compiling Switch overlay:,$<,$@)
 	$(V)$(CC_CHECK) $(PROF_FLAGS) $(CC_CHECK_CFLAGS) -MMD -MP -MT $@ -MF $(BUILD_DIR)/src/game/mario.d $<
+	$(V)$(CC) $(PROF_FLAGS) -c $(CFLAGS) -o $@ $<
+
+$(BUILD_DIR)/src/game/area.o: $(SWITCH_AREA_SOURCE)
+	$(call print,Compiling Switch overlay:,$<,$@)
+	$(V)$(CC_CHECK) $(PROF_FLAGS) $(CC_CHECK_CFLAGS) -MMD -MP -MT $@ -MF $(BUILD_DIR)/src/game/area.d $<
+	$(V)$(CC) $(PROF_FLAGS) -c $(CFLAGS) -o $@ $<
+
+$(BUILD_DIR)/src/game/rendering_graph_node.o: $(SWITCH_RENDERING_SOURCE)
+	$(call print,Compiling Switch overlay:,$<,$@)
+	$(V)$(CC_CHECK) $(PROF_FLAGS) $(CC_CHECK_CFLAGS) -MMD -MP -MT $@ -MF $(BUILD_DIR)/src/game/rendering_graph_node.d $<
 	$(V)$(CC) $(PROF_FLAGS) -c $(CFLAGS) -o $@ $<
 
 $(BUILD_DIR)/src/pc/network/network.o: $(SWITCH_NETWORK_SOURCE)
