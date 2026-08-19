@@ -1,5 +1,13 @@
-#include <switch.h>
 #include <stdio.h>
+
+// Deliberately does NOT include <switch.h>: libnx typedefs u64/s64 as
+// (unsigned) long while the project's PR/ultratypes.h - pulled in through
+// controller_switch.h below - typedefs them as (unsigned) long long, so the
+// two headers cannot coexist in one translation unit. Only the console entry
+// points are needed here, so declare them directly.
+typedef struct PrintConsole PrintConsole;
+PrintConsole* consoleInit(PrintConsole* console);
+void consoleExit(PrintConsole* console);
 
 #include "pc/controller/controller_switch.h"
 #include "pc/platform/switch/switch_input.h"

@@ -5,6 +5,8 @@
 #include <math.h>
 #include <string.h>
 
+#include "macros.h"
+
 #include "pc/platform/switch/switch_input.h"
 
 static bool sInitialized = false;

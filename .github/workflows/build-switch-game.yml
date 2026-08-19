@@ -45,6 +45,13 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Add devkitA64 to PATH
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "${DEVKITPRO}/devkitA64/bin" >> "$GITHUB_PATH"
+          echo "${DEVKITPRO}/tools/bin" >> "$GITHUB_PATH"
+
       - name: Report toolchain
         shell: bash
         run: |
@@ -157,6 +164,13 @@ jobs:
         uses: actions/checkout@v7
         with:
           persist-credentials: false
+
+      - name: Add devkitA64 to PATH
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "${DEVKITPRO}/devkitA64/bin" >> "$GITHUB_PATH"
+          echo "${DEVKITPRO}/tools/bin" >> "$GITHUB_PATH"
 
       - name: Detect private baserom source
         id: baserom

@@ -11,6 +11,8 @@ regressions that would otherwise only appear on two physical consoles.
 
 from __future__ import annotations
 
+import re
+
 from pathlib import Path
 import sys
 
@@ -27,6 +29,12 @@ def text(path: str | Path) -> str:
         failures.append(f"missing required file: {p.relative_to(ROOT)}")
         return ""
     return p.read_text(encoding="utf-8")
+
+
+def strip_comments(source: str) -> str:
+    """Drop C comments so "must not call X" invariants ignore prose about X."""
+    no_block = re.sub(r"/\*.*?\*/", " ", source, flags=re.S)
+    return re.sub(r"//[^\n]*", " ", no_block)
 
 
 def require(label: str, condition: bool) -> None:
@@ -51,6 +59,7 @@ rom_checker = text("src/pc/rom_checker.cpp")
 network_h = text("src/pc/network/network.h")
 ldn_transport = text("src/pc/network/socket/socket_ldn.c")
 ldn_glue = text("src/pc/network/socket/socket_ldn_glue.c")
+ldn_transport_code = strip_comments(ldn_transport)
 join_panel = text("src/pc/djui/djui_panel_join.c")
 ldn_browser = text("src/pc/djui/djui_panel_ldn_browser.c")
 
@@ -209,8 +218,8 @@ require(
     "platform exclusively owns the libnx BSD socket service lifetime",
     "socketInitializeDefault()" in platform_c
     and "socketExit()" in platform_c
-    and "socketInitializeDefault()" not in ldn_transport
-    and "socketExit()" not in ldn_transport,
+    and "socketInitializeDefault()" not in ldn_transport_code
+    and "socketExit()" not in ldn_transport_code,
 )
 require(
     "LDN peer identity is bound by IPv4 address",
