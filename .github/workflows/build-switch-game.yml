@@ -1,0 +1,122 @@
+name: Switch full game
+
+on:
+  push:
+    branches:
+      - switch-combined
+    paths:
+      - Makefile
+      - Makefile.split
+      - dynos.mk
+      - Makefile.switch-game
+      - 'src/**'
+      - 'lib/lua/include/**'
+      - 'tools/switch/**'
+      - '.github/workflows/build-switch-game.yml'
+  pull_request:
+    paths:
+      - Makefile
+      - Makefile.split
+      - dynos.mk
+      - Makefile.switch-game
+      - 'src/**'
+      - 'lib/lua/include/**'
+      - 'tools/switch/**'
+      - '.github/workflows/build-switch-game.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: switch-game-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DEVKITPRO: /opt/devkitpro
+
+jobs:
+  build:
+    name: Full Horizon NRO
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    container:
+      image: devkitpro/devkita64:latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install Switch portlibs
+        shell: bash
+        run: |
+          set -euo pipefail
+          dkp-pacman -Syu --noconfirm
+          dkp-pacman -S --needed --noconfirm switch-sdl2 switch-curl switch-zlib
+
+      - name: Report toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/switch-ci
+          {
+            echo "git_sha=${GITHUB_SHA}"
+            aarch64-none-elf-gcc --version | head -n 1
+            dkp-pacman -Q libnx
+            dkp-pacman -Q devkitA64
+            dkp-pacman -Q switch-sdl2
+            dkp-pacman -Q switch-mesa
+            dkp-pacman -Q switch-curl
+            dkp-pacman -Q switch-zlib
+          } | tee build/switch-ci/TOOLCHAIN.txt
+
+      - name: Validate local multiplayer core
+        shell: bash
+        run: |
+          set -euo pipefail
+          cc -std=c11 -Wall -Wextra -Werror -Isrc \
+            tools/switch/test_local_multiplayer.c \
+            src/game/local_multiplayer.c \
+            -o /tmp/test-local-multiplayer
+          /tmp/test-local-multiplayer
+
+      - name: Build full Switch NRO
+        shell: bash
+        run: |
+          set -euo pipefail
+          make -f Makefile.switch-game switch-nro -j"$(nproc)"
+
+      - name: Validate outputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          prefix=build/us_switch/sm64coopdx
+          test -s "${prefix}.nro"
+          test -s "${prefix}.elf"
+          test -s "${prefix}.map"
+          test -s "${prefix}.nacp"
+          test "$(dd if="${prefix}.nro" bs=1 skip=16 count=4 2>/dev/null)" = "NRO0"
+          aarch64-none-elf-readelf -h "${prefix}.elf" | tee build/switch-ci/ELF_HEADER.txt
+          aarch64-none-elf-size "${prefix}.elf" | tee build/switch-ci/SIZE.txt
+          sha256sum "${prefix}.nro" "${prefix}.elf" "${prefix}.map" "${prefix}.nacp" \
+            | tee build/switch-ci/SHA256SUMS.txt
+          cp build/switch-deps/lua/lib/SHA256SUMS.txt build/switch-ci/LUA_SHA256SUMS.txt
+
+      - name: Upload Switch build
+        uses: actions/upload-artifact@v4
+        with:
+          name: sm64coopdx-switch-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            build/us_switch/sm64coopdx.nro
+            build/us_switch/sm64coopdx.elf
+            build/us_switch/sm64coopdx.map
+            build/us_switch/sm64coopdx.nacp
+            build/switch-ci/TOOLCHAIN.txt
+            build/switch-ci/ELF_HEADER.txt
+            build/switch-ci/SIZE.txt
+            build/switch-ci/SHA256SUMS.txt
+            build/switch-ci/LUA_SHA256SUMS.txt
