@@ -43,11 +43,20 @@ void local_multiplayer_reset(void);
 bool local_multiplayer_set_player_count(uint8_t count);
 uint8_t local_multiplayer_player_count(void);
 
+/*
+ * Update the active local-player count from the currently connected physical
+ * controllers. When allow_multiple is false the result is forced to one,
+ * which is used while an Internet/CoopNet session owns the remote player slots.
+ */
+uint8_t local_multiplayer_sync_controller_count(uint8_t connected_count, bool allow_multiple);
+bool local_multiplayer_is_active_player(uint8_t player);
+
 void local_multiplayer_set_layout(LocalSplitLayout layout);
 LocalSplitLayout local_multiplayer_layout(void);
 
 bool local_multiplayer_bind_controller(uint8_t player, uint8_t controller_slot);
 bool local_multiplayer_bind_network_index(uint8_t player, uint8_t network_index);
+void local_multiplayer_reset_network_bindings(void);
 const LocalPlayerSlot *local_multiplayer_slot(uint8_t player);
 
 bool local_multiplayer_get_viewport(uint8_t player, LocalViewport *viewport);
