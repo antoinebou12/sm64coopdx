@@ -24,7 +24,7 @@ NRO        := $(TARGET).nro
 
 ARCH       := -march=armv8-a+crc+crypto -mtune=cortex-a57 -mtp=soft -fPIE
 CFLAGS     := -std=gnu11 -O2 -g -Wall -Wextra -ffunction-sections -fdata-sections \
-              $(ARCH) -D__SWITCH__ -I$(LIBNX)/include -I. -Iinclude -Isrc -Ilib/src
+              $(ARCH) -D__SWITCH__ -DNON_MATCHING -DAVOID_UB -I$(LIBNX)/include -I. -Iinclude -Isrc -Ilib/src
 LDFLAGS    := -specs=$(LIBNX)/switch.specs -g $(ARCH) -Wl,--gc-sections \
               -Wl,-Map,$(TARGET).map -L$(LIBNX)/lib
 LIBS       := -lnx -lm

@@ -27,7 +27,9 @@ void djui_panel_do_host(bool reconnecting, bool playSound) {
     if (configNetworkSystem == NS_COOPNET) { configNetworkSystem = NS_SOCKET; }
 #endif
     if (configNetworkSystem == NS_COOPNET && configAmountOfPlayers == 1) { configNetworkSystem = NS_SOCKET; }
-    if (configNetworkSystem >= NS_MAX) { configNetworkSystem = NS_MAX; }
+    // NS_MAX is the sentinel, not a usable backend: clamping to it lands in
+    // the default branch of network_set_system() and logs an error.
+    if (configNetworkSystem >= NS_MAX) { configNetworkSystem = NS_SOCKET; }
     network_set_system(configNetworkSystem);
 
     network_init(NT_SERVER, reconnecting);

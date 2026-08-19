@@ -119,12 +119,89 @@ def overlay_loading(text: str) -> str:
     )
 
 
+def overlay_network(text: str) -> str:
+    text = replace_once(
+        text,
+        '        case NS_SOCKET:  gNetworkSystem = &gNetworkSystemSocket; break;\n'
+        '#ifdef COOPNET\n'
+        '        case NS_COOPNET: gNetworkSystem = &gNetworkSystemCoopNet; break;\n'
+        '#endif\n'
+        '        default: gNetworkSystem = &gNetworkSystemSocket; LOG_ERROR("Unknown network system: %d", nsType); break;\n',
+        '        case NS_SOCKET:  gNetworkSystem = &gNetworkSystemSocket; break;\n'
+        '#ifdef COOPNET\n'
+        '        case NS_COOPNET: gNetworkSystem = &gNetworkSystemCoopNet; break;\n'
+        '#endif\n'
+        '#ifdef __SWITCH__\n'
+        '        case NS_LDN:     gNetworkSystem = &gNetworkSystemLdn; break;\n'
+        '#endif\n'
+        '        default: gNetworkSystem = &gNetworkSystemSocket; LOG_ERROR("Unknown network system: %d", nsType); break;\n',
+        "network LDN backend selector",
+    )
+
+    text = replace_once(
+        text,
+        '#ifdef COOPNET\n'
+        '    sNetworkReconnectType = (gNetworkSystem == &gNetworkSystemCoopNet)\n'
+        '                          ? NS_COOPNET\n'
+        '                          : NS_SOCKET;\n'
+        '#else\n'
+        '    sNetworkReconnectType = NS_SOCKET;\n'
+        '#endif\n',
+        '    sNetworkReconnectType = NS_SOCKET;\n'
+        '#ifdef COOPNET\n'
+        '    if (gNetworkSystem == &gNetworkSystemCoopNet) { sNetworkReconnectType = NS_COOPNET; }\n'
+        '#endif\n'
+        '#ifdef __SWITCH__\n'
+        '    if (gNetworkSystem == &gNetworkSystemLdn) { sNetworkReconnectType = NS_LDN; }\n'
+        '#endif\n',
+        "network remember LDN reconnect backend",
+    )
+
+    text = replace_once(
+        text,
+        '    if (sNetworkReconnectType == NS_SOCKET) {\n'
+        '        network_set_system(NS_SOCKET);\n'
+        '    } else if (sNetworkReconnectType == NS_COOPNET) {\n'
+        '        network_set_system(NS_COOPNET);\n'
+        '    }\n',
+        '    if (sNetworkReconnectType == NS_SOCKET) {\n'
+        '        network_set_system(NS_SOCKET);\n'
+        '    } else if (sNetworkReconnectType == NS_COOPNET) {\n'
+        '        network_set_system(NS_COOPNET);\n'
+        '#ifdef __SWITCH__\n'
+        '    } else if (sNetworkReconnectType == NS_LDN) {\n'
+        '        network_set_system(NS_LDN);\n'
+        '#endif\n'
+        '    }\n',
+        "network restore LDN reconnect backend",
+    )
+    return text
+
+
+def overlay_djui_host(text: str) -> str:
+    return replace_once(
+        text,
+        'void djui_panel_host_create(struct DjuiBase* caller) {\n',
+        'void djui_panel_host_create(struct DjuiBase* caller) {\n'
+        '#ifdef __SWITCH__\n'
+        '    /* The normal HOST screen is direct-IP hosting. Local wireless has\n'
+        '     * its own browser/host flow and must not leak into this screen. */\n'
+        '    if (gNetworkType != NT_SERVER && configNetworkSystem == NS_LDN) {\n'
+        '        configNetworkSystem = NS_SOCKET;\n'
+        '    }\n'
+        '#endif\n',
+        "Switch direct host resets LDN selection",
+    )
+
+
 OVERLAYS = {
     "pc_main": overlay_pc_main,
     "platform": overlay_platform,
     "controller_bind": overlay_controller_bind,
     "djui_controls": overlay_djui_controls,
     "loading": overlay_loading,
+    "network": overlay_network,
+    "djui_host": overlay_djui_host,
 }
 
 

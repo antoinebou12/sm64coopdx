@@ -10,7 +10,12 @@
 #include <math.h>
 #include <limits.h>
 #include <dirent.h>
+#ifdef HAVE_SDL2
+// Horizon builds against devkitPro SDL2; desktop stays on SDL3.
+#include <SDL2/SDL.h>
+#else
 #include <SDL3/SDL.h>
+#endif
 #ifdef __cplusplus
 #include <new>
 #include <utility>

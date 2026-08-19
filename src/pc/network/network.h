@@ -37,6 +37,9 @@ extern struct MarioState gMarioStates[];
 enum NetworkSystemType {
     NS_SOCKET,
     NS_COOPNET,
+#ifdef __SWITCH__
+    NS_LDN,
+#endif
     NS_MAX,
 };
 
@@ -56,6 +59,10 @@ struct NetworkSystem {
     bool requireServerBroadcast;
     char* name;
 };
+
+#ifdef __SWITCH__
+extern struct NetworkSystem gNetworkSystemLdn;
+#endif
 
 enum PlayerInteractions {
     PLAYER_INTERACTIONS_NONE,
