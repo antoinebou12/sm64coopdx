@@ -1,0 +1,99 @@
+name: Switch portlibs probe
+
+on:
+  push:
+    branches:
+      - 'agent/switch-portlibs-**'
+    paths:
+      - Makefile.switch-portlibs
+      - tools/switch/portlibs_probe.c
+      - .github/workflows/build-switch-portlibs.yml
+  pull_request:
+    branches:
+      - agent/switch-foundation
+    paths:
+      - Makefile.switch-portlibs
+      - tools/switch/portlibs_probe.c
+      - .github/workflows/build-switch-portlibs.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: switch-portlibs-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DEVKITPRO: /opt/devkitpro
+
+jobs:
+  portlibs-probe:
+    name: SDL2 + GLES2 + curl + zlib
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    container:
+      image: devkitpro/devkita64:latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Refresh devkitPro packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          dkp-pacman -Syu --noconfirm
+          dkp-pacman -S --needed --noconfirm switch-sdl2 switch-curl switch-zlib
+
+      - name: Report dependency versions
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/switch-portlibs
+          {
+            echo "git_sha=${GITHUB_SHA}"
+            aarch64-none-elf-gcc --version | head -n 1
+            dkp-pacman -Q libnx
+            dkp-pacman -Q devkitA64
+            dkp-pacman -Q switch-sdl2
+            dkp-pacman -Q switch-mesa
+            dkp-pacman -Q switch-curl
+            dkp-pacman -Q switch-zlib
+          } | tee build/switch-portlibs/PORTLIBS.txt
+
+      - name: Build portlibs NRO
+        shell: bash
+        run: |
+          set -euo pipefail
+          make -f Makefile.switch-portlibs clean
+          make -f Makefile.switch-portlibs probe
+
+      - name: Validate outputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          prefix=build/switch-portlibs/sm64coopdx-switch-portlibs
+          test -s "${prefix}.nro"
+          test -s "${prefix}.elf"
+          test -s "${prefix}.map"
+          test -s "${prefix}.nacp"
+          test "$(dd if="${prefix}.nro" bs=1 skip=16 count=4 2>/dev/null)" = "NRO0"
+          aarch64-none-elf-readelf -h "${prefix}.elf" | tee build/switch-portlibs/ELF_HEADER.txt
+          sha256sum "${prefix}.nro" "${prefix}.elf" "${prefix}.map" "${prefix}.nacp" \
+            | tee build/switch-portlibs/SHA256SUMS.txt
+
+      - name: Upload portlibs artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: switch-portlibs-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            build/switch-portlibs/sm64coopdx-switch-portlibs.nro
+            build/switch-portlibs/sm64coopdx-switch-portlibs.elf
+            build/switch-portlibs/sm64coopdx-switch-portlibs.map
+            build/switch-portlibs/sm64coopdx-switch-portlibs.nacp
+            build/switch-portlibs/PORTLIBS.txt
+            build/switch-portlibs/ELF_HEADER.txt
+            build/switch-portlibs/SHA256SUMS.txt
