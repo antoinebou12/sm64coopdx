@@ -54,7 +54,19 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Detect full-game build
+        id: full
+        shell: bash
+        run: |
+          if [[ -f Makefile.switch-game ]]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "Full-game Switch build has not landed yet; bootstrap workflow only."
+          fi
+
       - name: Report toolchain
+        if: steps.full.outputs.enabled == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -71,12 +83,14 @@ jobs:
           } | tee build/switch-ci/TOOLCHAIN.txt
 
       - name: Build full Switch NRO
+        if: steps.full.outputs.enabled == 'true'
         shell: bash
         run: |
           set -euo pipefail
           make -f Makefile.switch-game switch-nro -j"$(nproc)"
 
       - name: Validate outputs
+        if: steps.full.outputs.enabled == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -92,6 +106,7 @@ jobs:
           cp build/switch-deps/lua/lib/SHA256SUMS.txt build/switch-ci/LUA_SHA256SUMS.txt
 
       - name: Upload Switch build
+        if: steps.full.outputs.enabled == 'true'
         uses: actions/upload-artifact@v7
         with:
           name: sm64coopdx-switch-${{ github.sha }}
