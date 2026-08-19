@@ -73,7 +73,7 @@ def overlay_platform(text: str) -> str:
     )
 
     marker = '#else\n\n#include <SDL3/SDL.h>\n\nconst char *sys_user_path(void) {'
-    switch_impl = '''#elif defined(__SWITCH__)\n\n#include "pc/platform/switch/switch_platform.h"\n\nconst char *sys_user_path(void) {\n    return switch_platform_data_root();\n}\n\nconst char *sys_resource_path(void) {\n    return switch_platform_data_root();\n}\n\nconst char *sys_exe_path_dir(void) {\n    return switch_platform_data_root();\n}\n\nconst char *sys_exe_path_file(void) {\n    return "sdmc:/switch/sm64coopdx/sm64coopdx.nro";\n}\n\nstatic void sys_fatal_impl(const char *msg) {\n    fprintf(stderr, "FATAL ERROR:\\n%s\\n", msg);\n    fflush(stderr);\n    exit(1);\n}\n\n#else\n\n#include <SDL3/SDL.h>\n\nconst char *sys_user_path(void) {'''
+    switch_impl = '''#elif defined(__SWITCH__)\n\n#include <errno.h>\n#include <sys/stat.h>\n#include "pc/platform/switch/switch_platform.h"\n\nstatic bool switch_ensure_directory(const char *path) {\n    if (mkdir(path, 0777) == 0) {\n        return true;\n    }\n    return errno == EEXIST;\n}\n\nstatic bool switch_ensure_data_root(void) {\n    if (!switch_ensure_directory("sdmc:/switch")) {\n        return false;\n    }\n    return switch_ensure_directory(switch_platform_data_root());\n}\n\nconst char *sys_user_path(void) {\n    return switch_ensure_data_root() ? switch_platform_data_root() : NULL;\n}\n\nconst char *sys_resource_path(void) {\n    return switch_platform_data_root();\n}\n\nconst char *sys_exe_path_dir(void) {\n    return switch_platform_data_root();\n}\n\nconst char *sys_exe_path_file(void) {\n    return "sdmc:/switch/sm64coopdx/sm64coopdx.nro";\n}\n\nstatic void sys_fatal_impl(const char *msg) {\n    fprintf(stderr, "FATAL ERROR:\\n%s\\n", msg);\n    fflush(stderr);\n    exit(1);\n}\n\n#else\n\n#include <SDL3/SDL.h>\n\nconst char *sys_user_path(void) {'''
     text = replace_once(text, marker, switch_impl, "platform Switch filesystem branch")
     return text
 
@@ -110,11 +110,21 @@ def overlay_djui_controls(text: str) -> str:
     return text[:start] + replacement + text[end:]
 
 
+def overlay_loading(text: str) -> str:
+    return replace_once(
+        text,
+        '    loading_screen_set_segment_text("No rom detected, drag & drop Super Mario 64 (U) [!].z64 on to this screen");',
+        '    loading_screen_set_segment_text("No ROM detected. Copy baserom.us.z64 to sdmc:/switch/sm64coopdx and restart the app.");',
+        "Switch missing-ROM instructions",
+    )
+
+
 OVERLAYS = {
     "pc_main": overlay_pc_main,
     "platform": overlay_platform,
     "controller_bind": overlay_controller_bind,
     "djui_controls": overlay_djui_controls,
+    "loading": overlay_loading,
 }
 
 

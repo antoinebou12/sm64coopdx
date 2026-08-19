@@ -3,6 +3,7 @@
 #include <vector>
 #include <filesystem>
 #include <sstream>
+#include <system_error>
 
 #if defined(_WIN32)
 #include <windows.h>
@@ -40,11 +41,17 @@ inline static void rename_tmp_folder() {
     std::string userPath = fs_get_write_path("");
     std::string oldPath = userPath + "tmp";
     std::string newPath = userPath + TMP_DIRECTORY;
-    if (fs::exists(oldPath) && !fs::exists(newPath)) {
+    std::error_code ec;
+    if (fs::exists(oldPath, ec) && !ec) {
+        ec.clear();
+        const bool newPathExists = fs::exists(newPath, ec);
+        if (!ec && !newPathExists) {
 #if defined(_WIN32)
-        SetFileAttributesA(oldPath.c_str(), FILE_ATTRIBUTE_HIDDEN);
+            SetFileAttributesA(oldPath.c_str(), FILE_ATTRIBUTE_HIDDEN);
 #endif
-        fs::rename(oldPath, newPath);
+            ec.clear();
+            fs::rename(oldPath, newPath, ec);
+        }
     }
 }
 
@@ -61,12 +68,14 @@ static bool is_rom_valid(const std::string romPath) {
         if (md5->md5 == ss.str()) {
             std::string destPath = fs_get_write_path("") + std::string("baserom.") + md5->localizationName + ".z64";
 
-            // Copy the rom to the user path
-            if (romPath != destPath && !std::filesystem::exists(std::filesystem::path(destPath))) {
-                std::filesystem::copy_file(
-                    std::filesystem::path(romPath),
-                    std::filesystem::path(destPath)
-                );
+            // Copy the rom to the user path. Filesystem failures are handled as
+            // a rejected ROM instead of terminating the process with an exception.
+            std::error_code ec;
+            const bool destinationExists = fs::exists(fs::path(destPath), ec);
+            if (ec) { return false; }
+            if (romPath != destPath && !destinationExists) {
+                fs::copy_file(fs::path(romPath), fs::path(destPath), ec);
+                if (ec) { return false; }
             }
 
             snprintf(gRomFilename, SYS_MAX_PATH, "%s", destPath.c_str()); // Load the copied rom
@@ -79,11 +88,22 @@ static bool is_rom_valid(const std::string romPath) {
 }
 
 inline static bool scan_path_for_rom(const char *dir) {
-    for (const auto &entry: std::filesystem::directory_iterator(dir)) {
-        std::string path = entry.path().generic_string();
-        if (path_ends_with(path.c_str(), ".z64")) {
-            if (is_rom_valid(path)) { return true; }
+    if (dir == nullptr || dir[0] == '\0') { return false; }
+
+    std::error_code ec;
+    fs::path directory(dir);
+    if (!fs::exists(directory, ec) || ec) { return false; }
+    ec.clear();
+    if (!fs::is_directory(directory, ec) || ec) { return false; }
+
+    fs::directory_iterator it(directory, ec);
+    const fs::directory_iterator end;
+    while (!ec && it != end) {
+        std::string path = it->path().generic_string();
+        if (path_ends_with(path.c_str(), ".z64") && is_rom_valid(path)) {
+            return true;
         }
+        it.increment(ec);
     }
     return false;
 }

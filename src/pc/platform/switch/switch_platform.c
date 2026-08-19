@@ -3,6 +3,7 @@
 #include "switch_platform.h"
 
 #include <switch.h>
+#include <stdio.h>
 #include <string.h>
 
 static AppletHookCookie sAppletHookCookie;
@@ -120,6 +121,12 @@ bool switch_platform_init(SwitchPlatformState *state) {
     state->hos_version = hosversionGet();
     state->initialized = true;
     state->last_event = SWITCH_LIFECYCLE_NONE;
+
+    if (!state->application_mode) {
+        fprintf(stderr,
+            "WARNING: SM64CoopDX is running in Horizon applet mode. "
+            "Use title override/full application mode for the available memory required by the full game and larger mods.\n");
+    }
 
     /*
      * CoopDX uses BSD sockets directly. On Horizon those calls require the

@@ -51,6 +51,7 @@
 #include "../pc_main.h"
 #include "../configfile.h"
 #include "../cliopts.h"
+#include "../platform.h"
 
 #include "pc/controller/controller_keyboard.h"
 #include "pc/controller/controller_sdl.h"
@@ -150,6 +151,9 @@ static void gfx_window_opengl_init(const char *window_title) {
         xpos, ypos, configWindow.w, configWindow.h,
         SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE
     );
+    if (sSdlWindow == NULL) {
+        sys_fatal("Switch SDL2 window creation failed: %s", SDL_GetError());
+    }
 #else
     SDL_PropertiesID props = SDL_CreateProperties();
     SDL_SetStringProperty(props, SDL_PROP_WINDOW_CREATE_TITLE_STRING, window_title);
@@ -163,6 +167,22 @@ static void gfx_window_opengl_init(const char *window_title) {
 #endif
 
     sGlContext = SDL_GL_CreateContext(sSdlWindow);
+#ifdef __SWITCH__
+    if (sGlContext == NULL) {
+        const char *error = SDL_GetError();
+        SDL_DestroyWindow(sSdlWindow);
+        sSdlWindow = NULL;
+        sys_fatal("Switch GLES2 context creation failed: %s", error);
+    }
+    if (SDL_GL_MakeCurrent(sSdlWindow, sGlContext) != 0) {
+        const char *error = SDL_GetError();
+        SDL_GL_DeleteContext(sGlContext);
+        SDL_DestroyWindow(sSdlWindow);
+        sGlContext = NULL;
+        sSdlWindow = NULL;
+        sys_fatal("Switch GLES2 context activation failed: %s", error);
+    }
+#endif
 
     gfx_wm_set_window(sSdlWindow);
     gfx_window_opengl_set_vsync(configWindow.vsync);

@@ -3,17 +3,19 @@ name: Switch full game
 on:
   push:
     branches:
-      - switch-full-game-nro
       - main
+      - switch-ci-hardening
     paths:
       - Makefile
       - Makefile.sdl3
-      - Makefile.split
-      - dynos.mk
+      - Makefile.switch
       - Makefile.switch-game
+      - Makefile.switch-platform
+      - Makefile.switch-portlibs
       - 'src/**'
       - 'lib/lua/include/**'
       - 'tools/switch/**'
+      - 'sm64.us.sha1'
       - '.github/workflows/build-switch-game.yml'
   pull_request:
     branches:
@@ -21,12 +23,14 @@ on:
     paths:
       - Makefile
       - Makefile.sdl3
-      - Makefile.split
-      - dynos.mk
+      - Makefile.switch
       - Makefile.switch-game
+      - Makefile.switch-platform
+      - Makefile.switch-portlibs
       - 'src/**'
       - 'lib/lua/include/**'
       - 'tools/switch/**'
+      - 'sm64.us.sha1'
       - '.github/workflows/build-switch-game.yml'
   workflow_dispatch:
 
@@ -41,10 +45,10 @@ env:
   DEVKITPRO: /opt/devkitpro
 
 jobs:
-  build:
-    name: Full Horizon NRO
+  portability:
+    name: Horizon portability gates
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 20
     container:
       image: devkitpro/devkita64:latest
 
@@ -54,19 +58,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Detect full-game build
-        id: full
-        shell: bash
-        run: |
-          if [[ -f Makefile.switch-game ]]; then
-            echo "enabled=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "enabled=false" >> "$GITHUB_OUTPUT"
-            echo "Full-game Switch build has not landed yet; bootstrap workflow only."
-          fi
-
       - name: Report toolchain
-        if: steps.full.outputs.enabled == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -82,18 +74,124 @@ jobs:
             dkp-pacman -Q switch-zlib
           } | tee build/switch-ci/TOOLCHAIN.txt
 
-      - name: Build full Switch NRO
-        if: steps.full.outputs.enabled == 'true'
+      - name: Build SDL2/GLES2/curl/zlib probe NRO
         shell: bash
         run: |
           set -euo pipefail
-          make -f Makefile.switch-game switch-nro -j"$(nproc)"
+          make -f Makefile.switch-portlibs clean
+          make -f Makefile.switch-portlibs -j2 probe
 
-      - name: Validate outputs
-        if: steps.full.outputs.enabled == 'true'
+      - name: Build lifecycle/native-input probe NRO
         shell: bash
         run: |
           set -euo pipefail
+          make -f Makefile.switch-platform clean
+          make -f Makefile.switch-platform -j2 probe
+
+      - name: Validate full-game toolchain and source overlays
+        shell: bash
+        run: |
+          set -euo pipefail
+          make -f Makefile.switch-game switch-toolchain-check
+          mkdir -p build/switch-ci/overlays
+          python3 tools/switch/source_overlay.py pc_main src/pc/pc_main.c build/switch-ci/overlays/pc_main.c
+          python3 tools/switch/source_overlay.py platform src/pc/platform.c build/switch-ci/overlays/platform.c
+          python3 tools/switch/source_overlay.py controller_bind src/pc/controller/controller_bind_mapping.c build/switch-ci/overlays/controller_bind_mapping.c
+          python3 tools/switch/source_overlay.py djui_controls src/pc/djui/djui_panel_controls.c build/switch-ci/overlays/djui_panel_controls.c
+          python3 tools/switch/source_overlay.py loading src/pc/loading.c build/switch-ci/overlays/loading.c
+          python3 tools/switch/ci_source_check.py
+
+      - name: Validate probe outputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          for prefix in \
+            build/switch-portlibs/sm64coopdx-switch-portlibs \
+            build/switch-platform/sm64coopdx-switch-platform; do
+            test -s "${prefix}.nro"
+            test -s "${prefix}.elf"
+            test "$(dd if="${prefix}.nro" bs=1 skip=16 count=4 2>/dev/null)" = "NRO0"
+            aarch64-none-elf-readelf -h "${prefix}.elf" >/dev/null
+          done
+
+      - name: Upload portability diagnostics
+        uses: actions/upload-artifact@v7
+        with:
+          name: switch-portability-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            build/switch-ci/TOOLCHAIN.txt
+            build/switch-ci/overlays/*.c
+            build/switch-portlibs/*.nro
+            build/switch-portlibs/*.elf
+            build/switch-portlibs/*.map
+            build/switch-platform/*.nro
+            build/switch-platform/*.elf
+            build/switch-platform/*.map
+
+  full-nro:
+    name: Full Horizon game NRO
+    if: github.event_name != 'pull_request'
+    needs: portability
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    container:
+      image: devkitpro/devkita64:latest
+    env:
+      SM64_BASEROM_US_URL: ${{ secrets.SM64_BASEROM_US_URL }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Detect private baserom source
+        id: baserom
+        shell: bash
+        run: |
+          if [[ -n "${SM64_BASEROM_US_URL}" ]]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "### Full Switch NRO skipped"
+              echo "Set repository secret \`SM64_BASEROM_US_URL\` to a private HTTPS URL for your legally obtained US baserom to enable the complete build."
+              echo "The asset-free Horizon portability job still ran and must pass."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Fetch and verify private US baserom
+        if: steps.baserom.outputs.available == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 --proto '=https' --tlsv1.2 \
+            "${SM64_BASEROM_US_URL}" -o baserom.us.z64
+          expected="$(awk 'NR==1 {print $1}' sm64.us.sha1)"
+          actual="$(sha1sum baserom.us.z64 | awk '{print $1}')"
+          test -n "$expected"
+          if [[ "$actual" != "$expected" ]]; then
+            echo "baserom.us.z64 SHA-1 mismatch" >&2
+            echo "expected=$expected" >&2
+            echo "actual=$actual" >&2
+            exit 1
+          fi
+
+      - name: Build full Switch NRO
+        if: steps.baserom.outputs.available == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          make -f Makefile.switch-game switch-nro -j2
+
+      - name: Validate full-game outputs
+        if: steps.baserom.outputs.available == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/switch-ci
           prefix=build/us_switch/sm64coopdx
           test -s "${prefix}.nro"
           test -s "${prefix}.elf"
@@ -104,20 +202,25 @@ jobs:
           aarch64-none-elf-size "${prefix}.elf" | tee build/switch-ci/SIZE.txt
           sha256sum "${prefix}.nro" "${prefix}.elf" "${prefix}.map" "${prefix}.nacp" | tee build/switch-ci/SHA256SUMS.txt
           cp build/switch-deps/lua/lib/SHA256SUMS.txt build/switch-ci/LUA_SHA256SUMS.txt
+          {
+            echo "### Full Switch NRO build passed"
+            echo "The baserom-backed NRO was built and validated on this runner."
+            echo "Only metadata and hashes are retained as CI artifacts."
+          } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Upload Switch build
-        if: steps.full.outputs.enabled == 'true'
+      - name: Remove private baserom
+        if: always() && steps.baserom.outputs.available == 'true'
+        shell: bash
+        run: rm -f baserom.us.z64
+
+      - name: Upload full-build diagnostics
+        if: steps.baserom.outputs.available == 'true'
         uses: actions/upload-artifact@v7
         with:
-          name: sm64coopdx-switch-${{ github.sha }}
+          name: sm64coopdx-switch-build-diagnostics-${{ github.sha }}
           if-no-files-found: error
           retention-days: 14
           path: |
-            build/us_switch/sm64coopdx.nro
-            build/us_switch/sm64coopdx.elf
-            build/us_switch/sm64coopdx.map
-            build/us_switch/sm64coopdx.nacp
-            build/switch-ci/TOOLCHAIN.txt
             build/switch-ci/ELF_HEADER.txt
             build/switch-ci/SIZE.txt
             build/switch-ci/SHA256SUMS.txt
