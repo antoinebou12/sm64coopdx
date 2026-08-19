@@ -24,7 +24,13 @@
 #define LDN_UDP_PORT 7777
 #define LDN_PACKET_LENGTH 3000
 #define LDN_UNKNOWN_LOCAL_INDEX ((uint8_t)0xFF)
-#define LDN_LOCAL_COMMUNICATION_ID ((int64_t)0x00534D3634434458LL)
+
+/*
+ * -1 tells libnx/Horizon to resolve the LocalCommunicationId from the NACP.
+ * Homebrew NACPs that do not define one resolve to 0. A hard-coded non--1
+ * value is invalid unless that exact value is also declared in the NACP.
+ */
+#define LDN_LOCAL_COMMUNICATION_ID ((int64_t)-1)
 
 extern void network_ldn_receive_bridge(uint8_t local_index, void *addr, uint8_t *data, uint16_t data_length);
 extern const char *network_ldn_player_name_bridge(void);
@@ -70,7 +76,7 @@ static void sanitize_user_name(char *dst, size_t dst_len) {
 
 static void make_security_config(LdnSecurityConfig *security) {
     memset(security, 0, sizeof(*security));
-    security->security_mode = (LdnSecurityMode)0;
+    security->security_mode = LdnSecurityMode_Product;
     security->passphrase_size = 0x10;
     memset(security->passphrase, 0x42, security->passphrase_size);
 }
@@ -142,33 +148,76 @@ static bool udp_open(void) {
     return true;
 }
 
+static bool connection_state_is_valid(void) {
+    if (!sInitialized || !sConnected) return false;
+
+    LdnState state = LdnState_None;
+    if (R_FAILED(ldnGetState(&state))) return false;
+
+    const LdnState expected = sIsServer
+        ? LdnState_AccessPointCreated
+        : LdnState_StationConnected;
+    if (state == expected) return true;
+
+    /*
+     * HOME/sleep, signal loss and system disconnects can invalidate LDN while
+     * the UDP socket remains open. Close that stale path immediately so the
+     * higher-level CoopDX reconnect logic sees send failures instead of a
+     * silent black hole.
+     */
+    udp_close();
+    sConnected = false;
+    sStationOpen = (!sIsServer && state == LdnState_Station);
+    sAccessPointOpen = (sIsServer && state == LdnState_AccessPoint);
+    return false;
+}
+
+static bool initialize_ldn_service(void) {
+    if (sInitialized) return true;
+
+    Result rc = 0;
+    bool initialized = false;
+    for (int attempt = 0; attempt < 5; attempt++) {
+        rc = ldnInitialize(LdnServiceType_User);
+        if (R_SUCCEEDED(rc)) {
+            initialized = true;
+            break;
+        }
+        svcSleepThread(250000000ULL);
+    }
+    if (!initialized) return false;
+
+    sInitialized = true;
+
+    /*
+     * HighSpeed is available to ldn:u on Horizon 19.0.0+. Ignore failure so
+     * the same binary remains compatible with older supported firmware.
+     */
+    (void)ldnSetOperationMode(LdnOperationMode_HighSpeed);
+    return true;
+}
+
 bool ldn_backend_initialize(bool is_server) {
-    if (sInitialized && sConnected && sIsServer == is_server) return true;
+    if (sInitialized && sConnected && sIsServer == is_server && connection_state_is_valid()) {
+        return true;
+    }
 
     if (sInitialized && sIsServer != is_server) {
         ldn_backend_shutdown();
     }
     sIsServer = is_server;
 
-    if (!sInitialized) {
-        Result rc = 0;
-        bool initialized = false;
-        for (int attempt = 0; attempt < 5; attempt++) {
-            rc = ldnInitialize(LdnServiceType_User);
-            if (R_SUCCEEDED(rc)) {
-                initialized = true;
-                break;
-            }
-            svcSleepThread(250000000ULL);
-        }
-        if (!initialized) return false;
-        sInitialized = true;
-    }
+    if (!initialize_ldn_service()) return false;
 
     if (is_server) {
         if (!sAccessPointOpen) {
-            if (R_FAILED(ldnOpenAccessPoint())) return false;
-            sAccessPointOpen = true;
+            LdnState state = LdnState_None;
+            if (R_SUCCEEDED(ldnGetState(&state)) && state == LdnState_AccessPoint) {
+                sAccessPointOpen = true;
+            } else {
+                if (R_FAILED(ldnOpenAccessPoint())) return false;
+                sAccessPointOpen = true;
+            }
         }
 
         LdnSecurityConfig security;
@@ -180,6 +229,7 @@ bool ldn_backend_initialize(bool is_server) {
         config.intent_id.local_communication_id = LDN_LOCAL_COMMUNICATION_ID;
         config.channel = 0;
         config.node_count_max = 8;
+        config.local_communication_version = 0;
 
         if (R_FAILED(ldnCreateNetwork(&security, &user, &config))) {
             ldnCloseAccessPoint();
@@ -188,14 +238,19 @@ bool ldn_backend_initialize(bool is_server) {
         }
 
         sConnected = true;
-        ldnSetStationAcceptPolicy(LdnAcceptPolicy_AlwaysAccept);
+        (void)ldnSetStationAcceptPolicy(LdnAcceptPolicy_AlwaysAccept);
         if (!udp_open()) {
             ldn_backend_shutdown();
             return false;
         }
     } else if (!sStationOpen && !sConnected) {
-        if (R_FAILED(ldnOpenStation())) return false;
-        sStationOpen = true;
+        LdnState state = LdnState_None;
+        if (R_SUCCEEDED(ldnGetState(&state)) && state == LdnState_Station) {
+            sStationOpen = true;
+        } else {
+            if (R_FAILED(ldnOpenStation())) return false;
+            sStationOpen = true;
+        }
     }
 
     return true;
@@ -203,6 +258,7 @@ bool ldn_backend_initialize(bool is_server) {
 
 void ldn_backend_update(void) {
     if (!sInitialized || !sConnected || sUdpSocket < 0) return;
+    if (!connection_state_is_valid()) return;
 
     const uint64_t now = svcGetSystemTick();
     const uint64_t frequency = armGetSystemTickFreq();
@@ -221,7 +277,8 @@ void ldn_backend_update(void) {
         );
         if (length <= 0) {
             if (length < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
-                /* A later lifecycle pass can rebuild the socket. */
+                udp_close();
+                sConnected = false;
             }
             break;
         }
@@ -245,6 +302,7 @@ void ldn_backend_update(void) {
 
 int ldn_backend_send(uint8_t local_index, void *address, const uint8_t *data, uint16_t data_length) {
     if (!sConnected || sUdpSocket < 0 || data == NULL || local_index >= LDN_MAX_PLAYERS) return -1;
+    if (!connection_state_is_valid()) return -1;
 
     struct in_addr destination = sPeerAddress[local_index];
     if (local_index == 0 && address != NULL) {
@@ -262,7 +320,14 @@ int ldn_backend_send(uint8_t local_index, void *address, const uint8_t *data, ui
         sUdpSocket, data, data_length, 0,
         (struct sockaddr *)&to, sizeof(to)
     );
-    return sent == (ssize_t)data_length ? (int)sent : -1;
+    if (sent != (ssize_t)data_length) {
+        if (sent < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
+            udp_close();
+            sConnected = false;
+        }
+        return -1;
+    }
+    return (int)sent;
 }
 
 void *ldn_backend_dup_addr(uint8_t local_index) {
@@ -288,11 +353,18 @@ void ldn_backend_clear_id(uint8_t local_index) {
 }
 
 bool ldn_backend_refresh_scan(void) {
-    if (sConnected) return true;
-    if (!sInitialized && !ldn_backend_initialize(false)) return false;
-    if (!sStationOpen) {
+    if (sConnected && connection_state_is_valid()) return true;
+    if (!initialize_ldn_service()) return false;
+
+    LdnState state = LdnState_None;
+    if (R_FAILED(ldnGetState(&state))) return false;
+    if (state == LdnState_Initialized) {
         if (R_FAILED(ldnOpenStation())) return false;
         sStationOpen = true;
+    } else if (state == LdnState_Station) {
+        sStationOpen = true;
+    } else if (state != LdnState_StationConnected) {
+        return false;
     }
 
     LdnScanFilter filter;
@@ -313,10 +385,17 @@ bool ldn_backend_refresh_scan(void) {
 
 bool ldn_backend_connect_to_index(int index) {
     if (index < 0 || index >= sNetworkCount) return false;
-    if (!sInitialized && !ldn_backend_initialize(false)) return false;
-    if (!sStationOpen) {
+    if (!initialize_ldn_service()) return false;
+
+    LdnState state = LdnState_None;
+    if (R_FAILED(ldnGetState(&state))) return false;
+    if (state == LdnState_Initialized) {
         if (R_FAILED(ldnOpenStation())) return false;
         sStationOpen = true;
+    } else if (state == LdnState_Station) {
+        sStationOpen = true;
+    } else if (state == LdnState_StationConnected && connection_state_is_valid()) {
+        return true;
     }
 
     LdnSecurityConfig security;
@@ -333,7 +412,10 @@ bool ldn_backend_connect_to_index(int index) {
             break;
         }
 
-        svcSleepThread(350000000ULL);
+        /* Short first retry, then back off to reduce association thrash. */
+        uint64_t delay_ns = 150000000ULL << (attempt < 3 ? attempt : 3);
+        if (delay_ns > 1200000000ULL) delay_ns = 1200000000ULL;
+        svcSleepThread(delay_ns);
         if (!ldn_backend_refresh_scan()) break;
     }
     if (!connected) return false;
@@ -378,22 +460,24 @@ void ldn_backend_shutdown(void) {
     udp_close();
 
     if (sInitialized) {
-        if (sConnected) {
-            if (sIsServer) {
-                ldnDestroyNetwork();
-            } else {
-                ldnDisconnect();
-            }
-            sConnected = false;
+        LdnState state = LdnState_None;
+        (void)ldnGetState(&state);
+
+        if (state == LdnState_AccessPointCreated) {
+            (void)ldnDestroyNetwork();
+            state = LdnState_AccessPoint;
+        } else if (state == LdnState_StationConnected) {
+            (void)ldnDisconnect();
+            state = LdnState_Station;
         }
-        if (sStationOpen) {
-            ldnCloseStation();
-            sStationOpen = false;
+
+        if (state == LdnState_Station || sStationOpen) {
+            (void)ldnCloseStation();
         }
-        if (sAccessPointOpen) {
-            ldnCloseAccessPoint();
-            sAccessPointOpen = false;
+        if (state == LdnState_AccessPoint || sAccessPointOpen) {
+            (void)ldnCloseAccessPoint();
         }
+
         ldnExit();
         sInitialized = false;
     }
@@ -403,6 +487,9 @@ void ldn_backend_shutdown(void) {
         sSocketServiceUp = false;
     }
 
+    sConnected = false;
+    sStationOpen = false;
+    sAccessPointOpen = false;
     sNetworkCount = 0;
     sIsServer = false;
     memset(&sOwnAddress, 0, sizeof(sOwnAddress));
