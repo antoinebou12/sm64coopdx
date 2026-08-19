@@ -4,7 +4,8 @@
 This is not a replacement for a real devkitA64 full-game build or hardware test.
 It catches the most expensive regressions early: desktop SDL3 leaking into the
 Switch boundary, loss of the large-stack trampoline, accidental desktop input /
-terminal sources in the Switch graph, and missing Horizon socket/lifecycle glue.
+terminal sources in the Switch graph, missing Horizon socket/lifecycle glue,
+and startup paths that can crash before the first rendered frame.
 """
 
 from __future__ import annotations
@@ -44,6 +45,7 @@ input_c = text("src/pc/platform/switch/switch_input.c")
 controller_entry = text("src/pc/controller/controller_entry_point.c")
 gfx_window_h = text("src/pc/gfx/gfx_window_manager.h")
 gfx_opengl_window = text("src/pc/gfx/gfx_window_opengl.c")
+rom_checker = text("src/pc/rom_checker.cpp")
 
 pc_main_overlay = text(OVERLAYS / "pc_main.c")
 platform_overlay = text(OVERLAYS / "platform.c")
@@ -65,6 +67,18 @@ require(
     "large-stack failure does not silently fall back to hbloader main thread",
     "return -1;" in platform_c and "threadStart(&thread)" in platform_c,
 )
+require(
+    "Switch user directory is created before fs_init can reject it",
+    "switch_ensure_data_root" in platform_overlay
+    and "mkdir(root, 0777)" in platform_overlay
+    and "errno == EEXIST" in platform_overlay,
+)
+require(
+    "ROM directory scanning is non-throwing for absent SD paths",
+    "std::error_code" in rom_checker
+    and "fs::directory_iterator it(directory, ec)" in rom_checker
+    and "it.increment(ec)" in rom_checker,
+)
 
 # SDL boundary and renderer safety.
 require(
@@ -84,6 +98,12 @@ require(
     "SDL_GL_DeleteContext(ctx);" in gfx_opengl_window,
 )
 require(
+    "Horizon fails cleanly when SDL2/GLES startup fails",
+    "Switch SDL2 window creation failed" in gfx_opengl_window
+    and "Switch GLES2 context creation failed" in gfx_opengl_window
+    and "Switch GLES2 context activation failed" in gfx_opengl_window,
+)
+require(
     "controller binding overlay is SDL2-only",
     "#include <SDL2/SDL.h>" in bind_overlay
     and "SDL_NUM_SCANCODES" in bind_overlay
@@ -91,6 +111,11 @@ require(
 )
 
 # Build graph isolation.
+try:
+    exclusion_block = makefile.split("SWITCH_EXCLUDE_C :=", 1)[1].split("SWITCH_EXCLUDE_CPP :=", 1)[0]
+except IndexError:
+    exclusion_block = ""
+
 for desktop_source in (
     "src/pc/audio/audio_sdl.c",
     "src/pc/controller/controller_sdl.c",
@@ -100,7 +125,7 @@ for desktop_source in (
 ):
     require(
         f"Switch graph excludes desktop source {desktop_source}",
-        desktop_source in makefile,
+        desktop_source in exclusion_block,
     )
 require("Switch linker avoids host -pthread", "-pthread" not in makefile)
 require("Switch linker includes libnx", "-lnx" in makefile)
@@ -119,6 +144,10 @@ require(
 require(
     "libnx socket service initializes before CoopDX networking",
     "socketInitializeDefault()" in platform_c and "socketExit()" in platform_c,
+)
+require(
+    "applet-memory launch emits a title-override warning",
+    "running in Horizon applet mode" in platform_c and "title override/full application mode" in platform_c,
 )
 require(
     "Switch data root stays self-contained on SD card",
