@@ -5,7 +5,12 @@
 static uint8_t sLocalPlayerCount = 1;
 static uint8_t sCurrentLocalPlayer = 0;
 static LocalSplitLayout sRequestedLayout = LOCAL_SPLIT_AUTO;
-static LocalPlayerSlot sLocalPlayers[LOCAL_MULTIPLAYER_MAX_PLAYERS];
+static LocalPlayerSlot sLocalPlayers[LOCAL_MULTIPLAYER_MAX_PLAYERS] = {
+    { true,  0, LOCAL_MULTIPLAYER_INVALID_NETWORK_INDEX },
+    { false, 1, LOCAL_MULTIPLAYER_INVALID_NETWORK_INDEX },
+    { false, 2, LOCAL_MULTIPLAYER_INVALID_NETWORK_INDEX },
+    { false, 3, LOCAL_MULTIPLAYER_INVALID_NETWORK_INDEX },
+};
 
 static LocalSplitLayout resolved_layout(void) {
     if (sRequestedLayout != LOCAL_SPLIT_AUTO) {
