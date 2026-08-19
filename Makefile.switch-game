@@ -8,6 +8,9 @@ ifeq ($(strip $(DEVKITPRO)),)
 $(error "Please set DEVKITPRO, for example /opt/devkitpro")
 endif
 
+# Define the upstream default before any immediate wrapper expansion.
+VERSION ?= us
+
 LIBNX       := $(DEVKITPRO)/libnx
 DEVKITA64   := $(DEVKITPRO)/devkitA64
 PORTLIBS    := $(DEVKITPRO)/portlibs/switch
