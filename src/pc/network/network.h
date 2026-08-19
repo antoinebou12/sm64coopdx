@@ -35,8 +35,10 @@ extern struct MarioState gMarioStates[];
 #endif
 
 enum NetworkSystemType {
-    NS_SOCKET,
-    NS_COOPNET,
+    NS_SOCKET = 0,
+    NS_COOPNET = 1,
+    /* Keep the existing desktop config values stable. */
+    NS_LDN = 2,
     NS_MAX,
 };
 
