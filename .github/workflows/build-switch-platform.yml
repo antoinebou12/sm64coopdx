@@ -4,10 +4,13 @@ on:
   push:
     branches:
       - main
-      - 'agent/main-upstream-prs-switch'
+      - switch-native-input
     paths:
       - Makefile.switch-platform
       - src/pc/platform/switch/**
+      - src/pc/controller/controller_switch.c
+      - src/pc/controller/controller_switch.h
+      - src/pc/controller/controller_entry_point.c
       - tools/switch/platform_probe.c
       - .github/workflows/build-switch-platform.yml
   pull_request:
@@ -16,6 +19,9 @@ on:
     paths:
       - Makefile.switch-platform
       - src/pc/platform/switch/**
+      - src/pc/controller/controller_switch.c
+      - src/pc/controller/controller_switch.h
+      - src/pc/controller/controller_entry_point.c
       - tools/switch/platform_probe.c
       - .github/workflows/build-switch-platform.yml
   workflow_dispatch:
@@ -32,7 +38,7 @@ env:
 
 jobs:
   lifecycle-probe:
-    name: libnx lifecycle + 8 MiB game stack
+    name: libnx lifecycle + native HID + 8 MiB stack
     runs-on: ubuntu-latest
     timeout-minutes: 15
     container:
