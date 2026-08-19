@@ -1,0 +1,34 @@
+name: Switch local multiplayer core
+
+on:
+  pull_request:
+    paths:
+      - 'src/game/local_multiplayer.c'
+      - 'src/game/local_multiplayer.h'
+      - 'tools/switch/test_local_multiplayer.c'
+      - '.github/workflows/test-switch-local-multiplayer.yml'
+  push:
+    branches:
+      - switch-combined
+    paths:
+      - 'src/game/local_multiplayer.c'
+      - 'src/game/local_multiplayer.h'
+      - 'tools/switch/test_local_multiplayer.c'
+      - '.github/workflows/test-switch-local-multiplayer.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build local multiplayer tests
+        run: |
+          cc -std=c11 -Wall -Wextra -Werror -Isrc \
+            tools/switch/test_local_multiplayer.c \
+            src/game/local_multiplayer.c \
+            -o /tmp/test-local-multiplayer
+      - name: Run local multiplayer tests
+        run: /tmp/test-local-multiplayer
