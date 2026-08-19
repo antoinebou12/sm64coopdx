@@ -4,6 +4,9 @@
 #include "djui_panel_menu.h"
 #include "djui_panel_modlist.h"
 #include "pc/network/network.h"
+#ifdef __SWITCH__
+#include "pc/network/socket/socket_ldn.h"
+#endif
 #include "pc/utils/misc.h"
 #include "pc/configfile.h"
 #include "pc/utils/misc.h"
@@ -27,8 +30,16 @@ void djui_panel_do_host(bool reconnecting, bool playSound) {
     if (configNetworkSystem == NS_COOPNET) { configNetworkSystem = NS_SOCKET; }
 #endif
     if (configNetworkSystem == NS_COOPNET && configAmountOfPlayers == 1) { configNetworkSystem = NS_SOCKET; }
-    if (configNetworkSystem >= NS_MAX) { configNetworkSystem = NS_MAX; }
-    network_set_system(configNetworkSystem);
+    if (configNetworkSystem >= NS_MAX) { configNetworkSystem = NS_SOCKET; }
+
+#ifdef __SWITCH__
+    if (configNetworkSystem == NS_LDN) {
+        network_ldn_select();
+    } else
+#endif
+    {
+        network_set_system(configNetworkSystem);
+    }
 
     network_init(NT_SERVER, reconnecting);
     djui_panel_modlist_create(NULL);
@@ -58,7 +69,6 @@ void djui_panel_host_message_create(struct DjuiBase* caller) {
     snprintf(warningMessage, 512, DLANG(HOST_MESSAGE, WARN_SOCKET), configHostPort);
 
     f32 textHeight = 32 * 0.8125f * warningLines + 8;
-
     struct DjuiThreePanel* panel = djui_panel_menu_create(DLANG(HOST_MESSAGE, INFO_TITLE), false);
     struct DjuiBase* body = djui_three_panel_get_body(panel);
     {
