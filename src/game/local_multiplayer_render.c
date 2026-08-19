@@ -14,6 +14,7 @@
 
 static s16 sLocalCameraYaw[LOCAL_MULTIPLAYER_MAX_PLAYERS] = { 0 };
 static u32 sLastCameraInputFrame = 0xFFFFFFFFu;
+static Vp sFullscreenViewport;
 
 static bool local_multiplayer_can_render_multiple(Vp *viewport_override, Vp *viewport_clip) {
     if (local_multiplayer_player_count() <= 1) return false;
@@ -99,6 +100,19 @@ static bool local_multiplayer_make_viewport(u8 player, Vp *viewport) {
     return true;
 }
 
+static void local_multiplayer_restore_fullscreen_viewport(void) {
+    memset(&sFullscreenViewport, 0, sizeof(sFullscreenViewport));
+    sFullscreenViewport.vp.vscale[0] = SCREEN_WIDTH * 2;
+    sFullscreenViewport.vp.vscale[1] = SCREEN_HEIGHT * 2;
+    sFullscreenViewport.vp.vscale[2] = 511;
+    sFullscreenViewport.vp.vtrans[0] = SCREEN_WIDTH * 2;
+    sFullscreenViewport.vp.vtrans[1] = SCREEN_HEIGHT * 2;
+    sFullscreenViewport.vp.vtrans[2] = 511;
+
+    make_viewport_clip_rect(&sFullscreenViewport);
+    gSPViewport(gDisplayListHead++, VIRTUAL_TO_PHYSICAL(&sFullscreenViewport));
+}
+
 void local_multiplayer_render_scene(struct GraphNodeRoot *root, Vp *viewport_override,
                                     Vp *viewport_clip, s32 clear_color) {
     if (root == NULL) return;
@@ -128,4 +142,5 @@ void local_multiplayer_render_scene(struct GraphNodeRoot *root, Vp *viewport_ove
     }
 
     gLakituState = base_camera;
+    local_multiplayer_restore_fullscreen_viewport();
 }
