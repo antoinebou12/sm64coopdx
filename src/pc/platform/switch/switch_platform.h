@@ -7,6 +7,8 @@
 extern "C" {
 #endif
 
+#define SWITCH_PLATFORM_GAME_STACK_SIZE (8u * 1024u * 1024u)
+
 typedef enum SwitchLifecycleEvent {
     SWITCH_LIFECYCLE_NONE = 0,
     SWITCH_LIFECYCLE_FOCUS_CHANGED,
@@ -26,8 +28,23 @@ typedef struct SwitchPlatformState {
     SwitchLifecycleEvent last_event;
 } SwitchPlatformState;
 
+typedef int (*SwitchPlatformMainFn)(int argc, char **argv);
+typedef void (*SwitchPlatformExitFn)(void);
+
 bool switch_platform_init(SwitchPlatformState *state);
 void switch_platform_shutdown(SwitchPlatformState *state);
+
+/*
+ * Run the game entry point on a dedicated Horizon thread with an 8 MiB stack.
+ * hbloader's initial thread is too small for the deepest SM64 + Mesa/GLES call
+ * paths and can otherwise die on the first rendered frame. Returns the entry
+ * point's return code, or -1 if the dedicated thread could not be created or
+ * started. Deliberately do not fall back to the initial thread on failure.
+ */
+int switch_platform_run_main_on_game_thread(SwitchPlatformMainFn entry, int argc, char **argv);
+
+/* Optional clean-shutdown hook for HOME/OS exit requests. */
+void switch_platform_set_exit_callback(SwitchPlatformExitFn callback);
 
 /*
  * Pump Horizon applet messages once. Returns false when the application should
