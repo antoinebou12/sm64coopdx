@@ -26,9 +26,16 @@ const char *network_ldn_player_name_bridge(void) {
 }
 
 static bool ldn_initialize(enum NetworkType type, bool reconnecting) {
-    (void)reconnecting;
     if (type == NT_NONE) return true;
-    return ldn_backend_initialize(type == NT_SERVER);
+
+    const bool is_server = (type == NT_SERVER);
+    if (!ldn_backend_initialize(is_server)) return false;
+
+    /* Initial client joins are already associated by the lobby browser. */
+    if (!is_server && reconnecting && !ldn_backend_connected()) {
+        return ldn_backend_reconnect_last();
+    }
+    return true;
 }
 
 static s64 ldn_get_id(u8 local_index) {
@@ -79,8 +86,11 @@ static void ldn_get_lobby_secret(char *destination, u32 destination_length) {
     destination[0] = '\0';
 }
 
-static void ldn_shutdown(UNUSED bool reconnecting) {
+static void ldn_shutdown(bool reconnecting) {
     ldn_backend_shutdown();
+    if (!reconnecting) {
+        ldn_backend_forget_last_network();
+    }
 }
 
 struct NetworkSystem gNetworkSystemLdn = {
@@ -118,6 +128,7 @@ void network_ldn_cancel_scan(void) {
     /* Keep an established game session alive when its lobby panel disappears. */
     if (gNetworkType == NT_NONE) {
         ldn_backend_shutdown();
+        ldn_backend_forget_last_network();
     }
 }
 
