@@ -5,7 +5,8 @@ This is not a replacement for a real devkitA64 full-game build or hardware test.
 It catches the most expensive regressions early: desktop SDL3 leaking into the
 Switch boundary, loss of the large-stack trampoline, accidental desktop input /
 terminal sources in the Switch graph, missing Horizon socket/lifecycle glue,
-and startup paths that can crash before the first rendered frame.
+startup paths that can crash before the first rendered frame, and local-wireless
+regressions that would otherwise only appear on two physical consoles.
 """
 
 from __future__ import annotations
@@ -36,6 +37,7 @@ def require(label: str, condition: bool) -> None:
 
 
 makefile = text("Makefile.switch-game")
+workflow = text(".github/workflows/build-switch-game.yml")
 platform_h = text("src/pc/platform/switch/switch_platform.h")
 platform_c = text("src/pc/platform/switch/switch_platform.c")
 window_c = text("src/pc/platform/switch/switch_window_manager.c")
@@ -46,12 +48,19 @@ controller_entry = text("src/pc/controller/controller_entry_point.c")
 gfx_window_h = text("src/pc/gfx/gfx_window_manager.h")
 gfx_opengl_window = text("src/pc/gfx/gfx_window_opengl.c")
 rom_checker = text("src/pc/rom_checker.cpp")
+network_h = text("src/pc/network/network.h")
+ldn_transport = text("src/pc/network/socket/socket_ldn.c")
+ldn_glue = text("src/pc/network/socket/socket_ldn_glue.c")
+join_panel = text("src/pc/djui/djui_panel_join.c")
+ldn_browser = text("src/pc/djui/djui_panel_ldn_browser.c")
 
 pc_main_overlay = text(OVERLAYS / "pc_main.c")
 platform_overlay = text(OVERLAYS / "platform.c")
 bind_overlay = text(OVERLAYS / "controller_bind_mapping.c")
 controls_overlay = text(OVERLAYS / "djui_panel_controls.c")
 loading_overlay = text(OVERLAYS / "loading.c")
+network_overlay = text(OVERLAYS / "network.c")
+host_overlay = text(OVERLAYS / "djui_panel_host.c")
 
 # Startup crash prevention.
 require(
@@ -168,6 +177,86 @@ require(
     "Switch data root stays self-contained on SD card",
     'return "sdmc:/switch/sm64coopdx";' in platform_c
     and "switch_platform_data_root()" in platform_overlay,
+)
+
+# Local wireless: keep libnx LDN as the control plane and BSD UDP as the data
+# plane. In particular, do not regress to action-frame packet transport: it has
+# a much smaller payload ceiling and previously caused LDN sysmodule wedges.
+require(
+    "LDN backend is a first-class Switch network system",
+    "NS_LDN" in network_h
+    and "case NS_LDN:" in network_overlay
+    and "&gNetworkSystemLdn" in network_overlay,
+)
+require(
+    "LDN reconnect restores the LDN backend instead of falling back to Socket",
+    "gNetworkSystem == &gNetworkSystemLdn" in network_overlay
+    and "network_set_system(NS_LDN)" in network_overlay,
+)
+require(
+    "LDN gameplay transport uses non-blocking UDP",
+    "SOCK_DGRAM" in ldn_transport
+    and "O_NONBLOCK" in ldn_transport
+    and "recvfrom(" in ldn_transport
+    and "sendto(" in ldn_transport,
+)
+require(
+    "LDN gameplay transport never uses action-frame IPC",
+    "ldnSendActionFrame" not in ldn_transport
+    and "ldnScanActionFrame" not in ldn_transport,
+)
+require(
+    "platform exclusively owns the libnx BSD socket service lifetime",
+    "socketInitializeDefault()" in platform_c
+    and "socketExit()" in platform_c
+    and "socketInitializeDefault()" not in ldn_transport
+    and "socketExit()" not in ldn_transport,
+)
+require(
+    "LDN peer identity is bound by IPv4 address",
+    "ldn_save_id_impl" in ldn_transport
+    and "ldn_match_addr_impl" in ldn_transport
+    and "sLdnAddr[localIndex] = sLdnAddr[0]" in ldn_transport,
+)
+require(
+    "LDN join retries transient association failures and rescans",
+    "attempt < 10" in ldn_transport
+    and "svcSleepThread(400000000ULL)" in ldn_transport
+    and "ldnScan(" in ldn_transport,
+)
+require(
+    "LDN names are sanitized before entering fixed libnx user_name fields",
+    "ldn_fill_user_name" in ldn_transport
+    and "c >= 0x20 && c <= 0x7E" in ldn_transport,
+)
+require(
+    "LDN backend preserves physical association across CoopDX reconnects",
+    "ldn_prepare_reconnect_impl" in ldn_transport
+    and "if (reconnecting)" in ldn_glue,
+)
+require(
+    "Switch Join menu preserves both Local Wireless and Direct IP",
+    '"LOCAL WIRELESS"' in join_panel
+    and "djui_panel_join_direct_create" in join_panel
+    and "djui_panel_ldn_browser_create" in join_panel,
+)
+require(
+    "local-wireless host uses the standard CoopDX host lifecycle",
+    "configNetworkSystem = NS_LDN" in ldn_browser
+    and "djui_panel_do_host(false, true)" in ldn_browser,
+)
+require(
+    "fresh normal Host flow cannot inherit a stale LDN selection",
+    "configNetworkSystem == NS_LDN" in host_overlay
+    and "configNetworkSystem = NS_SOCKET" in host_overlay,
+)
+require(
+    "authoritative Switch CI cross-compiles real LDN integration objects",
+    "Compile real local-wireless integration" in workflow
+    and "socket_ldn.o" in workflow
+    and "socket_ldn_glue.o" in workflow
+    and "djui_panel_ldn_browser.o" in workflow
+    and "build/us_switch/src/pc/network/network.o" in workflow,
 )
 
 # Input/audio console-specific behavior.
