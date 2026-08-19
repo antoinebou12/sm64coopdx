@@ -34,15 +34,47 @@ CFLAGS = [
 ]
 
 
+def compiler_works(cc: str) -> bool:
+    """A compiler on PATH is not necessarily usable.
+
+    A devkitPro or other cross toolchain can shadow `cc`/`gcc` while being
+    unable to build a host binary at all, so probe before committing to one.
+    """
+    probe = BUILD / "probe.c"
+    probe.write_text("#include <stdio.h>\nint main(void) { return 0; }\n", encoding="utf-8")
+    binary = BUILD / ("probe.exe" if os.name == "nt" else "probe.out")
+    result = subprocess.run(
+        [cc, str(probe), "-o", str(binary)],
+        cwd=ROOT,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    return result.returncode == 0
+
+
+def find_working_compiler() -> str | None:
+    BUILD.mkdir(parents=True, exist_ok=True)
+
+    override = os.environ.get("CC")
+    if override:
+        # An explicit CC is respected even if the probe fails, so its real
+        # error is reported against the actual test build.
+        return override
+
+    for candidate in ("cc", "gcc", "clang"):
+        path = shutil.which(candidate)
+        if path is None:
+            continue
+        if compiler_works(path):
+            return path
+        print(f"[cc] skipping {path}: cannot build a host binary")
+    return None
+
+
 def run_c_tests() -> bool:
-    cc = os.environ.get("CC")
+    cc = find_working_compiler()
     if cc is None:
-        for candidate in ("cc", "gcc", "clang"):
-            cc = shutil.which(candidate)
-            if cc is not None:
-                break
-    if cc is None:
-        print("no host C compiler found (set CC)", file=sys.stderr)
+        print("no working host C compiler found (set CC)", file=sys.stderr)
         return False
 
     BUILD.mkdir(parents=True, exist_ok=True)
