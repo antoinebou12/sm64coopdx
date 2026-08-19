@@ -8,6 +8,7 @@
 static AppletHookCookie sAppletHookCookie;
 static SwitchPlatformState *sState = NULL;
 static SwitchPlatformExitFn sExitCallback = NULL;
+static bool sSocketsInitialized = false;
 
 typedef struct SwitchMainThreadContext {
     SwitchPlatformMainFn entry;
@@ -120,6 +121,13 @@ bool switch_platform_init(SwitchPlatformState *state) {
     state->initialized = true;
     state->last_event = SWITCH_LIFECYCLE_NONE;
 
+    /*
+     * CoopDX uses BSD sockets directly. On Horizon those calls require the
+     * libnx socket service to be initialized first. Keep platform startup
+     * alive if the service is unavailable so offline play still works.
+     */
+    sSocketsInitialized = R_SUCCEEDED(socketInitializeDefault());
+
     switch_platform_refresh_state(state);
     appletHook(&sAppletHookCookie, switch_platform_applet_hook, state);
     sState = state;
@@ -133,6 +141,12 @@ void switch_platform_shutdown(SwitchPlatformState *state) {
     }
 
     appletUnhook(&sAppletHookCookie);
+
+    if (sSocketsInitialized) {
+        socketExit();
+        sSocketsInitialized = false;
+    }
+
     state->initialized = false;
     sState = NULL;
     sExitCallback = NULL;
