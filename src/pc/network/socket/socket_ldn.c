@@ -114,6 +114,13 @@ bool network_ldn_connect_to_index(int index) {
     return ldn_backend_connect_to_index(index);
 }
 
+void network_ldn_cancel_scan(void) {
+    /* Keep an established game session alive when its lobby panel disappears. */
+    if (gNetworkType == NT_NONE) {
+        ldn_backend_shutdown();
+    }
+}
+
 int network_ldn_network_count(void) {
     return ldn_backend_network_count();
 }
