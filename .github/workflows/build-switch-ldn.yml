@@ -1,0 +1,85 @@
+name: Switch LDN probe
+
+on:
+  push:
+    branches:
+      - switch-combined
+    paths:
+      - Makefile.switch-ldn
+      - src/pc/network/socket/socket_ldn_backend.c
+      - src/pc/network/socket/socket_ldn_backend.h
+      - tools/switch/ldn_probe.c
+      - .github/workflows/build-switch-ldn.yml
+  pull_request:
+    paths:
+      - Makefile.switch-ldn
+      - src/pc/network/socket/socket_ldn_backend.c
+      - src/pc/network/socket/socket_ldn_backend.h
+      - tools/switch/ldn_probe.c
+      - .github/workflows/build-switch-ldn.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: switch-ldn-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DEVKITPRO: /opt/devkitpro
+
+jobs:
+  ldn-probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    container:
+      image: devkitpro/devkita64:latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Report toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/switch-ldn
+          {
+            echo "git_sha=${GITHUB_SHA}"
+            aarch64-none-elf-gcc --version | head -n 1
+            dkp-pacman -Q libnx
+            dkp-pacman -Q devkitA64
+          } | tee build/switch-ldn/TOOLCHAIN.txt
+
+      - name: Build LDN probe
+        shell: bash
+        run: |
+          set -euo pipefail
+          make -f Makefile.switch-ldn clean
+          make -f Makefile.switch-ldn probe
+
+      - name: Validate NRO
+        shell: bash
+        run: |
+          set -euo pipefail
+          prefix=build/switch-ldn/sm64coopdx-switch-ldn
+          test -s "${prefix}.nro"
+          test -s "${prefix}.elf"
+          test -s "${prefix}.map"
+          test "$(dd if="${prefix}.nro" bs=1 skip=16 count=4 2>/dev/null)" = "NRO0"
+          aarch64-none-elf-readelf -h "${prefix}.elf" | tee build/switch-ldn/ELF_HEADER.txt
+          sha256sum "${prefix}.nro" "${prefix}.elf" "${prefix}.map" \
+            | tee build/switch-ldn/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: switch-ldn-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            build/switch-ldn/sm64coopdx-switch-ldn.nro
+            build/switch-ldn/sm64coopdx-switch-ldn.elf
+            build/switch-ldn/sm64coopdx-switch-ldn.map
+            build/switch-ldn/TOOLCHAIN.txt
+            build/switch-ldn/ELF_HEADER.txt
+            build/switch-ldn/SHA256SUMS.txt
