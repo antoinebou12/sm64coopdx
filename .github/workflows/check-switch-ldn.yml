@@ -1,0 +1,66 @@
+name: Switch LDN compile
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'src/pc/network/socket/socket_ldn.c'
+      - 'src/pc/network/socket/socket_ldn.h'
+      - 'src/pc/network/socket/socket_ldn_glue.c'
+      - 'src/pc/djui/djui_panel_ldn_browser.c'
+      - 'src/pc/djui/djui_panel_join.c'
+      - 'Makefile.switch-game'
+      - '.github/workflows/check-switch-ldn.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: switch-ldn-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DEVKITPRO: /opt/devkitpro
+
+jobs:
+  compile:
+    name: Compile real LDN objects with devkitA64
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    container:
+      image: devkitpro/devkita64:latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Validate Switch toolchain
+        shell: bash
+        run: make -f Makefile.switch-game switch-toolchain-check
+
+      - name: Compile LDN integration objects
+        shell: bash
+        run: |
+          set -euo pipefail
+          make -f Makefile.switch-game -j2 \
+            build/us_switch/src/pc/network/socket/socket_ldn.o \
+            build/us_switch/src/pc/network/socket/socket_ldn_glue.o \
+            build/us_switch/src/pc/djui/djui_panel_ldn_browser.o \
+            build/us_switch/src/pc/djui/djui_panel_join.o
+
+      - name: Verify objects
+        shell: bash
+        run: |
+          set -euo pipefail
+          for obj in \
+            build/us_switch/src/pc/network/socket/socket_ldn.o \
+            build/us_switch/src/pc/network/socket/socket_ldn_glue.o \
+            build/us_switch/src/pc/djui/djui_panel_ldn_browser.o \
+            build/us_switch/src/pc/djui/djui_panel_join.o; do
+            test -s "$obj"
+            aarch64-none-elf-readelf -h "$obj" >/dev/null
+          done
