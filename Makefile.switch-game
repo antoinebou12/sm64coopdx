@@ -1,0 +1,103 @@
+# Full Nintendo Switch game build layered on the current upstream Makefile.
+#
+# This deliberately does not fork the large upstream build system. GNU Make
+# `override` variables select the devkitA64 toolchain and Switch source roots,
+# then the regular CoopDX object/assets rules are included below.
+
+ifeq ($(strip $(DEVKITPRO)),)
+$(error "Please set DEVKITPRO, for example /opt/devkitpro")
+endif
+
+LIBNX       := $(DEVKITPRO)/libnx
+DEVKITA64   := $(DEVKITPRO)/devkitA64
+PORTLIBS    := $(DEVKITPRO)/portlibs/switch
+DKP_TOOLS   := $(DEVKITPRO)/tools/bin
+SDL2_CONFIG := $(PORTLIBS)/bin/sdl2-config
+
+SWITCH_CROSS := $(DEVKITA64)/bin/aarch64-none-elf-
+SWITCH_ARCH  := -march=armv8-a+crc+crypto -mtune=cortex-a57 -mtp=soft -ftls-model=local-exec
+
+# Prevent host auto-detection and desktop-only SDKs from changing the Switch graph.
+override HOST_OS := Switch
+override WINDOWS_BUILD := 0
+override WINDOWS_AUTO_BUILDER := 0
+override OSX_BUILD := 0
+override TARGET_RPI := 0
+override TARGET_RK3588 := 0
+override TARGET_BITS := 0
+override TARGET_ARCH := armv8-a
+override CROSS := $(SWITCH_CROSS)
+override SDLCONFIG := $(SDL2_CONFIG)
+override DISCORD_SDK := 0
+override COOPNET := 0
+override UPDATER := 0
+override USE_APP := 0
+override ICON := 0
+override HANDHELD := 1
+
+# Keep the same portable game code as upstream, plus the isolated Switch layer.
+override BUILD_DIR_BASE := build
+override BUILD_DIR := build/$(VERSION)_switch
+override EXE := $(BUILD_DIR)/sm64coopdx.elf
+override ELF := $(EXE)
+
+override SRC_DIRS := \
+    src src/engine src/game src/audio src/menu src/buffers actors levels bin data assets asm lib sound \
+    src/pc src/pc/gfx src/pc/audio src/pc/controller src/pc/fs src/pc/fs/packtypes src/pc/mods src/pc/dev \
+    src/pc/network src/pc/network/packets src/pc/network/socket src/pc/network/coopnet \
+    src/pc/utils src/pc/utils/miniz src/pc/djui src/pc/lua src/pc/lua/utils src/pc/os src/pc/mumble \
+    src/pc/platform/switch
+
+# The current upstream Makefile already uses SDL2 everywhere on PC. Override
+# only its backend flags so it sees Switch SDL2/GLES2 rather than host OpenGL.
+override OPT_FLAGS := -O2 -g $(SWITCH_ARCH) -fPIE -ffunction-sections -fdata-sections
+override EXTRA_CFLAGS := -D__SWITCH__ -D__CONSOLE__ -DUSE_GLES=1 -D_GNU_SOURCE \
+    -Wno-format-security -Wno-trigraphs -Wno-missing-braces -Wno-missing-field-initializers \
+    -Wno-unused-result -Wno-format-truncation
+override EXTRA_CPP_FLAGS := -std=gnu++17 $(SWITCH_ARCH) -fPIE
+override BACKEND_CFLAGS := -DHAVE_SDL2=1 -D_REENTRANT -I$(PORTLIBS)/include \
+    $(shell $(SDL2_CONFIG) --cflags 2>/dev/null)
+
+# LDFLAGS is intentionally fully owned here. This suppresses Linux-only
+# -no-pie/-ldl/-rdynamic additions from the included upstream Makefile.
+override LDFLAGS := -specs=$(LIBNX)/switch.specs $(SWITCH_ARCH) -fPIE \
+    -Wl,--gc-sections -Wl,-Map,$(BUILD_DIR)/sm64coopdx.map \
+    -L$(LIBNX)/lib -L$(PORTLIBS)/lib -Lbuild/switch-deps/lua/lib \
+    $(shell $(SDL2_CONFIG) --libs 2>/dev/null) \
+    -l:liblua53.a -lcurl -lz -lGLESv2 -lEGL -lglapi -ldrm_nouveau -lnx -lm -pthread
+
+include Makefile
+
+SWITCH_NACPTOOL := $(DKP_TOOLS)/nacptool
+SWITCH_ELF2NRO  := $(DKP_TOOLS)/elf2nro
+SWITCH_NACP     := $(BUILD_DIR)/sm64coopdx.nacp
+SWITCH_NRO      := $(BUILD_DIR)/sm64coopdx.nro
+SWITCH_VERSION  ?= 1.5.1-switch
+
+.PHONY: switch-deps switch-game switch-nro switch-toolchain-check
+
+switch-toolchain-check:
+	@test -x "$(CC)" || (echo "Missing devkitA64 compiler: $(CC)" && exit 1)
+	@test -x "$(CXX)" || (echo "Missing devkitA64 C++ compiler: $(CXX)" && exit 1)
+	@test -f "$(LIBNX)/switch.specs" || (echo "Missing libnx switch.specs" && exit 1)
+	@test -x "$(SDL2_CONFIG)" || (echo "Missing Switch SDL2: $(SDL2_CONFIG)" && exit 1)
+	@test -f "$(PORTLIBS)/include/curl/curl.h" || (echo "Missing switch-curl" && exit 1)
+	@test -f "$(PORTLIBS)/include/GLES2/gl2.h" || (echo "Missing switch-mesa GLES2" && exit 1)
+	@test -x "$(SWITCH_NACPTOOL)" || (echo "Missing nacptool" && exit 1)
+	@test -x "$(SWITCH_ELF2NRO)" || (echo "Missing elf2nro" && exit 1)
+
+switch-deps: switch-toolchain-check
+	bash tools/switch/build-lua53.sh
+
+switch-game: switch-deps $(EXE)
+	@echo "Built Switch ELF: $(EXE)"
+
+$(SWITCH_NACP):
+	@mkdir -p $(dir $@)
+	$(SWITCH_NACPTOOL) --create "SM64CoopDX" "SM64CoopDX contributors" "$(SWITCH_VERSION)" $@
+
+$(SWITCH_NRO): switch-deps $(EXE) $(SWITCH_NACP)
+	$(SWITCH_ELF2NRO) $(EXE) $@ --nacp=$(SWITCH_NACP)
+
+switch-nro: $(SWITCH_NRO)
+	@echo "Built Switch NRO: $(SWITCH_NRO)"
