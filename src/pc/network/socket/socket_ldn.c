@@ -196,7 +196,7 @@ bool ldn_initialize_impl(bool isServer) {
 
         LdnSecurityConfig sec;
         memset(&sec, 0, sizeof(sec));
-        sec.security_mode = (LdnSecurityMode)0;
+        sec.security_mode = LdnSecurityMode_Any;
         sec.passphrase_size = 0x10;
         memset(sec.passphrase, 0x42, 0x10);
 
@@ -219,7 +219,12 @@ bool ldn_initialize_impl(bool isServer) {
         }
 
         sLdnConnected = true;
-        ldnSetStationAcceptPolicy(LdnAcceptPolicy_AlwaysAccept);
+        rc = ldnSetStationAcceptPolicy(LdnAcceptPolicy_AlwaysAccept);
+        if (R_FAILED(rc)) {
+            ldn_log("[LDN] ldnSetStationAcceptPolicy failed: 0x%x", rc);
+            ldn_shutdown_impl();
+            return false;
+        }
         if (!ldn_udp_open()) {
             ldn_shutdown_impl();
             return false;
@@ -339,18 +344,25 @@ void ldn_shutdown_impl(void) {
     ldn_udp_close();
     if (!sLdnInitialized) { return; }
 
-    if (sLdnConnected && !sIsServer) {
-        ldnDisconnect();
+    const bool wasConnected = sLdnConnected;
+    if (wasConnected && !sIsServer) {
+        Result rc = ldnDisconnect();
+        if (R_FAILED(rc)) { ldn_log("[LDN] ldnDisconnect failed: 0x%x", rc); }
     }
     sLdnConnected = false;
 
     if (sLdnStationOpen) {
-        ldnCloseStation();
+        Result rc = ldnCloseStation();
+        if (R_FAILED(rc)) { ldn_log("[LDN] ldnCloseStation failed: 0x%x", rc); }
         sLdnStationOpen = false;
     }
     if (sLdnAccessPointOpen) {
-        ldnDestroyNetwork();
-        ldnCloseAccessPoint();
+        if (wasConnected && sIsServer) {
+            Result rc = ldnDestroyNetwork();
+            if (R_FAILED(rc)) { ldn_log("[LDN] ldnDestroyNetwork failed: 0x%x", rc); }
+        }
+        Result rc = ldnCloseAccessPoint();
+        if (R_FAILED(rc)) { ldn_log("[LDN] ldnCloseAccessPoint failed: 0x%x", rc); }
         sLdnAccessPointOpen = false;
     }
     ldnExit();
@@ -377,7 +389,7 @@ bool ldn_connect_to_index(int index) {
 
     LdnSecurityConfig sec;
     memset(&sec, 0, sizeof(sec));
-    sec.security_mode = (LdnSecurityMode)0;
+    sec.security_mode = LdnSecurityMode_Any;
     sec.passphrase_size = 0x10;
     memset(sec.passphrase, 0x42, 0x10);
 
@@ -385,9 +397,15 @@ bool ldn_connect_to_index(int index) {
     memset(&user, 0, sizeof(user));
     ldn_fill_user_name(user.user_name, sizeof(user.user_name));
 
+    // A re-scan may reorder the result array. Pin retries to the host BSSID
+    // selected by the user rather than blindly reusing the old array index.
+    u8 selectedBssid[sizeof(sLdnNetworkInfo[0].common.bssid.addr)];
+    memcpy(selectedBssid, sLdnNetworkInfo[index].common.bssid.addr, sizeof(selectedBssid));
+
     Result rc = 0;
     bool connected = false;
-    for (int attempt = 0; attempt < 10 && index < sLdnNetworkCount; attempt++) {
+    for (int attempt = 0; attempt < 10; attempt++) {
+        if (index < 0 || index >= sLdnNetworkCount) { break; }
         LdnNetworkInfo* target = &sLdnNetworkInfo[index];
         rc = ldnConnect(&sec, &user, 0, 0, target);
         ldn_log("[LDN] ldnConnect attempt=%d: 0x%x", attempt, rc);
@@ -398,7 +416,24 @@ bool ldn_connect_to_index(int index) {
         memset(&filter, 0, sizeof(filter));
         filter.network_id.intent_id.local_communication_id = -1;
         filter.flags = LdnScanFilterFlag_LocalCommunicationId;
-        ldnScan(0, &filter, sLdnNetworkInfo, 4, &sLdnNetworkCount);
+        rc = ldnScan(0, &filter, sLdnNetworkInfo, 4, &sLdnNetworkCount);
+        if (R_FAILED(rc)) {
+            ldn_log("[LDN] retry scan failed: 0x%x", rc);
+            continue;
+        }
+
+        int refreshedIndex = -1;
+        for (int i = 0; i < sLdnNetworkCount; i++) {
+            if (memcmp(selectedBssid, sLdnNetworkInfo[i].common.bssid.addr, sizeof(selectedBssid)) == 0) {
+                refreshedIndex = i;
+                break;
+            }
+        }
+        if (refreshedIndex < 0) {
+            ldn_log("[LDN] selected host disappeared during retry");
+            break;
+        }
+        index = refreshedIndex;
     }
     if (!connected) { return false; }
 
