@@ -18,12 +18,22 @@ static struct DjuiInputbox* sInputboxPort = NULL;
 #ifdef COOPNET
 static struct DjuiRect* sRectPassword = NULL;
 static struct DjuiInputbox* sInputboxPassword = NULL;
+#endif
+#ifdef __SWITCH__
+static u8 sSwitchNetworkChoice = 0;
+#endif
 
+#if defined(COOPNET) || defined(__SWITCH__)
 static void djui_panel_host_network_system_change(UNUSED struct DjuiBase* base) {
+#ifdef __SWITCH__
+    configNetworkSystem = (sSwitchNetworkChoice == 1) ? NS_LDN : NS_SOCKET;
+#endif
     djui_base_set_visible(&sRectPort->base, (configNetworkSystem == NS_SOCKET));
-    djui_base_set_visible(&sRectPassword->base, (configNetworkSystem == NS_COOPNET));
     djui_base_set_enabled(&sInputboxPort->base, (configNetworkSystem == NS_SOCKET));
+#ifdef COOPNET
+    djui_base_set_visible(&sRectPassword->base, (configNetworkSystem == NS_COOPNET));
     djui_base_set_enabled(&sInputboxPassword->base, (configNetworkSystem == NS_COOPNET));
+#endif
 }
 #endif
 
@@ -65,7 +75,7 @@ static void djui_panel_host_password_text_change(UNUSED struct DjuiBase* caller)
 
 extern void djui_panel_do_host(bool reconnecting, bool playSound);
 static void djui_panel_host_do_host(struct DjuiBase* caller) {
-    if (!djui_panel_host_port_valid()) {
+    if (configNetworkSystem == NS_SOCKET && !djui_panel_host_port_valid()) {
         djui_interactable_set_input_focus(&sInputboxPort->base);
         djui_inputbox_select_all(sInputboxPort);
         return;
@@ -76,11 +86,13 @@ static void djui_panel_host_do_host(struct DjuiBase* caller) {
         return;
     }
 
-    configHostPort = atoi(sInputboxPort->buffer);
+    if (configNetworkSystem == NS_SOCKET) {
+        configHostPort = atoi(sInputboxPort->buffer);
+    }
 
     if (gNetworkType == NT_SERVER) {
         network_rehost_begin();
-    } else if (configNetworkSystem == NS_COOPNET || configAmountOfPlayers == 1 || configHideSocketWarning) {
+    } else if (configNetworkSystem == NS_COOPNET || configNetworkSystem == NS_LDN || configAmountOfPlayers == 1 || configHideSocketWarning) {
         network_reset_reconnect_and_rehost();
         djui_panel_do_host(false, true);
     } else {
@@ -95,13 +107,20 @@ void djui_panel_host_create(struct DjuiBase* caller) {
         false);
     struct DjuiBase* body = djui_three_panel_get_body(panel);
     {
-        #ifdef COOPNET
+#ifdef __SWITCH__
+        sSwitchNetworkChoice = (configNetworkSystem == NS_LDN) ? 1 : 0;
+        char* nChoices[] = { DLANG(HOST, DIRECT_CONNECTION), "Local Wireless" };
+        struct DjuiSelectionbox* selectionbox1 = djui_selectionbox_create(body, DLANG(HOST, NETWORK_SYSTEM), nChoices, 2, &sSwitchNetworkChoice, djui_panel_host_network_system_change);
+        if (gNetworkType == NT_SERVER) {
+            djui_base_set_enabled(&selectionbox1->base, false);
+        }
+#elif defined(COOPNET)
         char* nChoices[] = { DLANG(HOST, DIRECT_CONNECTION), DLANG(HOST, COOPNET) };
         struct DjuiSelectionbox* selectionbox1 = djui_selectionbox_create(body, DLANG(HOST, NETWORK_SYSTEM), nChoices, 2, &configNetworkSystem, djui_panel_host_network_system_change);
         if (gNetworkType == NT_SERVER) {
             djui_base_set_enabled(&selectionbox1->base, false);
         }
-        #endif
+#endif
 
         struct DjuiRect* rect1 = djui_rect_container_create(body, 32);
         {
