@@ -108,17 +108,9 @@ static void ldn_refresh_nodes(void) {
 }
 
 static bool ldn_udp_open(void) {
-    // The Switch port already initializes BSD sockets during normal startup.
-    // socketInitializeDefault is service-guarded in libnx, so taking a local
-    // reference here is safe and makes the backend independently usable.
-    static bool sSocketServiceUp = false;
-    if (!sSocketServiceUp) {
-        Result rc = socketInitializeDefault();
-        ldn_log("[LDN] socketInitializeDefault: 0x%x", rc);
-        if (R_FAILED(rc)) { return false; }
-        sSocketServiceUp = true;
-    }
-
+    // switch_platform.c owns socketInitializeDefault()/socketExit(). Calling
+    // socketInitializeDefault() again here returns LibnxError_AlreadyInitialized
+    // on current libnx, so this backend only consumes the already-open service.
     LdnIpv4Address ownLdnAddr;
     LdnSubnetMask mask;
     Result rc = ldnGetIpv4Address(&ownLdnAddr, &mask);
