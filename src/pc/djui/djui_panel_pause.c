@@ -5,6 +5,8 @@
 #include "djui_panel_dynos.h"
 #include "djui_panel_options.h"
 #include "djui_panel_host.h"
+#include "djui_panel_host_settings.h"
+#include "djui_panel_host_mods.h"
 #include "djui_panel_client_server_settings.h"
 #include "djui_panel_menu.h"
 #include "djui_panel_confirm.h"
@@ -70,7 +72,10 @@ void djui_panel_pause_create(struct DjuiBase* caller) {
         defaultBase = &button3->base;
 
         if (gNetworkType == NT_SERVER) {
-            djui_button_create(body, DLANG(PAUSE, SERVER_SETTINGS), DJUI_BUTTON_STYLE_NORMAL, djui_panel_host_create);
+            djui_button_create(body, DLANG(PAUSE, SERVER_SETTINGS), DJUI_BUTTON_STYLE_NORMAL, djui_panel_host_settings_create);
+            // let the host toggle mods mid-session and restart the server
+            // instance to apply them (see djui_panel_host_mods.c)
+            djui_button_create(body, DLANG(HOST, MODS), DJUI_BUTTON_STYLE_NORMAL, djui_panel_host_mods_create);
         } else {
             djui_button_create(body, DLANG(PAUSE, SERVER_SETTINGS), DJUI_BUTTON_STYLE_NORMAL, djui_panel_client_server_settings_create);
         }

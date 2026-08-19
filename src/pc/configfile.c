@@ -197,7 +197,14 @@ char         configPlayerName[MAX_CONFIG_STRING]  = "";
 unsigned int configPlayerModel                    = 0;
 struct PlayerPalette configPlayerPalette          = { { { 0x00, 0x00, 0xff }, { 0xff, 0x00, 0x00 }, { 0xff, 0xff, 0xff }, { 0x72, 0x1c, 0x0e }, { 0x73, 0x06, 0x00 }, { 0xfe, 0xc1, 0x79 }, { 0xff, 0x00, 0x00 }, { 0xff, 0x00, 0x00 } } };
 // coop settings
+#ifdef __SWITCH__
+// starting a fresh install straight into a full-lobby wait state is a worse
+// default on a single, controller-only console than on PC; solo is the
+// safer boot default, same as what sm64config.txt ships with
+unsigned int configAmountOfPlayers                = 1;
+#else
 unsigned int configAmountOfPlayers                = MAX_PLAYERS;
+#endif
 bool         configBubbleDeath                    = true;
 unsigned int configHostPort                       = DEFAULT_PORT;
 unsigned int configHostSaveSlot                   = 1;
@@ -836,6 +843,19 @@ NEXT_OPTION:
 
     if (gCLIOpts.playerName[0]) { snprintf(configPlayerName, MAX_CONFIG_STRING, "%s", gCLIOpts.playerName); }
 
+#ifdef __SWITCH__
+    // Default the player name to the Switch profile that launched the app.
+    // Only overrides an empty/never-set name so a name the user typed in the
+    // in-game menu is preserved across launches.
+    if (configPlayerName[0] == '\0' || strcmp(configPlayerName, "Player") == 0) {
+        extern int nx_get_profile_nickname(char* out, unsigned int outLen);
+        char nickname[MAX_CONFIG_STRING] = { 0 };
+        if (nx_get_profile_nickname(nickname, MAX_CONFIG_STRING) && nickname[0]) {
+            snprintf(configPlayerName, MAX_CONFIG_STRING, "%s", nickname);
+        }
+    }
+#endif
+
     if (!network_player_name_valid(configPlayerName)) {
         snprintf(configPlayerName, MAX_CONFIG_STRING, "Player");
     }
@@ -849,7 +869,12 @@ NEXT_OPTION:
         configAmountOfPlayers = MIN(gCLIOpts.playerCount, MAX_PLAYERS);
     }
 
-#ifndef COOPNET
+#ifdef __SWITCH__
+    // LDN is the only transport this build supports - raw BSD sockets were
+    // never wired up for Switch (no socketInitializeDefault() call anywhere
+    // in this codebase), so NS_SOCKET silently fails every time it's used.
+    configNetworkSystem = NS_LDN;
+#elif !defined(COOPNET)
     configNetworkSystem = NS_SOCKET;
 #endif
 }

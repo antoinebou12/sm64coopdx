@@ -1,22 +1,19 @@
-![sm64coopdx Logo](textures/segment2/custom_coopdx_logo.rgba32.png)
+![sm64coopNX Logo](textures/segment2/custom_coopdx_logo.rgba32.png)
 
-sm64coopdx is an online multiplayer project for the Super Mario 64 PC port that synchronizes all entities and every level for multiple players. The project was started by the Coop Deluxe Team. The purpose is to actively maintain and improve, but also continue sm64ex-coop, created by djoslin0. More features, customization, and power to the Lua API allow modders and players to enjoy Super Mario 64 more than ever!
+sm64coopNX is a fork of sm64coopdx, an online multiplayer project for the Super Mario 64 PC port that synchronizes all entities and every level for multiple players, adding a native Nintendo Switch homebrew port on top. The original project was started by the Coop Deluxe Team. The purpose is to actively maintain and improve, but also continue sm64ex-coop, created by djoslin0. More features, customization, and power to the Lua API allow modders and players to enjoy Super Mario 64 more than ever!
 
 Feel free to report bugs or contribute to the project.
 
-## Initial Goal (Accomplished)
-Create a mod for the PC port where multiple people can play together online.
+## Nintendo Switch Port
+sm64coopNX adds a homebrew Nintendo Switch port (devkitA64/libnx) with native LDN local wireless multiplayer, alongside the existing PC build.
 
-Unlike previous multiplayer projects, this one synchronizes enemies and events. This allows players to interact with the same world at the same time.
+**Status: playable, still being polished.**
+- Offline/solo play is stable.
+- LDN local wireless multiplayer works: two consoles connect over local wireless and stay in sync during gameplay (game packets travel as UDP over the LDN network). There's still a brief hitch at the start of a session while a joining player drops in. Tested with 2 consoles; more than 2 is untested.
+- The in-game player name defaults to the Switch profile that launched the app.
+- Direct connect (regular IP-based online multiplayer) on Switch is untested.
 
-Interestingly enough though, the goal of the project has slowly evolved over time from simply just making a Super Mario 64 multiplayer mod to constantly maintaining and improving the project (notably the Lua API.)
+Switch build: see `Makefile.nx` (`make -f Makefile.nx`), requires devkitA64/libnx. Like upstream sm64coopdx, this fork builds without you needing to supply a ROM.
 
-## Documentation
-
-sm64coopdx is moddable via Lua, similar to Roblox and Garry's Mod's Lua APIs. To get started, click [here](docs/lua/lua.md) to see the Lua documentation. If you want to contribute to the repo, you can view the C documentation [here](docs/c/c.md).
-
-## Wiki
-The wiki is made using GitHub's wiki feature, you can go to the wiki tab or click [here](https://github.com/coop-deluxe/sm64coopdx/wiki).
-
-## Community
-We have an official Discord server open to the public [here](https://discord.gg/TJVKHS4).
+## Legal
+This is a fan-made, non-commercial project not affiliated with Nintendo, built on the community sm64 decompilation just like upstream sm64coopdx. See [NOTICE.md](NOTICE.md) for details.
