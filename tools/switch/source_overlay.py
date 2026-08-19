@@ -19,6 +19,13 @@ def replace_once(text: str, old: str, new: str, label: str) -> str:
     return text.replace(old, new, 1)
 
 
+def replace_exact_count(text: str, old: str, new: str, expected: int, label: str) -> str:
+    count = text.count(old)
+    if count != expected:
+        raise RuntimeError(f"{label}: expected {expected} matches, found {count}")
+    return text.replace(old, new)
+
+
 def overlay_pc_main(text: str) -> str:
     text = replace_once(
         text,
@@ -77,6 +84,14 @@ def overlay_controller_bind(text: str) -> str:
         '#include <SDL3/SDL.h>\n',
         '#include <SDL2/SDL.h>\n',
         "controller bind SDL2 include",
+    )
+    # SDL3 renamed SDL2's fixed 512-entry scancode count symbol.
+    text = replace_exact_count(
+        text,
+        'SDL_SCANCODE_COUNT',
+        'SDL_NUM_SCANCODES',
+        6,
+        "controller bind SDL2 scancode count",
     )
     text = replace_once(
         text,
