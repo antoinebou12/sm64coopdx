@@ -77,7 +77,12 @@ SWITCH_NACP     := $(BUILD_DIR)/sm64coopdx.nacp
 SWITCH_NRO      := $(BUILD_DIR)/sm64coopdx.nro
 SWITCH_VERSION  ?= 1.5.1-switch
 
-.PHONY: switch-deps switch-game switch-nro switch-toolchain-check
+SWITCH_OVERLAY_DIR     := $(BUILD_DIR)/switch-overlay
+SWITCH_MARIO_SOURCE    := $(SWITCH_OVERLAY_DIR)/src/game/mario.c
+SWITCH_NETWORK_SOURCE  := $(SWITCH_OVERLAY_DIR)/src/pc/network/network.c
+SWITCH_OVERLAY_SOURCES := $(SWITCH_MARIO_SOURCE) $(SWITCH_NETWORK_SOURCE)
+
+.PHONY: switch-deps switch-overlays switch-game switch-nro switch-toolchain-check
 
 switch-toolchain-check:
 	@test -x "$(CC)" || (echo "Missing devkitA64 compiler: $(CC)" && exit 1)
@@ -92,14 +97,38 @@ switch-toolchain-check:
 switch-deps: switch-toolchain-check
 	bash tools/switch/build-lua53.sh
 
-switch-game: switch-deps $(EXE)
+$(SWITCH_MARIO_SOURCE): src/game/mario.c tools/switch/source_overlay.py
+	$(PYTHON) tools/switch/source_overlay.py mario $< $@
+
+$(SWITCH_NETWORK_SOURCE): src/pc/network/network.c tools/switch/source_overlay.py
+	$(PYTHON) tools/switch/source_overlay.py network $< $@
+
+switch-overlays: $(SWITCH_OVERLAY_SOURCES)
+
+# Explicit object recipes override the generic %.c pattern only for the files
+# that need small Switch-specific behavior changes.
+$(BUILD_DIR)/src/game/mario.o: $(SWITCH_MARIO_SOURCE)
+	$(call print,Compiling Switch overlay:,$<,$@)
+	$(V)$(CC_CHECK) $(PROF_FLAGS) $(CC_CHECK_CFLAGS) -MMD -MP -MT $@ -MF $(BUILD_DIR)/src/game/mario.d $<
+	$(V)$(CC) $(PROF_FLAGS) -c $(CFLAGS) -o $@ $<
+
+$(BUILD_DIR)/src/pc/network/network.o: $(SWITCH_NETWORK_SOURCE)
+	$(call print,Compiling Switch overlay:,$<,$@)
+	$(V)$(CC_CHECK) $(PROF_FLAGS) $(CC_CHECK_CFLAGS) -MMD -MP -MT $@ -MF $(BUILD_DIR)/src/pc/network/network.d $<
+	$(V)$(CC) $(PROF_FLAGS) -c $(CFLAGS) -o $@ $<
+
+# Prevent -j builds from reaching the final linker before Switch-only generated
+# sources and the cross-built Lua archive exist.
+$(EXE): switch-deps switch-overlays
+
+switch-game: $(EXE)
 	@echo "Built Switch ELF: $(EXE)"
 
 $(SWITCH_NACP):
 	@mkdir -p $(dir $@)
 	$(SWITCH_NACPTOOL) --create "SM64CoopDX" "SM64CoopDX contributors" "$(SWITCH_VERSION)" $@
 
-$(SWITCH_NRO): switch-deps $(EXE) $(SWITCH_NACP)
+$(SWITCH_NRO): $(EXE) $(SWITCH_NACP)
 	$(SWITCH_ELF2NRO) $(EXE) $@ --nacp=$(SWITCH_NACP)
 
 switch-nro: $(SWITCH_NRO)
