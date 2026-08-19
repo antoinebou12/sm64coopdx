@@ -8,6 +8,8 @@
 #include "controller_sdl.h"
 #ifdef __SWITCH__
 #include "controller_switch.h"
+#include "game/local_multiplayer.h"
+#include "pc/network/network.h"
 #endif
 
 // Analog camera movement by Pathétique (github.com/vrmiguel), y0shin and Mors
@@ -89,8 +91,19 @@ void controller_read_local_pads(OSContPad *pads, u8 maxPads) {
         controller_switch_read_slot(i, &pads[i]);
     }
 
-    // Physical/SDL keyboard input remains a player-1-only overlay.
+    // Physical/USB keyboard input remains a player-1-only overlay.
     controller_keyboard.read(&pads[0]);
+
+    /*
+     * CoopDX currently assigns one NetworkPlayer slot per remote peer. Until
+     * the network protocol advertises multiple local identities per client,
+     * only offline/local-wireless gameplay may expose several local Mario
+     * slots. This keeps split-screen input from colliding with remote indexes.
+     */
+    const bool allow_multiple_local_players = (gNetworkType == NT_NONE);
+    local_multiplayer_sync_controller_count(
+        controller_switch_connected_count(), allow_multiple_local_players
+    );
 #else
     osContGetReadData(&pads[0]);
 #endif
