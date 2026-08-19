@@ -23,6 +23,8 @@ void ldn_backend_clear_id(uint8_t local_index);
 
 bool ldn_backend_refresh_scan(void);
 bool ldn_backend_connect_to_index(int index);
+bool ldn_backend_reconnect_last(void);
+void ldn_backend_forget_last_network(void);
 int ldn_backend_network_count(void);
 const char *ldn_backend_network_name(int index);
 int ldn_backend_network_player_count(int index);
