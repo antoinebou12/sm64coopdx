@@ -68,6 +68,26 @@ uint8_t local_multiplayer_player_count(void) {
     return sLocalPlayerCount;
 }
 
+uint8_t local_multiplayer_sync_controller_count(uint8_t connected_count, bool allow_multiple) {
+    uint8_t count = connected_count;
+    if (!allow_multiple || count == 0) {
+        count = 1;
+    }
+    if (count > LOCAL_MULTIPLAYER_MAX_PLAYERS) {
+        count = LOCAL_MULTIPLAYER_MAX_PLAYERS;
+    }
+
+    local_multiplayer_set_player_count(count);
+    for (uint8_t i = 0; i < count; i++) {
+        sLocalPlayers[i].controller_slot = i;
+    }
+    return sLocalPlayerCount;
+}
+
+bool local_multiplayer_is_active_player(uint8_t player) {
+    return player < sLocalPlayerCount && sLocalPlayers[player].active;
+}
+
 void local_multiplayer_set_layout(LocalSplitLayout layout) {
     if (layout < LOCAL_SPLIT_AUTO || layout > LOCAL_SPLIT_FOUR) {
         return;
@@ -93,6 +113,12 @@ bool local_multiplayer_bind_network_index(uint8_t player, uint8_t network_index)
     }
     sLocalPlayers[player].network_index = network_index;
     return true;
+}
+
+void local_multiplayer_reset_network_bindings(void) {
+    for (uint8_t i = 0; i < LOCAL_MULTIPLAYER_MAX_PLAYERS; i++) {
+        sLocalPlayers[i].network_index = LOCAL_MULTIPLAYER_INVALID_NETWORK_INDEX;
+    }
 }
 
 const LocalPlayerSlot *local_multiplayer_slot(uint8_t player) {
@@ -180,7 +206,7 @@ bool local_multiplayer_get_viewport_pixels(uint8_t player, int screen_width, int
 }
 
 void local_multiplayer_begin_player(uint8_t player) {
-    if (player < sLocalPlayerCount) {
+    if (local_multiplayer_is_active_player(player)) {
         sCurrentLocalPlayer = player;
     }
 }
