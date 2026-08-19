@@ -1,7 +1,11 @@
 #pragma once
 
 #include <PR/ultratypes.h>
+#ifdef __SWITCH__
+#include <SDL2/SDL.h>
+#else
 #include <SDL3/SDL.h>
+#endif
 
 #include <stdint.h>
 #include <stdbool.h>
