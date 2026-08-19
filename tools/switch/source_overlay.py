@@ -110,11 +110,21 @@ def overlay_djui_controls(text: str) -> str:
     return text[:start] + replacement + text[end:]
 
 
+def overlay_loading(text: str) -> str:
+    return replace_once(
+        text,
+        '    loading_screen_set_segment_text("No rom detected, drag & drop Super Mario 64 (U) [!].z64 on to this screen");',
+        '    loading_screen_set_segment_text("No ROM detected. Copy baserom.us.z64 to sdmc:/switch/sm64coopdx and restart the app.");',
+        "Switch missing-ROM instructions",
+    )
+
+
 OVERLAYS = {
     "pc_main": overlay_pc_main,
     "platform": overlay_platform,
     "controller_bind": overlay_controller_bind,
     "djui_controls": overlay_djui_controls,
+    "loading": overlay_loading,
 }
 
 
