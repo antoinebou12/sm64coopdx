@@ -1,0 +1,103 @@
+// Isolated from the rest of the codebase on purpose: this file includes
+// <switch.h> directly, which typedefs u64/s64 as `long` - conflicting with
+// this project's own PR/ultratypes.h, which typedefs them as `long long`.
+// Never include project headers here; communicate across the boundary only
+// with plain C types (see src/pc/network/socket/socket_ldn.c for the same
+// pattern).
+#include <switch.h>
+
+typedef void (*NxThreadEntry)(void*);
+
+// nx-hbloader gives the process's initial thread a small stack that this
+// codebase's rendering path (deep SM64 decomp call chains + the Mesa
+// nouveau GL driver) overflows on the very first rendered frame. Run the
+// caller-supplied entry point on a dedicated thread with a much larger,
+// explicitly-sized stack instead, and block until it returns.
+int nx_run_on_big_stack_thread(NxThreadEntry entry) {
+    Thread t;
+    Result rc = threadCreate(&t, entry, NULL, NULL, 8 * 1024 * 1024, 0x2C, -2);
+    if (R_FAILED(rc)) {
+        return 0;
+    }
+    threadStart(&t);
+    threadWaitForExit(&t);
+    threadClose(&t);
+    return 1;
+}
+
+// If the HOME menu force-closes this app (or a title-override relaunch tool
+// kills it) without going through SDL_QUIT, game_exit()/network_shutdown()
+// never run - and if an LDN access point/network was open at the time, the
+// ldn sysmodule's wireless session is left wedged, causing every subsequent
+// ldnInitialize() in ANY later launch to fail until the console reboots.
+// Hooking OnExitRequest gives us a chance to run cleanup before the OS tears
+// the process down.
+static AppletHookCookie sAppletHookCookie;
+static void (*sExitCallback)(void) = NULL;
+
+static void nx_applet_hook(AppletHookType hook, void* param) {
+    (void)param;
+    if (hook == AppletHookType_OnExitRequest && sExitCallback) {
+        sExitCallback();
+    }
+}
+
+void nx_register_exit_hook(void (*callback)(void)) {
+    sExitCallback = callback;
+    appletHook(&sAppletHookCookie, nx_applet_hook, NULL);
+}
+
+// Copies the nickname of the Switch profile that launched the app into out
+// (NUL-terminated, up to outLen bytes). Returns 1 on success, 0 on any
+// failure (in which case out is left untouched). Homebrew launched via
+// title-override inherits the host game's preselected user, so the account
+// service can resolve which profile is playing.
+int nx_get_profile_nickname(char* out, unsigned int outLen) {
+    if (out == NULL || outLen == 0) { return 0; }
+    if (R_FAILED(accountInitialize(AccountServiceType_Application))) { return 0; }
+
+    int ok = 0;
+    AccountUid uid = {0};
+    if (R_SUCCEEDED(accountGetPreselectedUser(&uid))) {
+        AccountProfile profile;
+        if (R_SUCCEEDED(accountGetProfile(&profile, uid))) {
+            AccountProfileBase base = {0};
+            if (R_SUCCEEDED(accountProfileGet(&profile, NULL, &base)) && base.nickname[0]) {
+                // base.nickname is a fixed 0x20 buffer, NUL-terminated
+                unsigned int i = 0;
+                for (; i + 1 < outLen && base.nickname[i]; i++) { out[i] = base.nickname[i]; }
+                out[i] = '\0';
+                ok = 1;
+            }
+            accountProfileClose(&profile);
+        }
+    }
+    accountExit();
+    return ok;
+}
+
+// Opens the Switch software keyboard seeded with `initial` so the user can
+// fully edit (including deleting) the existing field value, instead of the
+// SDL incremental-text path which only ever appends. Writes the accepted
+// string into out (NUL-terminated, up to outLen bytes). Returns 1 if the user
+// accepted the text (empty allowed), 0 if cancelled or on any error (in which
+// case out is left untouched).
+int nx_swkbd_edit(const char* initial, char* out, unsigned int outLen) {
+    if (out == NULL || outLen == 0) { return 0; }
+
+    SwkbdConfig kbd;
+    if (R_FAILED(swkbdCreate(&kbd, 0))) { return 0; }
+    swkbdConfigMakePresetDefault(&kbd);
+    if (initial != NULL) { swkbdConfigSetInitialText(&kbd, initial); }
+
+    char tmp[512];
+    tmp[0] = '\0';
+    Result rc = swkbdShow(&kbd, tmp, sizeof(tmp));
+    swkbdClose(&kbd);
+    if (R_FAILED(rc)) { return 0; }
+
+    unsigned int i = 0;
+    for (; i + 1 < outLen && tmp[i]; i++) { out[i] = tmp[i]; }
+    out[i] = '\0';
+    return 1;
+}
