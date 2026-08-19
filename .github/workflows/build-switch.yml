@@ -1,0 +1,69 @@
+name: Switch bootstrap
+
+on:
+  push:
+    branches:
+      - switch-next
+      - agent/switch-**
+    paths:
+      - Makefile.switch
+      - tools/switch/**
+      - docs/switch/**
+      - .github/workflows/build-switch.yml
+  pull_request:
+    paths:
+      - Makefile.switch
+      - tools/switch/**
+      - docs/switch/**
+      - .github/workflows/build-switch.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: switch-bootstrap-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  libnx-smoke:
+    name: libnx smoke NRO
+    runs-on: ubuntu-latest
+    container:
+      image: devkitpro/devkita64:latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Report toolchain
+        shell: bash
+        run: |
+          set -euxo pipefail
+          echo "DEVKITPRO=${DEVKITPRO:-/opt/devkitpro}"
+          aarch64-none-elf-gcc --version | head -n 1
+          dkp-pacman -Q libnx || true
+          dkp-pacman -Q devkitA64 || true
+
+      - name: Build smoke NRO
+        shell: bash
+        env:
+          DEVKITPRO: /opt/devkitpro
+        run: |
+          set -euxo pipefail
+          make -f Makefile.switch clean
+          make -f Makefile.switch smoke
+          test -s build/switch-smoke/sm64coopdx-switch-smoke.nro
+          test -s build/switch-smoke/sm64coopdx-switch-smoke.elf
+          test -s build/switch-smoke/sm64coopdx-switch-smoke.map
+
+      - name: Upload bootstrap artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: switch-toolchain-smoke
+          if-no-files-found: error
+          path: |
+            build/switch-smoke/sm64coopdx-switch-smoke.nro
+            build/switch-smoke/sm64coopdx-switch-smoke.elf
+            build/switch-smoke/sm64coopdx-switch-smoke.map
+            build/switch-smoke/sm64coopdx-switch-smoke.nacp

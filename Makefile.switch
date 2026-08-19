@@ -1,0 +1,64 @@
+# Nintendo Switch bootstrap build
+#
+# This file intentionally builds a tiny libnx smoke-test NRO before the full
+# game is wired into the Switch target. It gives CI a fast, ROM-independent
+# check that the current devkitA64/libnx toolchain can compile, link and package
+# Nintendo Switch homebrew artifacts.
+
+ifeq ($(strip $(DEVKITPRO)),)
+$(error "Please set DEVKITPRO, for example /opt/devkitpro")
+endif
+
+LIBNX      := $(DEVKITPRO)/libnx
+DEVKITA64  := $(DEVKITPRO)/devkitA64
+TOOLS      := $(DEVKITPRO)/tools/bin
+CC         := $(DEVKITA64)/bin/aarch64-none-elf-gcc
+ELF2NRO    := $(TOOLS)/elf2nro
+NACPTOOL   := $(TOOLS)/nacptool
+
+BUILD_DIR  := build/switch-smoke
+TARGET     := $(BUILD_DIR)/sm64coopdx-switch-smoke
+SOURCE     := tools/switch/smoke.c
+OBJECT     := $(TARGET).o
+ELF        := $(TARGET).elf
+NACP       := $(TARGET).nacp
+NRO        := $(TARGET).nro
+
+ARCH       := -march=armv8-a+crc+crypto -mtune=cortex-a57 -mtp=soft -fPIE
+CFLAGS     := -O2 -g -Wall -Wextra -ffunction-sections -fdata-sections $(ARCH) -D__SWITCH__ -I$(LIBNX)/include
+LDFLAGS    := -specs=$(LIBNX)/switch.specs -g $(ARCH) -Wl,--gc-sections -Wl,-Map,$(TARGET).map -L$(LIBNX)/lib
+LIBS       := -lnx -lm
+
+.PHONY: all smoke toolchain-check clean
+
+all: smoke
+
+smoke: toolchain-check $(NRO)
+	@echo "Built $(NRO)"
+
+toolchain-check:
+	@test -x "$(CC)" || (echo "Missing devkitA64 compiler: $(CC)" && exit 1)
+	@test -f "$(LIBNX)/switch.specs" || (echo "Missing libnx switch.specs" && exit 1)
+	@test -x "$(ELF2NRO)" || (echo "Missing elf2nro: $(ELF2NRO)" && exit 1)
+	@test -x "$(NACPTOOL)" || (echo "Missing nacptool: $(NACPTOOL)" && exit 1)
+	@echo "DEVKITPRO=$(DEVKITPRO)"
+	@$(CC) --version | head -n 1
+	@if command -v dkp-pacman >/dev/null 2>&1; then dkp-pacman -Q libnx || true; fi
+
+$(BUILD_DIR):
+	@mkdir -p $@
+
+$(OBJECT): $(SOURCE) | $(BUILD_DIR)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(ELF): $(OBJECT)
+	$(CC) $(LDFLAGS) $< $(LIBS) -o $@
+
+$(NACP): | $(BUILD_DIR)
+	$(NACPTOOL) --create "SM64CoopDX Switch Smoke" "SM64CoopDX contributors" "0.0.1" $@
+
+$(NRO): $(ELF) $(NACP)
+	$(ELF2NRO) $(ELF) $@ --nacp=$(NACP)
+
+clean:
+	rm -rf $(BUILD_DIR)
