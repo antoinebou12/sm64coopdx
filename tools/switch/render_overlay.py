@@ -18,7 +18,7 @@ def overlay_area(text: str) -> str:
     text = replace_once(
         text,
         '#include "rendering_graph_node.h"\n',
-        '#include "rendering_graph_node.h"\n#include "local_multiplayer_render.h"\n',
+        '#include "rendering_graph_node.h"\n#include "local_multiplayer_render.h"\n#include "local_multiplayer_hud.h"\n#include "local_multiplayer.h"\n',
         "area include local renderer",
     )
     text = replace_once(
@@ -26,6 +26,16 @@ def overlay_area(text: str) -> str:
         "        geo_process_root(gCurrentArea->root, gViewportOverride, gViewportClip, gFBSetColor);\n",
         "        local_multiplayer_render_scene(gCurrentArea->root, gViewportOverride, gViewportClip, gFBSetColor);\n",
         "area scene render dispatch",
+    )
+    text = replace_once(
+        text,
+        "        render_hud();\n",
+        "        if (local_multiplayer_player_count() > 1) {\n"
+        "            local_multiplayer_render_hud();\n"
+        "        } else {\n"
+        "            render_hud();\n"
+        "        }\n",
+        "area per-view HUD dispatch",
     )
     return text
 
@@ -160,9 +170,17 @@ def overlay_rendering(text: str) -> str:
 
     text = replace_once(
         text,
+        "        gCurGraphNodeRoot = node;\n"
+        "        if (node->node.children != NULL) {\n"
+        "            geo_process_node_and_siblings(node->node.children);\n"
+        "        }\n\n"
         "        gCurGraphNodeRoot = NULL;\n"
         "    }\n"
         "}\n",
+        "        gCurGraphNodeRoot = node;\n"
+        "        if (node->node.children != NULL) {\n"
+        "            geo_process_node_and_siblings(node->node.children);\n"
+        "        }\n\n"
         "        gCurGraphNodeRoot = NULL;\n\n"
         "        if (local_multiplayer_player_count() > 1) {\n"
         "            // No post-pass interpolation record may survive a multi-camera pass.\n"
