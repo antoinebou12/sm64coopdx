@@ -5,27 +5,41 @@
 #include "../configfile.h"
 
 #include "controller_keyboard.h"
+#ifdef __SWITCH__
+#include "controller_switch.h"
+#else
 #include "controller_sdl.h"
+#endif
 
 // Analog camera movement by Pathétique (github.com/vrmiguel), y0shin and Mors
 // Contribute or communicate bugs at github.com/vrmiguel/sm64-analog-camera
 
-// moved these from sdl controller implementations
-
+// Keep Horizon on native libnx HID. Desktop continues to use SDL.
+#ifdef __SWITCH__
+static struct ControllerAPI *controller_implementations[] = {
+    &controller_switch,
+    &controller_keyboard,
+};
+#else
 static struct ControllerAPI *controller_implementations[] = {
     &controller_sdl,
     &controller_keyboard,
 };
+#endif
 
 s32 osContInit(UNUSED OSMesgQueue *mq, u8 *controllerBits, UNUSED OSContStatus *status) {
     for (size_t i = 0; i < sizeof(controller_implementations) / sizeof(struct ControllerAPI *); i++)
         controller_implementations[i]->init();
+#ifdef __SWITCH__
+    *controllerBits = controller_switch_connected_count() > 0 ? 1 : 0;
+#else
     *controllerBits = 1;
+#endif
     return 0;
 }
 
 s32 osMotorStart(UNUSED void *pfs) {
-    // Since rumble stops by osMotorStop, its duration is not nessecary.
+    // Since rumble stops by osMotorStop, its duration is not necessary.
     // Set it to 5 seconds and hope osMotorStop() is called in time.
     if (configRumbleStrength)
         controller_rumble_play(configRumbleStrength / 100.0f, 5.0f);
