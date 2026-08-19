@@ -93,7 +93,8 @@ SWITCH_PC_MAIN_SOURCE := $(SWITCH_OVERLAY_DIR)/src/pc/pc_main.c
 SWITCH_PLATFORM_SOURCE := $(SWITCH_OVERLAY_DIR)/src/pc/platform.c
 SWITCH_BIND_SOURCE := $(SWITCH_OVERLAY_DIR)/src/pc/controller/controller_bind_mapping.c
 SWITCH_CONTROLS_SOURCE := $(SWITCH_OVERLAY_DIR)/src/pc/djui/djui_panel_controls.c
-SWITCH_OVERLAY_SOURCES := $(SWITCH_PC_MAIN_SOURCE) $(SWITCH_PLATFORM_SOURCE) $(SWITCH_BIND_SOURCE) $(SWITCH_CONTROLS_SOURCE)
+SWITCH_LOADING_SOURCE := $(SWITCH_OVERLAY_DIR)/src/pc/loading.c
+SWITCH_OVERLAY_SOURCES := $(SWITCH_PC_MAIN_SOURCE) $(SWITCH_PLATFORM_SOURCE) $(SWITCH_BIND_SOURCE) $(SWITCH_CONTROLS_SOURCE) $(SWITCH_LOADING_SOURCE)
 
 .PHONY: switch-toolchain-check switch-deps switch-overlays switch-game switch-nro
 
@@ -122,6 +123,9 @@ $(SWITCH_BIND_SOURCE): src/pc/controller/controller_bind_mapping.c tools/switch/
 $(SWITCH_CONTROLS_SOURCE): src/pc/djui/djui_panel_controls.c tools/switch/source_overlay.py
 	$(PYTHON) tools/switch/source_overlay.py djui_controls $< $@
 
+$(SWITCH_LOADING_SOURCE): src/pc/loading.c tools/switch/source_overlay.py
+	$(PYTHON) tools/switch/source_overlay.py loading $< $@
+
 switch-overlays: $(SWITCH_OVERLAY_SOURCES)
 
 $(BUILD_DIR)/src/pc/pc_main.o: $(SWITCH_PC_MAIN_SOURCE)
@@ -137,6 +141,10 @@ $(BUILD_DIR)/src/pc/controller/controller_bind_mapping.o: $(SWITCH_BIND_SOURCE)
 	$(CC) -MMD -MP -MF $(@:.o=.d) $(CFLAGS) -c $< -o $@
 
 $(BUILD_DIR)/src/pc/djui/djui_panel_controls.o: $(SWITCH_CONTROLS_SOURCE)
+	@mkdir -p $(dir $@)
+	$(CC) -MMD -MP -MF $(@:.o=.d) $(CFLAGS) -c $< -o $@
+
+$(BUILD_DIR)/src/pc/loading.o: $(SWITCH_LOADING_SOURCE)
 	@mkdir -p $(dir $@)
 	$(CC) -MMD -MP -MF $(@:.o=.d) $(CFLAGS) -c $< -o $@
 
