@@ -71,7 +71,9 @@ require(
 require(
     "Switch user directory is created before fs_init can reject it",
     "switch_ensure_data_root" in platform_overlay
-    and "mkdir(root, 0777)" in platform_overlay
+    and 'switch_ensure_directory("sdmc:/switch")' in platform_overlay
+    and "switch_ensure_directory(switch_platform_data_root())" in platform_overlay
+    and "mkdir(path, 0777)" in platform_overlay
     and "errno == EEXIST" in platform_overlay,
 )
 require(
