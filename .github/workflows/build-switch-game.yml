@@ -43,7 +43,6 @@ concurrency:
 
 env:
   DEVKITPRO: /opt/devkitpro
-  SM64_BASEROM_US_URL: ${{ secrets.SM64_BASEROM_US_URL }}
 
 jobs:
   portability:
@@ -132,11 +131,14 @@ jobs:
 
   full-nro:
     name: Full Horizon game NRO
+    if: github.event_name != 'pull_request'
     needs: portability
     runs-on: ubuntu-latest
     timeout-minutes: 45
     container:
       image: devkitpro/devkita64:latest
+    env:
+      SM64_BASEROM_US_URL: ${{ secrets.SM64_BASEROM_US_URL }}
 
     steps:
       - name: Checkout
@@ -154,8 +156,8 @@ jobs:
             echo "available=false" >> "$GITHUB_OUTPUT"
             {
               echo "### Full Switch NRO skipped"
-              echo "Set repository secret \`SM64_BASEROM_US_URL\` to a private URL for your legally obtained US baserom to enable the complete build."
-              echo "The asset-free Horizon portability jobs still ran and must pass."
+              echo "Set repository secret \`SM64_BASEROM_US_URL\` to a private HTTPS URL for your legally obtained US baserom to enable the complete build."
+              echo "The asset-free Horizon portability job still ran and must pass."
             } >> "$GITHUB_STEP_SUMMARY"
           fi
 
