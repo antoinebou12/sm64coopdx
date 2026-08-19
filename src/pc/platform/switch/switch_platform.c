@@ -7,6 +7,19 @@
 
 static AppletHookCookie sAppletHookCookie;
 static SwitchPlatformState *sState = NULL;
+static SwitchPlatformExitFn sExitCallback = NULL;
+
+typedef struct SwitchMainThreadContext {
+    SwitchPlatformMainFn entry;
+    int argc;
+    char **argv;
+    int result;
+} SwitchMainThreadContext;
+
+static void switch_platform_main_thread_entry(void *arg) {
+    SwitchMainThreadContext *context = (SwitchMainThreadContext *)arg;
+    context->result = context->entry(context->argc, context->argv);
+}
 
 static void switch_platform_refresh_state(SwitchPlatformState *state) {
     if (state == NULL) {
@@ -38,6 +51,9 @@ static void switch_platform_applet_hook(AppletHookType hook, void *param) {
         case AppletHookType_OnExitRequest:
             state->last_event = SWITCH_LIFECYCLE_EXIT_REQUESTED;
             state->exit_requested = true;
+            if (sExitCallback != NULL) {
+                sExitCallback();
+            }
             break;
         case AppletHookType_OnResume:
             state->last_event = SWITCH_LIFECYCLE_RESUMED;
@@ -47,6 +63,47 @@ static void switch_platform_applet_hook(AppletHookType hook, void *param) {
         default:
             break;
     }
+}
+
+int switch_platform_run_main_on_game_thread(SwitchPlatformMainFn entry, int argc, char **argv) {
+    if (entry == NULL) {
+        return -1;
+    }
+
+    SwitchMainThreadContext context = {
+        .entry = entry,
+        .argc = argc,
+        .argv = argv,
+        .result = -1,
+    };
+
+    Thread thread;
+    Result rc = threadCreate(
+        &thread,
+        switch_platform_main_thread_entry,
+        &context,
+        NULL,
+        SWITCH_PLATFORM_GAME_STACK_SIZE,
+        0x2C,
+        -2
+    );
+    if (R_FAILED(rc)) {
+        return -1;
+    }
+
+    rc = threadStart(&thread);
+    if (R_FAILED(rc)) {
+        threadClose(&thread);
+        return -1;
+    }
+
+    threadWaitForExit(&thread);
+    threadClose(&thread);
+    return context.result;
+}
+
+void switch_platform_set_exit_callback(SwitchPlatformExitFn callback) {
+    sExitCallback = callback;
 }
 
 bool switch_platform_init(SwitchPlatformState *state) {
@@ -78,6 +135,7 @@ void switch_platform_shutdown(SwitchPlatformState *state) {
     appletUnhook(&sAppletHookCookie);
     state->initialized = false;
     sState = NULL;
+    sExitCallback = NULL;
 }
 
 bool switch_platform_main_loop(SwitchPlatformState *state) {

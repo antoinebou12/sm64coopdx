@@ -1016,7 +1016,6 @@
 --- @field public showStarNumber integer
 --- @field public extendedPauseDisplay integer
 --- @field public pauseExitAnywhere integer
---- @field public disableShadows integer
 --- @field public pauseExitMode PauseExitMode
 --- @field public disableActs integer
 --- @field public bubbleOnDeathBarrierInCapStages integer
@@ -1182,11 +1181,15 @@
 --- @field public incompatible string
 --- @field public category string
 --- @field public description string
+--- @field public id string
 --- @field public relativePath string
 --- @field public basePath string
+--- @field public relativeEntryPath string
 --- @field public index integer
 --- @field public fileCount integer
 --- @field public fileCapacity integer
+--- @field public hasManifest boolean
+--- @field public isCustomEntryFile boolean
 --- @field public isDirectory boolean
 --- @field public enabled boolean
 --- @field public selectable boolean
