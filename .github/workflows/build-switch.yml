@@ -3,8 +3,8 @@ name: Switch bootstrap
 on:
   push:
     branches:
-      - switch-next
-      - 'agent/switch-**'
+      - main
+      - 'agent/main-upstream-prs-switch'
     paths:
       - Makefile.switch
       - tools/switch/**
@@ -12,7 +12,7 @@ on:
       - .github/workflows/build-switch.yml
   pull_request:
     branches:
-      - switch-next
+      - main
     paths:
       - Makefile.switch
       - tools/switch/**
@@ -40,7 +40,9 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Report toolchain
         shell: bash
@@ -69,7 +71,7 @@ jobs:
         run: |
           set -euo pipefail
           make -f Makefile.switch clean
-          make -f Makefile.switch smoke
+          make -f Makefile.switch -j2 smoke
 
       - name: Validate outputs
         shell: bash
@@ -82,11 +84,10 @@ jobs:
           test -s "${prefix}.nacp"
           test "$(dd if="${prefix}.nro" bs=1 skip=16 count=4 2>/dev/null)" = "NRO0"
           aarch64-none-elf-readelf -h "${prefix}.elf" | tee build/switch-smoke/ELF_HEADER.txt
-          sha256sum "${prefix}.nro" "${prefix}.elf" "${prefix}.map" "${prefix}.nacp" \
-            | tee build/switch-smoke/SHA256SUMS.txt
+          sha256sum "${prefix}.nro" "${prefix}.elf" "${prefix}.map" "${prefix}.nacp" | tee build/switch-smoke/SHA256SUMS.txt
 
       - name: Upload bootstrap artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: switch-toolchain-smoke-${{ github.sha }}
           if-no-files-found: error
