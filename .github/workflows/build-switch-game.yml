@@ -201,24 +201,25 @@ jobs:
           aarch64-none-elf-size "${prefix}.elf" | tee build/switch-ci/SIZE.txt
           sha256sum "${prefix}.nro" "${prefix}.elf" "${prefix}.map" "${prefix}.nacp" | tee build/switch-ci/SHA256SUMS.txt
           cp build/switch-deps/lua/lib/SHA256SUMS.txt build/switch-ci/LUA_SHA256SUMS.txt
+          {
+            echo "### Full Switch NRO build passed"
+            echo "The baserom-backed NRO was built and validated on this runner."
+            echo "Only metadata and hashes are retained as CI artifacts."
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Remove private baserom
         if: always() && steps.baserom.outputs.available == 'true'
         shell: bash
         run: rm -f baserom.us.z64
 
-      - name: Upload full Switch build
+      - name: Upload full-build diagnostics
         if: steps.baserom.outputs.available == 'true'
         uses: actions/upload-artifact@v7
         with:
-          name: sm64coopdx-switch-${{ github.sha }}
+          name: sm64coopdx-switch-build-diagnostics-${{ github.sha }}
           if-no-files-found: error
           retention-days: 14
           path: |
-            build/us_switch/sm64coopdx.nro
-            build/us_switch/sm64coopdx.elf
-            build/us_switch/sm64coopdx.map
-            build/us_switch/sm64coopdx.nacp
             build/switch-ci/ELF_HEADER.txt
             build/switch-ci/SIZE.txt
             build/switch-ci/SHA256SUMS.txt
