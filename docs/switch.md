@@ -27,10 +27,14 @@ Output is written below `build/us_switch/`.
 
 ## CI
 
-`.github/workflows/build-switch-game.yml` has two gates.
+`.github/workflows/build-switch-game.yml` is the authoritative Switch CI workflow. Every push to `main` runs the asset-free Horizon portability gate, so Switch regressions cannot be hidden by path filtering on the main branch. Pull requests to `main` run the same portability gate when Switch-relevant build, source, tool or workflow files change.
+
+The workflow has two gates:
 
 1. **Horizon portability gates**, always run without a ROM. They build real libnx NRO probes for the SDL2/GLES2/curl/zlib stack and platform/native-input layer, generate the Switch source overlays, and validate Switch-specific source invariants.
-2. **Full Horizon game NRO**, runs on pushes/manual dispatches only when repository secret `SM64_BASEROM_US_URL` is configured. The secret must be a private HTTPS URL for the owner's legally obtained US baserom. CI verifies its SHA-1, builds and validates the full NRO, removes the ROM, and retains only build metadata/hashes rather than the baserom-backed binaries.
+2. **Full Horizon game NRO**, runs on `main` pushes or manual dispatches when repository secret `SM64_BASEROM_US_URL` is configured. The secret must be a private HTTPS URL for the owner's legally obtained US baserom. CI verifies its SHA-1, builds and validates the full NRO, removes the ROM, and retains only build metadata/hashes rather than the baserom-backed binaries.
+
+The old standalone bootstrap, platform-probe and portlibs-probe workflows were consolidated into this workflow to avoid duplicate jobs and conflicting status names.
 
 ## Hardware validation checklist
 
