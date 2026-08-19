@@ -172,11 +172,14 @@ static void ldn_udp_close(void) {
 }
 
 bool ldn_initialize_impl(bool isServer) {
-    if (sLdnInitialized && sLdnConnected) { return true; }
+    // A CoopDX-level reconnect/rehost deliberately preserves the physical LDN
+    // association and UDP socket. In that case there is nothing to recreate.
+    if (sLdnInitialized && sLdnConnected && sIsServer == isServer) { return true; }
     sIsServer = isServer;
 
     if (sLdnInitialized && ((isServer && sLdnStationOpen) || (!isServer && sLdnAccessPointOpen))) {
         ldn_shutdown_impl();
+        sIsServer = isServer;
     }
 
     if (!sLdnInitialized) {
@@ -292,7 +295,7 @@ int ldn_send_impl(unsigned char localIndex, void* address, unsigned char* data, 
     to.sin_addr = dest;
 
     ssize_t sent = sendto(sUdpSocket, data, dataLength, 0, (struct sockaddr*)&to, sizeof(to));
-    if (sent < 0) {
+    if (sent < 0 || sent != dataLength) {
         sSendFailCount++;
         return -1;
     }
@@ -322,14 +325,33 @@ void ldn_clear_id_impl(unsigned char localIndex) {
     sLdnAddr[localIndex].s_addr = 0;
 }
 
+void ldn_prepare_reconnect_impl(void) {
+    if (!sLdnInitialized || !sLdnConnected || sUdpSocket < 0) { return; }
+
+    // CoopDX player slots are rebuilt after a rehost/rejoin, while the local
+    // wireless association itself remains valid. Drop stale slot bindings but
+    // retain the client's host address in slot 0.
+    for (int i = 1; i < LDN_MAX_PLAYERS; i++) {
+        sLdnAddr[i].s_addr = 0;
+    }
+    if (sIsServer) {
+        sLdnAddr[0].s_addr = 0;
+    } else {
+        ldn_refresh_nodes();
+    }
+    sSendOkCount = sSendFailCount = sRecvOkCount = 0;
+    ldn_log("[LDN] preserving physical association for CoopDX reconnect");
+}
+
 void ldn_shutdown_impl(void) {
     ldn_udp_close();
     if (!sLdnInitialized) { return; }
 
-    if (sLdnConnected) {
+    if (sLdnConnected && !sIsServer) {
         ldnDisconnect();
-        sLdnConnected = false;
     }
+    sLdnConnected = false;
+
     if (sLdnStationOpen) {
         ldnCloseStation();
         sLdnStationOpen = false;
@@ -342,6 +364,7 @@ void ldn_shutdown_impl(void) {
     ldnExit();
     sLdnInitialized = false;
     sLdnNetworkCount = 0;
+    sConnectedCount = 0;
 }
 
 bool ldn_connect_to_index(int index) {
@@ -388,7 +411,9 @@ bool ldn_connect_to_index(int index) {
     if (!connected) { return false; }
 
     sLdnConnected = true;
-    sLdnStationOpen = false;
+    // ldnDisconnect returns StationConnected to Station, so keep track of the
+    // station being open and close it explicitly during final shutdown.
+    sLdnStationOpen = true;
     if (!ldn_udp_open()) {
         ldn_shutdown_impl();
         return false;
