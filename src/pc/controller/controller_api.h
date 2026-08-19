@@ -20,7 +20,7 @@
 #include <ultra64.h>
 
 struct ControllerAPI {
-   const u32 vkbase;                            // base number in the virtual keyspace (e.g. keyboard is 0x0000-0x1000)
+    const u32 vkbase;                            // base number in the virtual keyspace (e.g. keyboard is 0x0000-0x1000)
     void (*init)(void);                         // call once, also calls reconfig()
     void (*read)(OSContPad *pad);               // read controller and update N64 pad values
     u32  (*rawkey)(void);                       // returns last pressed virtual key or VK_INVALID if none
@@ -37,6 +37,16 @@ void controller_reconfigure(void);
 // rumbles all controllers with rumble support
 void controller_rumble_play(float str, float time);
 void controller_rumble_stop(void);
+
+/*
+ * Local-player input extension. Existing desktop backends remain compatible:
+ * slot 0 is the normal legacy controller, while Switch can expose up to four
+ * independent native Npad slots for split-screen.
+ */
+void controller_read_local_pads(OSContPad *pads, u8 maxPads);
+u8 controller_local_connected_count(void);
+void controller_rumble_local(u8 slot, float str, float time);
+void controller_rumble_local_stop(u8 slot);
 
 // calls the shutdown() function of all controller subsystems
 void controller_shutdown(void);
