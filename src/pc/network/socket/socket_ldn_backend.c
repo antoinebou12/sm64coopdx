@@ -45,6 +45,8 @@ static int sUdpSocket = -1;
 
 static LdnNetworkInfo sNetworks[SM64COOPDX_LDN_MAX_NETWORKS];
 static int sNetworkCount = 0;
+static LdnMacAddress sLastNetworkBssid;
+static bool sLastNetworkValid = false;
 static struct in_addr sPeerAddress[LDN_MAX_PLAYERS];
 static struct in_addr sOwnAddress;
 static uint64_t sLastRefreshTick = 0;
@@ -88,6 +90,16 @@ static void make_user_config(LdnUserConfig *user) {
 
 static void clear_peer_addresses(void) {
     memset(sPeerAddress, 0, sizeof(sPeerAddress));
+}
+
+static int find_network_by_bssid(const LdnMacAddress *bssid) {
+    if (bssid == NULL) return -1;
+    for (int i = 0; i < sNetworkCount; i++) {
+        if (memcmp(sNetworks[i].common.bssid.addr, bssid->addr, sizeof(bssid->addr)) == 0) {
+            return i;
+        }
+    }
+    return -1;
 }
 
 static bool refresh_nodes(void) {
@@ -189,12 +201,29 @@ static bool initialize_ldn_service(void) {
 
     sInitialized = true;
 
-    /*
-     * HighSpeed is available to ldn:u on Horizon 19.0.0+. Ignore failure so
-     * the same binary remains compatible with older supported firmware.
-     */
+    /* HighSpeed is supported by ldn:u on newer Horizon. Failure is harmless. */
     (void)ldnSetOperationMode(LdnOperationMode_HighSpeed);
     return true;
+}
+
+static bool ensure_station_open(void) {
+    if (!initialize_ldn_service()) return false;
+
+    LdnState state = LdnState_None;
+    if (R_FAILED(ldnGetState(&state))) return false;
+    if (state == LdnState_Initialized) {
+        if (R_FAILED(ldnOpenStation())) return false;
+        sStationOpen = true;
+        return true;
+    }
+    if (state == LdnState_Station) {
+        sStationOpen = true;
+        return true;
+    }
+    if (state == LdnState_StationConnected) {
+        return connection_state_is_valid();
+    }
+    return false;
 }
 
 bool ldn_backend_initialize(bool is_server) {
@@ -244,13 +273,7 @@ bool ldn_backend_initialize(bool is_server) {
             return false;
         }
     } else if (!sStationOpen && !sConnected) {
-        LdnState state = LdnState_None;
-        if (R_SUCCEEDED(ldnGetState(&state)) && state == LdnState_Station) {
-            sStationOpen = true;
-        } else {
-            if (R_FAILED(ldnOpenStation())) return false;
-            sStationOpen = true;
-        }
+        if (!ensure_station_open()) return false;
     }
 
     return true;
@@ -354,18 +377,7 @@ void ldn_backend_clear_id(uint8_t local_index) {
 
 bool ldn_backend_refresh_scan(void) {
     if (sConnected && connection_state_is_valid()) return true;
-    if (!initialize_ldn_service()) return false;
-
-    LdnState state = LdnState_None;
-    if (R_FAILED(ldnGetState(&state))) return false;
-    if (state == LdnState_Initialized) {
-        if (R_FAILED(ldnOpenStation())) return false;
-        sStationOpen = true;
-    } else if (state == LdnState_Station) {
-        sStationOpen = true;
-    } else if (state != LdnState_StationConnected) {
-        return false;
-    }
+    if (!ensure_station_open()) return false;
 
     LdnScanFilter filter;
     memset(&filter, 0, sizeof(filter));
@@ -383,50 +395,55 @@ bool ldn_backend_refresh_scan(void) {
     return true;
 }
 
-bool ldn_backend_connect_to_index(int index) {
-    if (index < 0 || index >= sNetworkCount) return false;
-    if (!initialize_ldn_service()) return false;
-
-    LdnState state = LdnState_None;
-    if (R_FAILED(ldnGetState(&state))) return false;
-    if (state == LdnState_Initialized) {
-        if (R_FAILED(ldnOpenStation())) return false;
-        sStationOpen = true;
-    } else if (state == LdnState_Station) {
-        sStationOpen = true;
-    } else if (state == LdnState_StationConnected && connection_state_is_valid()) {
-        return true;
-    }
+static bool connect_to_bssid(const LdnMacAddress *bssid) {
+    if (bssid == NULL) return false;
+    if (!ensure_station_open()) return false;
 
     LdnSecurityConfig security;
     LdnUserConfig user;
     make_security_config(&security);
     make_user_config(&user);
 
-    bool connected = false;
     for (int attempt = 0; attempt < 10; attempt++) {
-        if (index >= sNetworkCount) break;
-        const Result rc = ldnConnect(&security, &user, 0, 0, &sNetworks[index]);
-        if (R_SUCCEEDED(rc)) {
-            connected = true;
-            break;
+        if (!ldn_backend_refresh_scan()) return false;
+        const int index = find_network_by_bssid(bssid);
+        if (index >= 0) {
+            const Result rc = ldnConnect(&security, &user, 0, 0, &sNetworks[index]);
+            if (R_SUCCEEDED(rc)) {
+                sConnected = true;
+                sStationOpen = false;
+                sLastNetworkBssid = sNetworks[index].common.bssid;
+                sLastNetworkValid = true;
+                if (!udp_open()) {
+                    ldn_backend_shutdown();
+                    return false;
+                }
+                return true;
+            }
         }
 
-        /* Short first retry, then back off to reduce association thrash. */
+        /* Short first retry, then bounded exponential backoff. */
         uint64_t delay_ns = 150000000ULL << (attempt < 3 ? attempt : 3);
         if (delay_ns > 1200000000ULL) delay_ns = 1200000000ULL;
         svcSleepThread(delay_ns);
-        if (!ldn_backend_refresh_scan()) break;
     }
-    if (!connected) return false;
+    return false;
+}
 
-    sConnected = true;
-    sStationOpen = false;
-    if (!udp_open()) {
-        ldn_backend_shutdown();
-        return false;
-    }
-    return true;
+bool ldn_backend_connect_to_index(int index) {
+    if (index < 0 || index >= sNetworkCount) return false;
+    const LdnMacAddress target = sNetworks[index].common.bssid;
+    return connect_to_bssid(&target);
+}
+
+bool ldn_backend_reconnect_last(void) {
+    if (!sLastNetworkValid) return false;
+    return connect_to_bssid(&sLastNetworkBssid);
+}
+
+void ldn_backend_forget_last_network(void) {
+    memset(&sLastNetworkBssid, 0, sizeof(sLastNetworkBssid));
+    sLastNetworkValid = false;
 }
 
 int ldn_backend_network_count(void) {
