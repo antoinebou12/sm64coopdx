@@ -1,0 +1,71 @@
+# Nintendo Switch SDL2/GLES2/curl/zlib link probe.
+#
+# This is the second bring-up gate after Makefile.switch. It verifies the
+# libraries required by the real SM64CoopDX Switch build before game sources are
+# wired into TARGET_NX=1.
+
+ifeq ($(strip $(DEVKITPRO)),)
+$(error "Please set DEVKITPRO, for example /opt/devkitpro")
+endif
+
+LIBNX      := $(DEVKITPRO)/libnx
+DEVKITA64  := $(DEVKITPRO)/devkitA64
+PORTLIBS   := $(DEVKITPRO)/portlibs/switch
+TOOLS      := $(DEVKITPRO)/tools/bin
+CC         := $(DEVKITA64)/bin/aarch64-none-elf-gcc
+ELF2NRO    := $(TOOLS)/elf2nro
+NACPTOOL   := $(TOOLS)/nacptool
+SDL2_CONFIG := $(PORTLIBS)/bin/sdl2-config
+
+BUILD_DIR  := build/switch-portlibs
+TARGET     := $(BUILD_DIR)/sm64coopdx-switch-portlibs
+SOURCE     := tools/switch/portlibs_probe.c
+OBJECT     := $(TARGET).o
+ELF        := $(TARGET).elf
+NACP       := $(TARGET).nacp
+NRO        := $(TARGET).nro
+
+ARCH       := -march=armv8-a+crc+crypto -mtune=cortex-a57 -mtp=soft -fPIE
+CFLAGS     := -std=gnu11 -O2 -g -Wall -Wextra -ffunction-sections -fdata-sections \
+              $(ARCH) -D__SWITCH__ -I$(LIBNX)/include -I$(PORTLIBS)/include \
+              $(shell $(SDL2_CONFIG) --cflags 2>/dev/null)
+LDFLAGS    := -specs=$(LIBNX)/switch.specs -g $(ARCH) -Wl,--gc-sections \
+              -Wl,-Map,$(TARGET).map -L$(LIBNX)/lib -L$(PORTLIBS)/lib
+LIBS       := $(shell $(SDL2_CONFIG) --libs 2>/dev/null) \
+              -lcurl -lz -lGLESv2 -lEGL -lglapi -ldrm_nouveau -lnx -lm
+
+.PHONY: all probe toolchain-check clean
+
+all: probe
+
+probe: toolchain-check $(NRO)
+	@echo "Built $(NRO)"
+
+toolchain-check:
+	@test -x "$(CC)" || (echo "Missing devkitA64 compiler: $(CC)" && exit 1)
+	@test -f "$(LIBNX)/switch.specs" || (echo "Missing libnx switch.specs" && exit 1)
+	@test -x "$(SDL2_CONFIG)" || (echo "Missing switch SDL2: $(SDL2_CONFIG)" && exit 1)
+	@test -f "$(PORTLIBS)/include/curl/curl.h" || (echo "Missing switch-curl headers" && exit 1)
+	@test -f "$(PORTLIBS)/include/zlib.h" || (echo "Missing switch-zlib headers" && exit 1)
+	@test -f "$(PORTLIBS)/include/EGL/egl.h" || (echo "Missing switch-mesa EGL headers" && exit 1)
+	@test -f "$(PORTLIBS)/include/GLES2/gl2.h" || (echo "Missing switch-mesa GLES2 headers" && exit 1)
+	@test -x "$(ELF2NRO)" || (echo "Missing elf2nro: $(ELF2NRO)" && exit 1)
+	@test -x "$(NACPTOOL)" || (echo "Missing nacptool: $(NACPTOOL)" && exit 1)
+
+$(BUILD_DIR):
+	@mkdir -p $@
+
+$(OBJECT): $(SOURCE) | $(BUILD_DIR)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(ELF): $(OBJECT)
+	$(CC) $(LDFLAGS) $< $(LIBS) -o $@
+
+$(NACP): | $(BUILD_DIR)
+	$(NACPTOOL) --create "SM64CoopDX Portlibs Probe" "SM64CoopDX contributors" "0.0.1" $@
+
+$(NRO): $(ELF) $(NACP)
+	$(ELF2NRO) $(ELF) $@ --nacp=$(NACP)
+
+clean:
+	rm -rf $(BUILD_DIR)
