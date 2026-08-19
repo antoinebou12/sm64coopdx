@@ -51,6 +51,7 @@ pc_main_overlay = text(OVERLAYS / "pc_main.c")
 platform_overlay = text(OVERLAYS / "platform.c")
 bind_overlay = text(OVERLAYS / "controller_bind_mapping.c")
 controls_overlay = text(OVERLAYS / "djui_panel_controls.c")
+loading_overlay = text(OVERLAYS / "loading.c")
 
 # Startup crash prevention.
 require(
@@ -78,6 +79,18 @@ require(
     "std::error_code" in rom_checker
     and "fs::directory_iterator it(directory, ec)" in rom_checker
     and "it.increment(ec)" in rom_checker,
+)
+require(
+    "missing-ROM screen gives actionable Switch SD path",
+    "baserom.us.z64" in loading_overlay
+    and "sdmc:/switch/sm64coopdx" in loading_overlay
+    and "drag & drop" not in loading_overlay,
+)
+require(
+    "missing-ROM Switch overlay is part of the build graph",
+    "SWITCH_LOADING_SOURCE" in makefile
+    and "source_overlay.py loading" in makefile
+    and "$(BUILD_DIR)/src/pc/loading.o: $(SWITCH_LOADING_SOURCE)" in makefile,
 )
 
 # SDL boundary and renderer safety.
