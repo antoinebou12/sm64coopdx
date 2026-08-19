@@ -62,6 +62,13 @@ static void djui_panel_ldn_host(UNUSED struct DjuiBase* caller) {
     // network overlay teaches network_set_system() how to resolve NS_LDN.
     network_reset_reconnect_and_rehost();
     configNetworkSystem = NS_LDN;
+
+    // djui_panel_do_host() tears the menu down before it calls network_init(),
+    // so this panel's on_destroy runs first. Hand the association over to the
+    // host lifecycle instead of letting the teardown close it, and release the
+    // busy latch here because this function does not return to the panel.
+    sKeepLdnAlive = true;
+    sBusy = false;
     djui_panel_do_host(false, true);
 }
 
