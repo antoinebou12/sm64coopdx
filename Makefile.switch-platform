@@ -1,4 +1,4 @@
-# Nintendo Switch platform-lifecycle probe.
+# Nintendo Switch platform, lifecycle, and native-input probe.
 
 ifeq ($(strip $(DEVKITPRO)),)
 $(error "Please set DEVKITPRO, for example /opt/devkitpro")
@@ -13,7 +13,10 @@ NACPTOOL   := $(TOOLS)/nacptool
 
 BUILD_DIR  := build/switch-platform
 TARGET     := $(BUILD_DIR)/sm64coopdx-switch-platform
-SOURCES    := tools/switch/platform_probe.c src/pc/platform/switch/switch_platform.c
+SOURCES    := tools/switch/platform_probe.c \
+              src/pc/platform/switch/switch_platform.c \
+              src/pc/platform/switch/switch_input.c \
+              src/pc/controller/controller_switch.c
 OBJECTS    := $(patsubst %.c,$(BUILD_DIR)/%.o,$(SOURCES))
 ELF        := $(TARGET).elf
 NACP       := $(TARGET).nacp
@@ -21,7 +24,7 @@ NRO        := $(TARGET).nro
 
 ARCH       := -march=armv8-a+crc+crypto -mtune=cortex-a57 -mtp=soft -fPIE
 CFLAGS     := -std=gnu11 -O2 -g -Wall -Wextra -ffunction-sections -fdata-sections \
-              $(ARCH) -D__SWITCH__ -I$(LIBNX)/include -Isrc
+              $(ARCH) -D__SWITCH__ -I$(LIBNX)/include -I. -Iinclude -Isrc -Ilib/src
 LDFLAGS    := -specs=$(LIBNX)/switch.specs -g $(ARCH) -Wl,--gc-sections \
               -Wl,-Map,$(TARGET).map -L$(LIBNX)/lib
 LIBS       := -lnx -lm
@@ -49,7 +52,7 @@ $(ELF): $(OBJECTS)
 
 $(NACP):
 	@mkdir -p $(dir $@)
-	$(NACPTOOL) --create "SM64CoopDX Platform Probe" "SM64CoopDX contributors" "0.0.1" $@
+	$(NACPTOOL) --create "SM64CoopDX Platform Probe" "SM64CoopDX contributors" "0.0.2" $@
 
 $(NRO): $(ELF) $(NACP)
 	$(ELF2NRO) $(ELF) $@ --nacp=$(NACP)
