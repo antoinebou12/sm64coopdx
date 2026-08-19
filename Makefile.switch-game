@@ -1,0 +1,155 @@
+# Full Nintendo Switch build layered on the current CoopDX Makefile.
+# Desktop remains SDL3; Horizon explicitly forces devkitPro SDL2/GLES2.
+
+ifeq ($(strip $(DEVKITPRO)),)
+$(error "Please set DEVKITPRO, for example /opt/devkitpro")
+endif
+
+VERSION ?= us
+
+LIBNX       := $(DEVKITPRO)/libnx
+DEVKITA64   := $(DEVKITPRO)/devkitA64
+PORTLIBS    := $(DEVKITPRO)/portlibs/switch
+DKP_TOOLS   := $(DEVKITPRO)/tools/bin
+SDL2_CONFIG := $(PORTLIBS)/bin/sdl2-config
+SWITCH_CROSS := $(DEVKITA64)/bin/aarch64-none-elf-
+SWITCH_ARCH  := -march=armv8-a+crc+crypto -mtune=cortex-a57 -mtp=soft -ftls-model=local-exec
+
+# Stop host detection and desktop SDKs from altering the Switch graph.
+override HOST_OS := Switch
+override WINDOWS_BUILD := 0
+override WINDOWS_AUTO_BUILDER := 0
+override OSX_BUILD := 0
+override TARGET_RPI := 0
+override TARGET_RK3588 := 0
+override TARGET_BITS := 0
+override TARGET_ARCH := armv8-a
+override CROSS := $(SWITCH_CROSS)
+override DISCORD_SDK := 0
+override COOPNET := 0
+override UPDATER := 0
+override USE_APP := 0
+override ICON := 0
+override HANDHELD := 1
+
+override BUILD_DIR_BASE := build
+override BUILD_DIR := build/$(VERSION)_switch
+override EXE := $(BUILD_DIR)/sm64coopdx.elf
+override ELF := $(EXE)
+
+# Current upstream sources plus the isolated Horizon platform layer.
+override SRC_DIRS := \
+    src src/engine src/game src/audio src/menu src/buffers actors levels bin data assets asm lib sound \
+    src/pc src/pc/gfx src/pc/audio src/pc/controller src/pc/fs src/pc/fs/packtypes src/pc/mods src/pc/dev \
+    src/pc/network src/pc/network/packets src/pc/network/socket \
+    src/pc/utils src/pc/utils/miniz src/pc/djui src/pc/lua src/pc/lua/utils src/pc/os \
+    src/pc/platform/switch
+
+SWITCH_LEVEL_DIRS := $(patsubst levels/%,%,$(dir $(wildcard levels/*/header.h)))
+SWITCH_LEVEL_C_FILES := $(wildcard levels/*/leveldata.c) $(wildcard levels/*/script.c) $(wildcard levels/*/geo.c)
+SWITCH_EXCLUDE_C := \
+    src/game/main.c \
+    src/pc/audio/audio_sdl.c \
+    src/pc/controller/controller_sdl.c \
+    src/pc/controller/controller_mouse.c \
+    src/pc/gfx/gfx_window_manager.c
+SWITCH_EXCLUDE_CPP := \
+    src/pc/gfx/gfx_direct3d11.cpp \
+    src/pc/gfx/gfx_direct3d_common.cpp \
+    src/pc/gfx/gfx_dxgi.cpp \
+    src/pc/gfx/gfx_window_dxgi.cpp
+
+override C_FILES := $(filter-out $(SWITCH_EXCLUDE_C),$(foreach dir,$(SRC_DIRS),$(wildcard $(dir)/*.c)) $(SWITCH_LEVEL_C_FILES))
+override CPP_FILES := $(filter-out $(SWITCH_EXCLUDE_CPP),$(foreach dir,$(SRC_DIRS),$(wildcard $(dir)/*.cpp)))
+override S_FILES := $(foreach dir,$(SRC_DIRS),$(wildcard $(dir)/*.s))
+
+# `override` is intentional: Makefile.sdl3's normal backend assignments are
+# ignored for this wrapper, while all other current upstream build rules remain.
+override OPT_FLAGS := -O2 -g $(SWITCH_ARCH) -fPIE -ffunction-sections -fdata-sections
+override EXTRA_CFLAGS := -D__SWITCH__ -D__CONSOLE__ -DUSE_GLES=1 -DEGL_NO_X11 -D_GNU_SOURCE \
+    -I$(LIBNX)/include -I$(PORTLIBS)/include \
+    -Wno-format-security -Wno-trigraphs -Wno-missing-braces -Wno-missing-field-initializers \
+    -Wno-unused-result -Wno-format-truncation
+override EXTRA_CPP_FLAGS := -std=gnu++17 $(SWITCH_ARCH) -fPIE
+
+override BACKEND_CFLAGS := -DHAVE_SDL2=1 -D_REENTRANT -I$(PORTLIBS)/include $(shell $(SDL2_CONFIG) --cflags 2>/dev/null)
+override BACKEND_LDFLAGS := $(shell $(SDL2_CONFIG) --libs 2>/dev/null)
+override LDFLAGS := -specs=$(LIBNX)/switch.specs $(SWITCH_ARCH) -fPIE \
+    -Wl,--gc-sections -Wl,-Map,$(BUILD_DIR)/sm64coopdx.map \
+    -L$(LIBNX)/lib -L$(PORTLIBS)/lib -Lbuild/switch-deps/lua/lib \
+    $(BACKEND_LDFLAGS) -l:liblua53.a -lcurl -lz -lGLESv2 -lEGL -lglapi -ldrm_nouveau -lnx -lm -pthread
+
+include Makefile
+
+SWITCH_NACPTOOL := $(DKP_TOOLS)/nacptool
+SWITCH_ELF2NRO  := $(DKP_TOOLS)/elf2nro
+SWITCH_NACP     := $(BUILD_DIR)/sm64coopdx.nacp
+SWITCH_NRO      := $(BUILD_DIR)/sm64coopdx.nro
+SWITCH_VERSION  ?= 1.5.1-switch
+SWITCH_OVERLAY_DIR := $(BUILD_DIR)/switch-overlay
+
+SWITCH_PC_MAIN_SOURCE := $(SWITCH_OVERLAY_DIR)/src/pc/pc_main.c
+SWITCH_PLATFORM_SOURCE := $(SWITCH_OVERLAY_DIR)/src/pc/platform.c
+SWITCH_BIND_SOURCE := $(SWITCH_OVERLAY_DIR)/src/pc/controller/controller_bind_mapping.c
+SWITCH_CONTROLS_SOURCE := $(SWITCH_OVERLAY_DIR)/src/pc/djui/djui_panel_controls.c
+SWITCH_OVERLAY_SOURCES := $(SWITCH_PC_MAIN_SOURCE) $(SWITCH_PLATFORM_SOURCE) $(SWITCH_BIND_SOURCE) $(SWITCH_CONTROLS_SOURCE)
+
+.PHONY: switch-toolchain-check switch-deps switch-overlays switch-game switch-nro
+
+switch-toolchain-check:
+	@test -x "$(CC)" || (echo "Missing devkitA64 compiler: $(CC)" && exit 1)
+	@test -x "$(CXX)" || (echo "Missing devkitA64 C++ compiler: $(CXX)" && exit 1)
+	@test -f "$(LIBNX)/switch.specs" || (echo "Missing libnx switch.specs" && exit 1)
+	@test -x "$(SDL2_CONFIG)" || (echo "Missing switch-sdl2" && exit 1)
+	@test -f "$(PORTLIBS)/include/curl/curl.h" || (echo "Missing switch-curl" && exit 1)
+	@test -f "$(PORTLIBS)/include/GLES2/gl2.h" || (echo "Missing switch-mesa GLES2" && exit 1)
+	@test -x "$(SWITCH_NACPTOOL)" || (echo "Missing nacptool" && exit 1)
+	@test -x "$(SWITCH_ELF2NRO)" || (echo "Missing elf2nro" && exit 1)
+
+switch-deps: switch-toolchain-check
+	bash tools/switch/build-lua53.sh
+
+$(SWITCH_PC_MAIN_SOURCE): src/pc/pc_main.c tools/switch/source_overlay.py
+	$(PYTHON) tools/switch/source_overlay.py pc_main $< $@
+
+$(SWITCH_PLATFORM_SOURCE): src/pc/platform.c tools/switch/source_overlay.py
+	$(PYTHON) tools/switch/source_overlay.py platform $< $@
+
+$(SWITCH_BIND_SOURCE): src/pc/controller/controller_bind_mapping.c tools/switch/source_overlay.py
+	$(PYTHON) tools/switch/source_overlay.py controller_bind $< $@
+
+$(SWITCH_CONTROLS_SOURCE): src/pc/djui/djui_panel_controls.c tools/switch/source_overlay.py
+	$(PYTHON) tools/switch/source_overlay.py djui_controls $< $@
+
+switch-overlays: $(SWITCH_OVERLAY_SOURCES)
+
+$(BUILD_DIR)/src/pc/pc_main.o: $(SWITCH_PC_MAIN_SOURCE)
+	@mkdir -p $(dir $@)
+	$(CC) -MMD -MP -MF $(@:.o=.d) $(CFLAGS) -c $< -o $@
+
+$(BUILD_DIR)/src/pc/platform.o: $(SWITCH_PLATFORM_SOURCE)
+	@mkdir -p $(dir $@)
+	$(CC) -MMD -MP -MF $(@:.o=.d) $(CFLAGS) -c $< -o $@
+
+$(BUILD_DIR)/src/pc/controller/controller_bind_mapping.o: $(SWITCH_BIND_SOURCE)
+	@mkdir -p $(dir $@)
+	$(CC) -MMD -MP -MF $(@:.o=.d) $(CFLAGS) -c $< -o $@
+
+$(BUILD_DIR)/src/pc/djui/djui_panel_controls.o: $(SWITCH_CONTROLS_SOURCE)
+	@mkdir -p $(dir $@)
+	$(CC) -MMD -MP -MF $(@:.o=.d) $(CFLAGS) -c $< -o $@
+
+$(EXE): switch-deps switch-overlays
+
+switch-game: $(EXE)
+	@echo "Built Switch ELF: $(EXE)"
+
+$(SWITCH_NACP):
+	@mkdir -p $(dir $@)
+	$(SWITCH_NACPTOOL) --create "SM64CoopDX" "SM64CoopDX contributors" "$(SWITCH_VERSION)" $@
+
+$(SWITCH_NRO): $(EXE) $(SWITCH_NACP)
+	$(SWITCH_ELF2NRO) $(EXE) $@ --nacp=$(SWITCH_NACP)
+
+switch-nro: $(SWITCH_NRO)
+	@echo "Built Switch NRO: $(SWITCH_NRO)"
