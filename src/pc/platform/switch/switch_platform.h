@@ -18,6 +18,7 @@ typedef enum SwitchLifecycleEvent {
 
 typedef struct SwitchPlatformState {
     bool initialized;
+    bool socket_initialized;
     bool exit_requested;
     bool suspended;
     bool docked;
