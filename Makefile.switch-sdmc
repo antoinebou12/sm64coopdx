@@ -31,6 +31,7 @@ switch-sdmc-layout: switch-nro
 	@mkdir -p "$(SWITCH_SDMC_APP_DIR)/logs" "$(SWITCH_SDMC_DEBUG_DIR)"
 	@cp "$(SWITCH_NRO)" "$(SWITCH_SDMC_APP_DIR)/sm64coopdx.nro"
 	@cp "$(BUILD_DIR)/sm64coopdx.map" "$(SWITCH_SDMC_DEBUG_DIR)/sm64coopdx.map"
+	@cp -r lang "$(SWITCH_SDMC_APP_DIR)/lang"
 	@if [ -f "$(SWITCH_LOCAL_BASEROM)" ]; then \
 		cp "$(SWITCH_LOCAL_BASEROM)" "$(SWITCH_SDMC_APP_DIR)/baserom.$(VERSION).z64"; \
 		echo "Copied local baserom into the SD layout. Do not upload or redistribute it."; \
