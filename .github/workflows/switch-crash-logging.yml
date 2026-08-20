@@ -52,7 +52,7 @@ jobs:
           make -f Makefile.switch-game -j2 build/us_switch/src/pc/platform/switch/switch_crash_log.o
           test -s build/us_switch/src/pc/platform/switch/switch_crash_log.o
           aarch64-none-elf-readelf -h build/us_switch/src/pc/platform/switch/switch_crash_log.o
-          aarch64-none-elf-nm build/us_switch/src/pc/platform/switch/switch_crash_log.o | grep -E '__libnx_exception_handler|userAppInit|userAppExit|__wrap_main_rom_handler|__wrap_rom_assets_load'
+          aarch64-none-elf-nm build/us_switch/src/pc/platform/switch/switch_crash_log.o | grep -E '__libnx_exception_handler|userAppInit|userAppExit|__wrap_(main_rom_handler|rom_assets_load|mods_init|audio_init|sound_init|network_player_init|thread5_game_loop)'
 
       - name: Validate SD layout target
         shell: bash
@@ -63,3 +63,4 @@ jobs:
           grep -q 'baserom.us.z64' build/sdmc-layout-dry-run.txt
           grep -q -- '--wrap=main_rom_handler' build/sdmc-layout-dry-run.txt
           grep -q -- '--wrap=rom_assets_load' build/sdmc-layout-dry-run.txt
+          grep -q -- '--wrap=thread5_game_loop' build/sdmc-layout-dry-run.txt

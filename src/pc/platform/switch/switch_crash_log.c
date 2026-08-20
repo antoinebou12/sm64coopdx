@@ -226,6 +226,11 @@ void __libnx_exception_handler(ThreadExceptionDump *ctx) {
  */
 extern bool __real_main_rom_handler(void);
 extern void __real_rom_assets_load(void);
+extern void __real_mods_init(void);
+extern void __real_audio_init(void);
+extern void __real_sound_init(void);
+extern void __real_network_player_init(void);
+extern void __real_thread5_game_loop(void *arg);
 
 bool __wrap_main_rom_handler(void) {
     switch_crash_log_checkpoint("rom validation: begin");
@@ -242,5 +247,34 @@ void __wrap_rom_assets_load(void) {
     switch_crash_log_checkpoint("rom assets: load complete");
 }
 
+void __wrap_mods_init(void) {
+    switch_crash_log_checkpoint("mods: init begin");
+    __real_mods_init();
+    switch_crash_log_checkpoint("mods: init complete");
+}
+
+void __wrap_audio_init(void) {
+    switch_crash_log_checkpoint("audio: core init begin");
+    __real_audio_init();
+    switch_crash_log_checkpoint("audio: core init complete");
+}
+
+void __wrap_sound_init(void) {
+    switch_crash_log_checkpoint("audio: sound init begin");
+    __real_sound_init();
+    switch_crash_log_checkpoint("audio: sound init complete");
+}
+
+void __wrap_network_player_init(void) {
+    switch_crash_log_checkpoint("network player: init begin");
+    __real_network_player_init();
+    switch_crash_log_checkpoint("network player: init complete");
+}
+
+void __wrap_thread5_game_loop(void *arg) {
+    switch_crash_log_checkpoint("thread5 game bootstrap: begin");
+    __real_thread5_game_loop(arg);
+    switch_crash_log_checkpoint("read5 game bootstrap: complete");
+}
 
 #endif /* __SWITCH__ */

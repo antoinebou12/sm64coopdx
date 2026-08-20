@@ -7,7 +7,14 @@ include Makefile.switch-game
 # Keep this instrumentation on the debug SD-layout build only. GNU ld redirects
 # undefined calls from pc_main.o to the wrappers in switch_crash_log.c, so the
 # normal source files remain untouched.
-override LDFLAGS += -Wl,--wrap=main_rom_handler -Wl,--wrap=rom_assets_load
+override LDFLAGS += \
+    -Wl,--wrap=main_rom_handler \
+    -Wl,--wrap=rom_assets_load \
+    -Wl,--wrap=mods_init \
+    -Wl,--wrap=audio_init \
+    -Wl,--wrap=sound_init \
+    -Wl,--wrap=network_player_init \
+    -Wl,--wrap=thread5_game_loop
 
 SWITCH_SDMC_LAYOUT := $(BUILD_DIR)/sdmc-layout
 SWITCH_SDMC_APP_DIR := $(SWITCH_SDMC_LAYOUT)/switch/sm64coopdx
@@ -23,7 +30,7 @@ switch-sdmc-layout: switch-nro
 	@cp "$(BUILD_DIR)/sm64coopdx.map" "$(SWITCH_SDMC_DEBUG_DIR)/sm64coopdx.map"
 	@if [ -f "$(SWITCH_LOCAL_BASEROM)" ]; then \
 		cp "$(SWITCH_LOCAL_BASEROM)" "$(SWITCH_SDMC_APP_DIR)/baserom.$(VERSION).z64"; \
-		echo "Copied local baserom into the Sd layout. Do not upload or redistribute it."; \
+		echo "Copied local baserom into the SD layout. Do not upload or redistribute it."; \
 	else \
 		echo "No $(SWITCH_LOCAL_BASEROM) found; SD layout created without a ROM."; \
 	fi
