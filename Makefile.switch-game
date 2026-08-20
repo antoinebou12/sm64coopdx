@@ -99,10 +99,12 @@ SWITCH_CONTROLS_SOURCE := $(SWITCH_OVERLAY_DIR)/src/pc/djui/djui_panel_controls.
 SWITCH_LOADING_SOURCE := $(SWITCH_OVERLAY_DIR)/src/pc/loading.c
 SWITCH_NETWORK_SOURCE := $(SWITCH_OVERLAY_DIR)/src/pc/network/network.c
 SWITCH_HOST_SOURCE := $(SWITCH_OVERLAY_DIR)/src/pc/djui/djui_panel_host.c
+SWITCH_ROM_ASSETS_TRACE_SOURCE := $(SWITCH_OVERLAY_DIR)/src/pc/rom_assets.c.trace
+SWITCH_ROM_ASSETS_SOURCE := $(SWITCH_OVERLAY_DIR)/src/pc/rom_assets.c
 SWITCH_OVERLAY_SOURCES := \
     $(SWITCH_PC_MAIN_SOURCE) $(SWITCH_PLATFORM_SOURCE) $(SWITCH_BIND_SOURCE) \
     $(SWITCH_CONTROLS_SOURCE) $(SWITCH_LOADING_SOURCE) $(SWITCH_NETWORK_SOURCE) \
-    $(SWITCH_HOST_SOURCE)
+    $(SWITCH_HOST_SOURCE) $(SWITCH_ROM_ASSETS_SOURCE)
 
 .PHONY: switch-toolchain-check switch-deps switch-overlays switch-game switch-nro
 
@@ -140,6 +142,14 @@ $(SWITCH_NETWORK_SOURCE): src/pc/network/network.c tools/switch/source_overlay.p
 $(SWITCH_HOST_SOURCE): src/pc/djui/djui_panel_host.c tools/switch/source_overlay.py
 	$(PYTHON) tools/switch/source_overlay.py djui_host $< $@
 
+# ROM loading is the first substantial ROM-present path on hardware. Build a
+# Switch-only copy with checked SD I/O, asset-range validation, durable trace
+# checkpoints, and a bounds-checked MIO0 decoder. Desktop sources stay intact.
+$(SWITCH_ROM_ASSETS_SOURCE): src/pc/rom_assets.c tools/switch/rom_assets_overlay.py tools/switch/rom_decompress_harden.py
+	$(PYTHON) tools/switch/rom_assets_overlay.py $< $(SWITCH_ROM_ASSETS_TRACE_SOURCE)
+	$(PYTHON) tools/switch/rom_decompress_harden.py $(SWITCH_ROM_ASSETS_TRACE_SOURCE) $@
+	@rm -f $(SWITCH_ROM_ASSETS_TRACE_SOURCE)
+
 switch-overlays: $(SWITCH_OVERLAY_SOURCES)
 
 $(BUILD_DIR)/src/pc/pc_main.o: $(SWITCH_PC_MAIN_SOURCE)
@@ -169,6 +179,10 @@ $(BUILD_DIR)/src/pc/network/network.o: $(SWITCH_NETWORK_SOURCE)
 $(BUILD_DIR)/src/pc/djui/djui_panel_host.o: $(SWITCH_HOST_SOURCE)
 	@mkdir -p $(dir $@)
 	$(CC) -MMD -MP -MF $(@:.o=.d) $(CFLAGS) -Isrc/pc/djui -c $< -o $@
+
+$(BUILD_DIR)/src/pc/rom_assets.o: $(SWITCH_ROM_ASSETS_SOURCE)
+	@mkdir -p $(dir $@)
+	$(CC) -MMD -MP -MF $(@:.o=.d) $(CFLAGS) -Isrc/pc -c $< -o $@
 
 $(EXE): switch-deps switch-overlays
 
