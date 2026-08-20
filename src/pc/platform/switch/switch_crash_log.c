@@ -274,7 +274,8 @@ void __wrap_network_player_init(void) {
 void __wrap_thread5_game_loop(void *arg) {
     switch_crash_log_checkpoint("thread5 game bootstrap: begin");
     __real_thread5_game_loop(arg);
-    switch_crash_log_checkpoint("read5 game bootstrap: complete");
+    switch_crash_log_checkpoint("thread5 game bootstrap: complete");
 }
+
 
 #endif /* __SWITCH__ */
