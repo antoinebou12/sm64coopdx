@@ -32,6 +32,10 @@
 #include "gfx_rendering_api.h"
 #include "gfx_pc.h"
 
+#ifdef __SWITCH__
+#include "pc/platform/switch/switch_crash_log.h"
+#endif
+
 #define TEX_CACHE_STEP 512
 
 struct ShaderProgram {
@@ -570,12 +574,23 @@ static struct ShaderProgram *gfx_opengl_create_and_load_new_shader(struct ColorC
     glCompileShader(vertex_shader);
     glGetShaderiv(vertex_shader, GL_COMPILE_STATUS, &success);
     if (!success) {
+        char error_log[1024];
         GLint max_length = 0;
         glGetShaderiv(vertex_shader, GL_INFO_LOG_LENGTH, &max_length);
-        char error_log[1024];
+        /* max_length is the driver-reported log size; clamp to the buffer -
+         * glGetShaderInfoLog's bufSize must never exceed error_log's size. */
+        if (max_length <= 0 || (size_t)max_length > sizeof(error_log)) {
+            max_length = sizeof(error_log);
+        }
         fprintf(stderr, "Vertex shader compilation failed\n");
         glGetShaderInfoLog(vertex_shader, max_length, &max_length, &error_log[0]);
         fprintf(stderr, "%s\n", &error_log[0]);
+#ifdef __SWITCH__
+        /* stderr is discarded on Switch (no console) - without this, the
+         * driver's actual GLSL diagnostic never leaves the device. */
+        switch_crash_log_printf("vertex shader compile failed: %s", &error_log[0]);
+        switch_crash_log_printf("vertex shader source:\n%s", vs_buf);
+#endif
         sys_fatal("vertex shader compilation failed (see terminal)");
     }
 
@@ -584,12 +599,19 @@ static struct ShaderProgram *gfx_opengl_create_and_load_new_shader(struct ColorC
     glCompileShader(fragment_shader);
     glGetShaderiv(fragment_shader, GL_COMPILE_STATUS, &success);
     if (!success) {
+        char error_log[1024];
         GLint max_length = 0;
         glGetShaderiv(fragment_shader, GL_INFO_LOG_LENGTH, &max_length);
-        char error_log[1024];
+        if (max_length <= 0 || (size_t)max_length > sizeof(error_log)) {
+            max_length = sizeof(error_log);
+        }
         fprintf(stderr, "Fragment shader compilation failed\n");
         glGetShaderInfoLog(fragment_shader, max_length, &max_length, &error_log[0]);
         fprintf(stderr, "%s\n", &error_log[0]);
+#ifdef __SWITCH__
+        switch_crash_log_printf("fragment shader compile failed: %s", &error_log[0]);
+        switch_crash_log_printf("fragment shader source:\n%s", fs_buf);
+#endif
         sys_fatal("fragment shader compilation failed (see terminal)");
     }
 
