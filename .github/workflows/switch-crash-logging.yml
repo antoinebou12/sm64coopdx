@@ -8,10 +8,12 @@ on:
     branches:
       - main
     paths:
+      - 'src/pc/rom_checker.cpp'
       - 'src/pc/platform/switch/switch_crash_log.*'
       - 'src/pc/platform/switch/switch_startup_trace.c'
       - 'src/pc/platform/switch/switch_rom_asset_trace.*'
       - 'tools/switch/rom_assets_overlay.py'
+      - 'tools/switch/rom_decompress_harden.py'
       - 'Makefile.switch-sdmc'
       - '.github/workflows/switch-crash-logging.yml'
   workflow_dispatch:
@@ -53,23 +55,32 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p build/switch-ci
-          python3 -m py_compile tools/switch/rom_assets_overlay.py
-          python3 tools/switch/rom_assets_overlay.py src/pc/rom_assets.c build/switch-ci/rom_assets.c
+          python3 -m py_compile \
+            tools/switch/rom_assets_overlay.py \
+            tools/switch/rom_decompress_harden.py
+          python3 tools/switch/rom_assets_overlay.py \
+            src/pc/rom_assets.c build/switch-ci/rom_assets.trace.c
+          python3 tools/switch/rom_decompress_harden.py \
+            build/switch-ci/rom_assets.trace.c build/switch-ci/rom_assets.c
           grep -q 'segment short read' build/switch-ci/rom_assets.c
           grep -q 'asset range rejected' build/switch-ci/rom_assets.c
           grep -q 'ROM asset path does not exist' build/switch-ci/rom_assets.c
           grep -q 'asset->cursor = asset->segmentedSize' build/switch-ci/rom_assets.c
+          grep -q 'mio0 allocation failed' build/switch-ci/rom_assets.c
+          grep -q 'invalid backref' build/switch-ci/rom_assets.c
 
-      - name: Cross-compile crash trace and hardened ROM loader
+      - name: Cross-compile fixed ROM-present path
         shell: bash
         run: |
           set -euo pipefail
           make -f Makefile.switch-sdmc -j2 \
+            build/us_switch/src/pc/rom_checker.o \
             build/us_switch/src/pc/platform/switch/switch_crash_log.o \
             build/us_switch/src/pc/platform/switch/switch_startup_trace.o \
             build/us_switch/src/pc/platform/switch/switch_rom_asset_trace.o \
             build/us_switch/src/pc/rom_assets.o
           for obj in \
+            build/us_switch/src/pc/rom_checker.o \
             build/us_switch/src/pc/platform/switch/switch_crash_log.o \
             build/us_switch/src/pc/platform/switch/switch_startup_trace.o \
             build/us_switch/src/pc/platform/switch/switch_rom_asset_trace.o \
@@ -77,6 +88,8 @@ jobs:
             test -s "$obj"
             aarch64-none-elf-readelf -h "$obj" >/dev/null
           done
+          aarch64-none-elf-nm build/us_switch/src/pc/rom_checker.o | \
+            grep -q 'main_rom_handler'
           aarch64-none-elf-nm build/us_switch/src/pc/platform/switch/switch_crash_log.o | \
             grep -E '__libnx_exception_handler|userAppInit|userAppExit|__wrap_(main_rom_handler|rom_assets_load|mods_init|audio_init|sound_init|network_player_init|thread5_game_loop)'
           aarch64-none-elf-nm build/us_switch/src/pc/platform/switch/switch_startup_trace.o | \
@@ -92,6 +105,7 @@ jobs:
           grep -q 'sm64coopdx.nro' build/sdmc-layout-dry-run.txt
           grep -q 'baserom.us.z64' build/sdmc-layout-dry-run.txt
           grep -q 'rom_assets_overlay.py' build/sdmc-layout-dry-run.txt
+          grep -q 'rom_decompress_harden.py' build/sdmc-layout-dry-run.txt
           grep -q -- '--wrap=main_rom_handler' build/sdmc-layout-dry-run.txt
           grep -q -- '--wrap=rom_assets_load' build/sdmc-layout-dry-run.txt
           grep -q -- '--wrap=thread5_game_loop' build/sdmc-layout-dry-run.txt
