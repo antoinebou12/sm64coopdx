@@ -5,8 +5,8 @@
 include Makefile.switch-game
 
 # Keep this instrumentation on the debug SD-layout build only. GNU ld redirects
-# undefined calls from pc_main.o to the wrappers in switch_crash_log.c, so the
-# normal source files remain untouched.
+# undefined calls from pc_main.o to the wrappers in the Switch crash trace, so
+# the normal source files remain untouched.
 override LDFLAGS += \
     -Wl,--wrap=main_rom_handler \
     -Wl,--wrap=rom_assets_load \
@@ -14,7 +14,10 @@ override LDFLAGS += \
     -Wl,--wrap=audio_init \
     -Wl,--wrap=sound_init \
     -Wl,--wrap=network_player_init \
-    -Wl,--wrap=thread5_game_loop
+    -Wl,--wrap=thread5_game_loop \
+    -Wl,--wrap=djui_init \
+    -Wl,--wrap=djui_unicode_init \
+    -Wl,--wrap=djui_init_late
 
 SWITCH_SDMC_LAYOUT := $(BUILD_DIR)/sdmc-layout
 SWITCH_SDMC_APP_DIR := $(SWITCH_SDMC_LAYOUT)/switch/sm64coopdx
