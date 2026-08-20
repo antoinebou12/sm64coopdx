@@ -1,0 +1,43 @@
+--- a/common/socket.cpp
++++ b/common/socket.cpp
+@@ -103,7 +103,9 @@
+ 
+ #include <sys/ioctl.h>
+ #include <net/if.h>
++#if !defined(__SWITCH__)
+ #include <ifaddrs.h>
++#endif
+ 
+ int SocketInitialize(int aAf, int aType, int aProtocol) {
+     return socket(aAf, aType, aProtocol);
+@@ -148,6 +150,22 @@
+ }
+ 
+ uint64_t SocketGetInfoBits(int aSocket) {
++#ifdef __SWITCH__
++    /*
++     * The signaling TCP socket is already connected when CoopNet asks for
++     * info bits. getsockname() therefore gives us the active Horizon IPv4
++     * address without requiring getifaddrs(), Linux ioctls, or separate NIFM
++     * service ownership. This value is only an identity ingredient; the hash
++     * below keeps the same wire shape as desktop CoopNet.
++     */
++    uint64_t info = SOCKET_DEFAULT_INFO;
++    struct sockaddr_in local = { 0 };
++    socklen_t localLen = sizeof(local);
++    if (getsockname(aSocket, (struct sockaddr*)&local, &localLen) == 0 && local.sin_family == AF_INET) {
++        info += (uint64_t)ntohl(local.sin_addr.s_addr);
++    }
++    return SocketAddHash(info);
++#else
+     struct ifaddrs* ifaddr = NULL;
+     struct ifaddrs* ifa = NULL;
+     uint64_t info = SOCKET_DEFAULT_INFO;
+@@ -196,6 +214,7 @@
+ 
+     info = SocketAddHash(info);
+     return info;
++#endif
+ }
+ 
+ #endif
