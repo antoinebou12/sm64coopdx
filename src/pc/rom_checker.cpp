@@ -4,6 +4,7 @@
 #include <filesystem>
 #include <sstream>
 #include <system_error>
+#include <cstring>
 
 #if defined(_WIN32)
 #include <windows.h>
@@ -38,6 +39,12 @@ static struct VanillaMD5 sVanillaMD5[] = {
 };
 
 inline static void rename_tmp_folder() {
+#if defined(__SWITCH__)
+    // The Switch port owns a fixed writable directory and does not need the
+    // desktop legacy-folder migration. Keeping std::filesystem out of this
+    // startup path also avoids unnecessary Horizon/newlib filesystem work.
+    return;
+#else
     std::string userPath = fs_get_write_path("");
     std::string oldPath = userPath + "tmp";
     std::string newPath = userPath + TMP_DIRECTORY;
@@ -53,8 +60,40 @@ inline static void rename_tmp_folder() {
             fs::rename(oldPath, newPath, ec);
         }
     }
+#endif
 }
 
+#if defined(__SWITCH__)
+static bool is_switch_rom_valid(void) {
+    static const u8 sUsRomMd5[16] = {
+        0x20, 0xb8, 0x54, 0xb2, 0x39, 0x20, 0x3b, 0xaf,
+        0x6c, 0x96, 0x1b, 0x85, 0x0a, 0x4a, 0x51, 0xa2,
+    };
+
+    // The Switch package has one canonical ROM location. Do not enumerate the
+    // SD directory or copy the ROM during startup; both are unnecessary and
+    // make the ROM-present path much more complex on Horizon.
+    const char *romPath = fs_get_write_path("baserom.us.z64");
+    if (romPath == nullptr || romPath[0] == '\0' || !fs_sys_file_exists(romPath)) {
+        return false;
+    }
+
+    u8 dataHash[16] = { 0 };
+    mod_cache_md5(romPath, dataHash);
+    if (memcmp(dataHash, sUsRomMd5, sizeof(sUsRomMd5)) != 0) {
+        return false;
+    }
+
+    const int written = snprintf(gRomFilename, sizeof(gRomFilename), "%s", romPath);
+    if (written < 0 || (size_t)written >= sizeof(gRomFilename)) {
+        gRomFilename[0] = '\0';
+        return false;
+    }
+
+    gRomIsValid = true;
+    return true;
+}
+#else
 static bool is_rom_valid(const std::string romPath) {
     u8 dataHash[16] = { 0 };
     mod_cache_md5(romPath.c_str(), dataHash);
@@ -107,6 +146,7 @@ inline static bool scan_path_for_rom(const char *dir) {
     }
     return false;
 }
+#endif
 
 extern "C" {
 void legacy_folder_handler(void) {
@@ -114,16 +154,24 @@ void legacy_folder_handler(void) {
 }
 
 bool main_rom_handler(void) {
+#if defined(__SWITCH__)
+    return is_switch_rom_valid();
+#else
     if (scan_path_for_rom(fs_get_write_path(""))) { return true; }
     scan_path_for_rom(sys_exe_path_dir());
     return gRomIsValid;
+#endif
 }
 
 void rom_on_drop_file(const char *path) {
+#if defined(__SWITCH__)
+    (void)path;
+#else
     static bool hasDroppedInvalidFile = false;
     if (strlen(path) > 0 && !is_rom_valid(path) && !hasDroppedInvalidFile) {
         hasDroppedInvalidFile = true;
         strcat(gCurrLoadingSegment.str, "\n\\#ffc000\\The file you last dropped was not a valid, vanilla SM64 rom.");
     }
+#endif
 }
 }
