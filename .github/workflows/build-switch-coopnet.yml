@@ -12,6 +12,7 @@ on:
       - 'src/pc/platform/switch/**'
       - 'tools/switch/**'
       - 'Makefile.switch-game'
+      - 'Makefile.switch-juice-probe'
   workflow_dispatch:
 
 permissions:
@@ -62,6 +63,17 @@ jobs:
           test -s build/switch-deps/libjuice/lib/libjuice.a
           aarch64-none-elf-readelf -h build/switch-deps/libjuice/lib/libjuice.a | grep 'Machine:.*AArch64'
 
+      - name: Link standalone libjuice ICE probe
+        shell: bash
+        run: |
+          set -euo pipefail
+          make -f Makefile.switch-juice-probe -j2 probe
+          prefix=build/switch-juice-probe/sm64coopdx-switch-juice-probe
+          test -s "${prefix}.nro"
+          test -s "${prefix}.elf"
+          test "$(dd if="${prefix}.nro" bs=1 skip=16 count=4 2>/dev/null)" = "NRO0"
+          aarch64-none-elf-readelf -h "${prefix}.elf" | grep 'Machine:.*AArch64'
+
       - name: Cross-build CoopNet
         shell: bash
         run: |
@@ -95,6 +107,7 @@ jobs:
           cp build/switch-deps/libjuice/SHA256SUMS.txt build/switch-coopnet-ci/LIBJUICE_SHA256SUMS.txt
           cp build/switch-deps/coopnet/SOURCE_COMMIT.txt build/switch-coopnet-ci/COOPNET_COMMIT.txt
           cp build/switch-deps/coopnet/SHA256SUMS.txt build/switch-coopnet-ci/COOPNET_SHA256SUMS.txt
+          cp build/switch-juice-probe/sm64coopdx-switch-juice-probe.map build/switch-coopnet-ci/JUICE_PROBE.map
 
       - name: Upload portability diagnostics
         uses: actions/upload-artifact@v7
