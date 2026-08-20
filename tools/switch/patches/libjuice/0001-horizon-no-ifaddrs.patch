@@ -1,0 +1,14 @@
+--- a/src/socket.h
++++ b/src/socket.h
+@@ -68,9 +68,9 @@
+ #define NO_PMTUDISC
+ #endif
+ 
+-#ifdef __ANDROID__
++#if defined(__ANDROID__)
+ #define NO_IFADDRS
+-#else
++#elif !defined(NO_IFADDRS)
+ #include <ifaddrs.h>
+ #endif
+ 
