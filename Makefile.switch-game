@@ -80,6 +80,8 @@ override BACKEND_CFLAGS := -DHAVE_SDL2=1 -D_REENTRANT -I$(PORTLIBS)/include $(sh
 override BACKEND_LDFLAGS := $(shell $(SDL2_CONFIG) --libs 2>/dev/null)
 override LDFLAGS := -specs=$(LIBNX)/switch.specs $(SWITCH_ARCH) -fPIE \
     -Wl,--gc-sections -Wl,-Map,$(BUILD_DIR)/sm64coopdx.map \
+    -Wl,--wrap=network_receive -Wl,--wrap=network_send -Wl,--wrap=network_send_to \
+    -Wl,--wrap=packet_compress -Wl,--wrap=packet_decompress \
     -L$(LIBNX)/lib -L$(PORTLIBS)/lib -Lbuild/switch-deps/lua/lib \
     $(BACKEND_LDFLAGS) -l:liblua53.a -lcurl -lz -lGLESv2 -lEGL -lglapi -ldrm_nouveau -lnx -lm
 
