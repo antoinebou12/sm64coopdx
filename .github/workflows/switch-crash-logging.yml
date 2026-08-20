@@ -10,6 +10,8 @@ on:
     paths:
       - 'src/pc/platform/switch/switch_crash_log.*'
       - 'src/pc/platform/switch/switch_startup_trace.c'
+      - 'src/pc/platform/switch/switch_rom_asset_trace.*'
+      - 'tools/switch/rom_assets_overlay.py'
       - 'Makefile.switch-sdmc'
       - '.github/workflows/switch-crash-logging.yml'
   workflow_dispatch:
@@ -46,16 +48,32 @@ jobs:
           set -euo pipefail
           make -f Makefile.switch-game switch-toolchain-check
 
-      - name: Cross-compile crash trace
+      - name: Validate ROM asset overlay generation
         shell: bash
         run: |
           set -euo pipefail
-          make -f Makefile.switch-game -j2 \
+          mkdir -p build/switch-ci
+          python3 -m py_compile tools/switch/rom_assets_overlay.py
+          python3 tools/switch/rom_assets_overlay.py src/pc/rom_assets.c build/switch-ci/rom_assets.c
+          grep -q 'segment short read' build/switch-ci/rom_assets.c
+          grep -q 'asset range rejected' build/switch-ci/rom_assets.c
+          grep -q 'ROM asset path does not exist' build/switch-ci/rom_assets.c
+          grep -q 'asset->cursor = asset->segmentedSize' build/switch-ci/rom_assets.c
+
+      - name: Cross-compile crash trace and hardened ROM loader
+        shell: bash
+        run: |
+          set -euo pipefail
+          make -f Makefile.switch-sdmc -j2 \
             build/us_switch/src/pc/platform/switch/switch_crash_log.o \
-            build/us_switch/src/pc/platform/switch/switch_startup_trace.o
+            build/us_switch/src/pc/platform/switch/switch_startup_trace.o \
+            build/us_switch/src/pc/platform/switch/switch_rom_asset_trace.o \
+            build/us_switch/src/pc/rom_assets.o
           for obj in \
             build/us_switch/src/pc/platform/switch/switch_crash_log.o \
-            build/us_switch/src/pc/platform/switch/switch_startup_trace.o; do
+            build/us_switch/src/pc/platform/switch/switch_startup_trace.o \
+            build/us_switch/src/pc/platform/switch/switch_rom_asset_trace.o \
+            build/us_switch/src/pc/rom_assets.o; do
             test -s "$obj"
             aarch64-none-elf-readelf -h "$obj" >/dev/null
           done
@@ -63,6 +81,8 @@ jobs:
             grep -E '__libnx_exception_handler|userAppInit|userAppExit|__wrap_(main_rom_handler|rom_assets_load|mods_init|audio_init|sound_init|network_player_init|thread5_game_loop)'
           aarch64-none-elf-nm build/us_switch/src/pc/platform/switch/switch_startup_trace.o | \
             grep -E '__wrap_(djui_init|djui_unicode_init|djui_init_late)'
+          aarch64-none-elf-nm build/us_switch/src/pc/platform/switch/switch_rom_asset_trace.o | \
+            grep -q 'switch_rom_asset_trace_printf'
 
       - name: Validate SD layout target
         shell: bash
@@ -71,6 +91,7 @@ jobs:
           make -f Makefile.switch-sdmc -n switch-sdmc-layout > build/sdmc-layout-dry-run.txt
           grep -q 'sm64coopdx.nro' build/sdmc-layout-dry-run.txt
           grep -q 'baserom.us.z64' build/sdmc-layout-dry-run.txt
+          grep -q 'rom_assets_overlay.py' build/sdmc-layout-dry-run.txt
           grep -q -- '--wrap=main_rom_handler' build/sdmc-layout-dry-run.txt
           grep -q -- '--wrap=rom_assets_load' build/sdmc-layout-dry-run.txt
           grep -q -- '--wrap=thread5_game_loop' build/sdmc-layout-dry-run.txt
