@@ -1,0 +1,71 @@
+# Standalone libjuice ICE probe for Nintendo Switch / Horizon OS.
+
+ifeq ($(strip $(DEVKITPRO)),)
+$(error "Please set DEVKITPRO, for example /opt/devkitpro")
+endif
+
+LIBNX       := $(DEVKITPRO)/libnx
+DEVKITA64   := $(DEVKITPRO)/devkitA64
+TOOLS       := $(DEVKITPRO)/tools/bin
+CC          := $(DEVKITA64)/bin/aarch64-none-elf-gcc
+ELF2NRO     := $(TOOLS)/elf2nro
+NACPTOOL    := $(TOOLS)/nacptool
+LIBJUICE    := build/switch-deps/libjuice/lib/libjuice.a
+LIBJUICE_INC:= build/switch-deps/libjuice/include
+
+BUILD_DIR   := build/switch-juice-probe
+TARGET      := $(BUILD_DIR)/sm64coopdx-switch-juice-probe
+SOURCE      := tools/switch/juice_probe.c
+OBJECT      := $(BUILD_DIR)/juice_probe.o
+ELF         := $(TARGET).elf
+NACP        := $(TARGET).nacp
+NRO         := $(TARGET).nro
+
+ARCH        := -march=armv8-a+crc+crypto -mtune=cortex-a57 -mtp=soft -fPIE
+CFLAGS      := -std=gnu11 -O2 -g -Wall -Wextra -pthread \
+               -ffunction-sections -fdata-sections $(ARCH) \
+               -D__SWITCH__ -DJUICE_STATIC \
+               -I$(LIBNX)/include -I$(LIBJUICE_INC)
+LDFLAGS     := -specs=$(LIBNX)/switch.specs -g -pthread $(ARCH) \
+               -Wl,--gc-sections -Wl,-Map,$(TARGET).map \
+               -L$(LIBNX)/lib -L$(dir $(LIBJUICE))
+LIBS        := -l:libjuice.a -lnx -lm
+
+.PHONY: all probe deps toolchain-check clean
+
+all: probe
+
+probe: toolchain-check deps $(NRO)
+	@echo "Built $(NRO)"
+
+deps:
+	bash tools/switch/build-libjuice.sh
+
+toolchain-check:
+	@test -x "$(CC)" || (echo "Missing devkitA64 compiler: $(CC)" && exit 1)
+	@test -f "$(LIBNX)/switch.specs" || (echo "Missing libnx switch.specs" && exit 1)
+	@test -x "$(ELF2NRO)" || (echo "Missing elf2nro: $(ELF2NRO)" && exit 1)
+	@test -x "$(NACPTOOL)" || (echo "Missing nacptool: $(NACPTOOL)" && exit 1)
+
+$(OBJECT): $(SOURCE) $(LIBJUICE)
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) -MMD -MP -MF $(@:.o=.d) -c $< -o $@
+
+$(LIBJUICE):
+	bash tools/switch/build-libjuice.sh
+
+$(ELF): $(OBJECT) $(LIBJUICE)
+	@mkdir -p $(dir $@)
+	$(CC) $(LDFLAGS) $(OBJECT) $(LIBS) -o $@
+
+$(NACP):
+	@mkdir -p $(dir $@)
+	$(NACPTOOL) --create "SM64CoopDX ICE Probe" "SM64CoopDX contributors" "0.0.1" $@
+
+$(NRO): $(ELF) $(NACP)
+	$(ELF2NRO) $(ELF) $@ --nacp=$(NACP)
+
+clean:
+	rm -rf $(BUILD_DIR)
+
+-include $(OBJECT:.o=.d)
