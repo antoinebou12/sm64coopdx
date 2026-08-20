@@ -101,6 +101,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # The previous step already built build/us_switch/src/pc/rom_assets.o
+          # and its generated overlay .c in this same job workspace. With that
+          # target already up to date, `make -n` silently drops the overlay
+          # generation commands from its plan, and this step's asserts on
+          # them would pass or fail depending on unrelated step ordering.
+          # Discard the generated overlay so the dry run is deterministic.
+          rm -f build/us_switch/switch-overlay/src/pc/rom_assets.c \
+                build/us_switch/switch-overlay/src/pc/rom_assets.c.trace
           make -f Makefile.switch-sdmc -n switch-sdmc-layout > build/sdmc-layout-dry-run.txt
           grep -q 'sm64coopdx.nro' build/sdmc-layout-dry-run.txt
           grep -q 'baserom.us.z64' build/sdmc-layout-dry-run.txt
