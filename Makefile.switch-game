@@ -70,7 +70,8 @@ override OPT_FLAGS := -O2 -g $(SWITCH_ARCH) -fPIE -ffunction-sections -fdata-sec
 override EXTRA_CFLAGS := -D__SWITCH__ -D__CONSOLE__ -DUSE_GLES=1 -DEGL_NO_X11 -D_GNU_SOURCE \
     -I$(LIBNX)/include -I$(PORTLIBS)/include \
     -Wno-format-security -Wno-trigraphs -Wno-missing-braces -Wno-missing-field-initializers \
-    -Wno-unused-result -Wno-format-truncation
+    -Wno-unused-result -Wno-format-truncation \
+    -fno-omit-frame-pointer
 # devkitA64's newlib limits.h leaves LLONG_MAX undefined in C++ mode, and lua's
 # luaconf.h reads that as "compiler has no long long" and #errors out. Pulling
 # in <climits> up front defines it for every C++ translation unit.
@@ -82,6 +83,7 @@ override LDFLAGS := -specs=$(LIBNX)/switch.specs $(SWITCH_ARCH) -fPIE \
     -Wl,--gc-sections -Wl,-Map,$(BUILD_DIR)/sm64coopdx.map \
     -Wl,--wrap=network_receive -Wl,--wrap=network_send -Wl,--wrap=network_send_to \
     -Wl,--wrap=packet_compress -Wl,--wrap=packet_decompress \
+    -Wl,--wrap=exit -Wl,--wrap=game_exit \
     -L$(LIBNX)/lib -L$(PORTLIBS)/lib -Lbuild/switch-deps/lua/lib \
     $(BACKEND_LDFLAGS) -l:liblua53.a -lcurl -lz -lGLESv2 -lEGL -lglapi -ldrm_nouveau -lnx -lm
 

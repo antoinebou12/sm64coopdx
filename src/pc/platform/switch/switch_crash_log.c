@@ -9,6 +9,7 @@
 #include <inttypes.h>
 #include <stdarg.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -61,6 +62,16 @@ static long long switch_crash_log_epoch(void) {
     return (long long)now;
 }
 
+/*
+ * armGetSystemTick()-derived milliseconds since boot. This is what lets a
+ * post-mortem log answer "did the exit request arrive during the ~116s ROM
+ * asset load, or after it" - wall-clock epoch seconds alone can't, since two
+ * launches never share a reference point closer than 1s.
+ */
+static uint64_t switch_crash_log_uptime_ms(void) {
+    return armTicksToNs(armGetSystemTick()) / 1000000ull;
+}
+
 static void switch_crash_log_debug_string(const char *text) {
     if (text == NULL) {
         return;
@@ -82,7 +93,8 @@ void switch_crash_log_printf(const char *fmt, ...) {
         return;
     }
 
-    fprintf(file, "[%lld] ", switch_crash_log_epoch());
+    fprintf(file, "[%lld uptime_ms=%llu] ", switch_crash_log_epoch(),
+        (unsigned long long)switch_crash_log_uptime_ms());
 
     va_list args;
     va_start(args, fmt);
@@ -109,7 +121,8 @@ void switch_crash_log_checkpoint(const char *checkpoint) {
 
     FILE *file = fopen(SWITCH_LAST_CHECKPOINT, "w");
     if (file != NULL) {
-        fprintf(file, "epoch=%lld\ncheckpoint=%s\n", switch_crash_log_epoch(), sLastCheckpoint);
+        fprintf(file, "epoch=%lld\nuptime_ms=%llu\ncheckpoint=%s\n", switch_crash_log_epoch(),
+            (unsigned long long)switch_crash_log_uptime_ms(), sLastCheckpoint);
         fflush(file);
         fclose(file);
         switch_crash_log_commit();
@@ -201,6 +214,7 @@ void __libnx_exception_handler(ThreadExceptionDump *ctx) {
 
     fprintf(file, "\n=== fatal exception ===\n");
     fprintf(file, "epoch=%lld\n", switch_crash_log_epoch());
+    fprintf(file, "uptime_ms=%llu\n", (unsigned long long)switch_crash_log_uptime_ms());
     fprintf(file, "last_checkpoint=%s\n", sLastCheckpoint);
     fprintf(file, "rom_asset_failure_events=%u\n", switch_rom_asset_trace_failure_count());
     fprintf(file, "runtime_main=%p\n", (void *)&main);
@@ -246,10 +260,51 @@ bool __wrap_main_rom_handler(void) {
     return valid;
 }
 
+/*
+ * rom_assets_load() blocks the game thread for over a minute on hardware.
+ * Nothing else on that thread runs during that window, and it's exactly the
+ * window in which an OS exit/sleep request could arrive unnoticed (the
+ * leading hypothesis for the unlogged clean exit this instrumentation is
+ * chasing). This watchdog only READS focus/operation-mode - it never calls
+ * appletGetMessage/appletProcessMessage, so it cannot itself consume a
+ * message the real pump would otherwise see, and cannot change behavior.
+ */
+static volatile bool sRomLoadWatchdogRunning = false;
+
+static void switch_rom_load_watchdog_thread(void *arg) {
+    (void)arg;
+    unsigned int tick = 0;
+    while (sRomLoadWatchdogRunning) {
+        switch_crash_log_printf("rom load watchdog tick=%u focus=%d op_mode=%d",
+            tick++, (int)appletGetFocusState(), (int)appletGetOperationMode());
+        svcSleepThread(250ull * 1000000ull); /* 250 ms, nanoseconds */
+    }
+}
+
 void __wrap_rom_assets_load(void) {
     switch_crash_log_checkpoint("rom assets: load begin");
+    switch_startup_memory_probe("before rom_assets_load");
+
+    Thread watchdog;
+    bool watchdog_started = false;
+    sRomLoadWatchdogRunning = true;
+    if (R_SUCCEEDED(threadCreate(&watchdog, switch_rom_load_watchdog_thread, NULL, NULL, 0x4000, 0x2C, -2))) {
+        if (R_SUCCEEDED(threadStart(&watchdog))) {
+            watchdog_started = true;
+        } else {
+            threadClose(&watchdog);
+        }
+    }
+
     __real_rom_assets_load();
 
+    sRomLoadWatchdogRunning = false;
+    if (watchdog_started) {
+        threadWaitForExit(&watchdog);
+        threadClose(&watchdog);
+    }
+
+    switch_startup_memory_probe("after rom_assets_load");
     const unsigned int failure_events = switch_rom_asset_trace_failure_count();
     switch_crash_log_printf("rom_assets_failure_events=%u", failure_events);
     switch_crash_log_checkpoint(failure_events == 0

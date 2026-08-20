@@ -50,6 +50,10 @@
 #include "pc/utils/misc.h"
 #include "pc/mods/mods.h"
 
+#ifdef __SWITCH__
+#include "pc/platform/switch/switch_crash_log.h"
+#endif
+
 #include "debug_context.h"
 #include "menu/intro_geo.h"
 
@@ -583,12 +587,18 @@ int main(int argc, char *argv[]) {
     djui_init_late();
     djui_console_message_dequeue();
 
+#ifdef __SWITCH__
+    switch_crash_log_checkpoint("post-djui: update popup begin");
+#endif
     show_update_popup();
 
     if (can_update_game()) {
         djui_open_update_panel();
     }
 
+#ifdef __SWITCH__
+    switch_crash_log_checkpoint("post-djui: network init begin");
+#endif
     // initialize network
     if (gCLIOpts.network == NT_CLIENT) {
         network_set_system(NS_SOCKET);
@@ -619,10 +629,21 @@ int main(int argc, char *argv[]) {
     // initialize terminal
     terminal_init();
 
+#ifdef __SWITCH__
+    switch_crash_log_checkpoint("post-djui: network init complete, entering main loop");
+    bool sSwitchFirstMainLoopLogged = false;
+#endif
+
     // main loop
     while (true) {
         debug_context_reset();
         CTX_BEGIN(CTX_TOTAL);
+#ifdef __SWITCH__
+        if (!sSwitchFirstMainLoopLogged) {
+            sSwitchFirstMainLoopLogged = true;
+            switch_crash_log_checkpoint("main loop: first iteration begin");
+        }
+#endif
         gfx_wm_main_loop(produce_one_frame);
 #ifdef DISCORD_SDK
         discord_update();

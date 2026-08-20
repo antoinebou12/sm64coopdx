@@ -11,6 +11,7 @@
 #include "pc/cliopts.h"
 #include "pc/controller/controller_bind_mapping.h"
 #include "pc/platform/switch/switch_platform.h"
+#include "pc/platform/switch/switch_crash_log.h"
 #include "pc/pc_main.h"
 
 static struct GfxWindowBackendAPI *sBackends[GFX_WINDOW_BACKEND_COUNT] = {
@@ -59,7 +60,10 @@ void gfx_wm_init(const char *window_title) {
 
     SDL_SetHint(SDL_HINT_VIDEO_X11_NET_WM_BYPASS_COMPOSITOR, "0");
     if (SDL_InitSubSystem(SDL_INIT_VIDEO) != 0) {
-        fprintf(stderr, "SDL video init failed: %s\n", SDL_GetError());
+        /* stderr is discarded on Switch (no console); route to the crash log
+         * so a failure here is not silently indistinguishable from any other
+         * exit route. */
+        switch_crash_log_printf("SDL video init failed: %s", SDL_GetError());
         game_exit();
     }
 
@@ -101,6 +105,7 @@ void gfx_wm_handle_events(void) {
     while (SDL_PollEvent(&event)) {
         switch (event.type) {
             case SDL_QUIT:
+                switch_crash_log_printf("SDL_QUIT event received");
                 game_exit();
                 return;
             case SDL_TEXTINPUT:
