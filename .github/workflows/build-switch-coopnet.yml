@@ -1,0 +1,97 @@
+name: Switch CoopNet Port CI
+
+on:
+  push:
+    branches:
+      - agent/switch-coopnet-port
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: switch-coopnet-port-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DEVKITPRO: /opt/devkitpro
+
+jobs:
+  coopnet-portability:
+    name: CoopNet Horizon portability
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    container:
+      image: devkitpro/devkita64:latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Add devkitA64 to PATH
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "${DEVKITPRO}/devkitA64/bin" >> "$GITHUB_PATH"
+          echo "${DEVKITPRO}/tools/bin" >> "$GITHUB_PATH"
+
+      - name: Report toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          aarch64-none-elf-gcc --version | head -n 1
+          aarch64-none-elf-g++ --version | head -n 1
+          dkp-pacman -Q libnx
+          dkp-pacman -Q devkitA64
+
+      - name: Cross-build libjuice 1.6.2
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash tools/switch/build-libjuice.sh
+          test -s build/switch-deps/libjuice/lib/libjuice.a
+          aarch64-none-elf-readelf -h build/switch-deps/libjuice/lib/libjuice.a | grep 'Machine:.*AArch64'
+
+      - name: Cross-build CoopNet
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash tools/switch/build-coopnet.sh
+          test -s build/switch-deps/coopnet/lib/libcoopnet.a
+          aarch64-none-elf-readelf -h build/switch-deps/coopnet/lib/libcoopnet.a | grep 'Machine:.*AArch64'
+
+      - name: Compile native Switch keyboard backend
+        shell: bash
+        run: |
+          set -euo pipefail
+          make -f Makefile.switch-game switch-toolchain-check
+          make -f Makefile.switch-game -j2 build/us_switch/src/pc/platform/switch/switch_window_manager.o
+          test -s build/us_switch/src/pc/platform/switch/switch_window_manager.o
+          aarch64-none-elf-readelf -h build/us_switch/src/pc/platform/switch/switch_window_manager.o | grep 'Machine:.*AArch64'
+
+      - name: Verify control build remains CoopNet-disabled
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -F 'override COOPNET := 0' Makefile.switch-game
+          make -f Makefile.switch-game switch-toolchain-check
+
+      - name: Record dependency hashes
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/switch-coopnet-ci
+          cp build/switch-deps/libjuice/SOURCE_COMMIT.txt build/switch-coopnet-ci/LIBJUICE_COMMIT.txt
+          cp build/switch-deps/libjuice/SHA256SUMS.txt build/switch-coopnet-ci/LIBJUICE_SHA256SUMS.txt
+          cp build/switch-deps/coopnet/SOURCE_COMMIT.txt build/switch-coopnet-ci/COOPNET_COMMIT.txt
+          cp build/switch-deps/coopnet/SHA256SUMS.txt build/switch-coopnet-ci/COOPNET_SHA256SUMS.txt
+
+      - name: Upload portability diagnostics
+        uses: actions/upload-artifact@v7
+        with:
+          name: switch-coopnet-portability-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 14
+          path: build/switch-coopnet-ci/
