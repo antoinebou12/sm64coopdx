@@ -84,6 +84,14 @@ static int switch_rom_trace_is_failure(const char *message) {
            strstr(message, "short read") != NULL;
 }
 
+static void switch_rom_trace_truncate(const char *path) {
+    FILE *file = fopen(path, "w");
+    if (file == NULL) {
+        return;
+    }
+    fclose(file);
+}
+
 static void switch_rom_trace_write_snapshot(FILE *file,
                                             const char *label,
                                             const char *message,
@@ -151,6 +159,9 @@ void switch_rom_asset_trace_printf(const char *fmt, ...) {
         sAssetMarks = 0;
         sFailureEvents = 0;
         snprintf(sLastAsset, sizeof(sLastAsset), "%s", "phase=asset not started");
+        switch_rom_trace_truncate(SWITCH_ROM_TRACE_EVENTS);
+        switch_rom_trace_truncate(SWITCH_ROM_TRACE_ERRORS);
+        switch_rom_trace_truncate(SWITCH_ROM_TRACE_EXCEPTION);
     }
 
     sEventSequence++;
