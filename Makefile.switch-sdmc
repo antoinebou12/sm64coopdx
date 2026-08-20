@@ -4,9 +4,9 @@
 
 include Makefile.switch-game
 
-# Keep this instrumentation on the debug SD-layout build only. GNU ld redirects
-# undefined calls from pc_main.o to the wrappers in the Switch crash trace, so
-# the normal source files remain untouched.
+# Keep the extra call-site instrumentation on the SD-layout debug package. The
+# hardened ROM checker and ROM asset loader themselves now come from the normal
+# Switch build graph in Makefile.switch-game.
 override LDFLAGS += \
     -Wl,--wrap=main_rom_handler \
     -Wl,--wrap=rom_assets_load \
@@ -18,23 +18,6 @@ override LDFLAGS += \
     -Wl,--wrap=djui_init \
     -Wl,--wrap=djui_unicode_init \
     -Wl,--wrap=djui_init_late
-
-# The normal full-game build compiles src/pc/rom_assets.c directly. For this
-# hardware-debug package only, replace that one object with a generated copy
-# that validates every ROM seek/read/range, records the current asset, and uses
-# a bounds-checked MIO0 decoder.
-SWITCH_DEBUG_OVERLAY_DIR := $(BUILD_DIR)/switch-debug-overlay
-SWITCH_ROM_ASSETS_SOURCE := $(SWITCH_DEBUG_OVERLAY_DIR)/src/pc/rom_assets.c
-SWITCH_ROM_ASSETS_TRACE_SOURCE := $(SWITCH_ROM_ASSETS_SOURCE).trace
-
-$(SWITCH_ROM_ASSETS_SOURCE): src/pc/rom_assets.c tools/switch/rom_assets_overlay.py tools/switch/rom_decompress_harden.py
-	$(PYTHON) tools/switch/rom_assets_overlay.py $< $(SWITCH_ROM_ASSETS_TRACE_SOURCE)
-	$(PYTHON) tools/switch/rom_decompress_harden.py $(SWITCH_ROM_ASSETS_TRACE_SOURCE) $@
-	@rm -f $(SWITCH_ROM_ASSETS_TRACE_SOURCE)
-
-$(BUILD_DIR)/src/pc/rom_assets.o: $(SWITCH_ROM_ASSETS_SOURCE)
-	@mkdir -p $(dir $@)
-	$(CC) -MMD -MP -MF $(@:.o=.d) $(CFLAGS) -Isrc/pc -c $< -o $@
 
 SWITCH_SDMC_LAYOUT := $(BUILD_DIR)/sdmc-layout
 SWITCH_SDMC_APP_DIR := $(SWITCH_SDMC_LAYOUT)/switch/sm64coopdx
