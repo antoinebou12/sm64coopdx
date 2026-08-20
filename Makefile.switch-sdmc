@@ -19,6 +19,19 @@ override LDFLAGS += \
     -Wl,--wrap=djui_unicode_init \
     -Wl,--wrap=djui_init_late
 
+# The normal full-game build compiles src/pc/rom_assets.c directly. For this
+# hardware-debug package only, replace that one object with a generated copy
+# that validates every ROM seek/read/range and records the current asset.
+SWITCH_DEBUG_OVERLAY_DIR := $(BUILD_DIR)/switch-debug-overlay
+SWITCH_ROM_ASSETS_SOURCE := $(SWITCH_DEBUG_OVERLAY_DIR)/src/pc/rom_assets.c
+
+$(SWITCH_ROM_ASSETS_SOURCE): src/pc/rom_assets.c tools/switch/rom_assets_overlay.py
+	$(PYTHON) tools/switch/rom_assets_overlay.py $< $@
+
+$(BUILD_DIR)/src/pc/rom_assets.o: $(SWITCH_ROM_ASSETS_SOURCE)
+	@mkdir -p $(dir $@)
+	$(CC) -MMD -MP -MF $(@:.o=.d) $(CFLAGS) -Isrc/pc -c $< -o $@
+
 SWITCH_SDMC_LAYOUT := $(BUILD_DIR)/sdmc-layout
 SWITCH_SDMC_APP_DIR := $(SWITCH_SDMC_LAYOUT)/switch/sm64coopdx
 SWITCH_SDMC_DEBUG_DIR := $(SWITCH_SDMC_LAYOUT)/debug
@@ -42,6 +55,7 @@ switch-sdmc-layout: switch-nro
 		'' \
 		'Copy the contents of this sdmc-layout directory to the root of the Switch SD card.' \
 		'The game writes startup diagnostics to /switch/sm64coopdx/logs/startup.log.' \
+		'The exact ROM asset/segment in progress is /switch/sm64coopdx/logs/current_rom_asset.txt.' \
 		'Fatal userland exceptions are written to /switch/sm64coopdx/logs/exception.log.' \
 		'Use debug/sm64coopdx.map together with runtime_main and pc/lr from exception.log to symbolize a crash.' \
 		'' \
