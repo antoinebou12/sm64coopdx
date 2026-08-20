@@ -166,6 +166,7 @@ void userAppInit(void) {
 
 static void switch_crash_log_constructor(void) __attribute__((constructor(101)));
 static void switch_crash_log_constructor(void) {
+    switch_crash_log_checkpoint("constructor: runtime initialized");
     switch_crash_log_printf("constructor=crash logger linked and running");
 }
 
@@ -217,5 +218,29 @@ void __libnx_exception_handler(ThreadExceptionDump *ctx) {
     fclose(file);
     switch_crash_log_commit();
 }
+
+/*
+ * The SD-layout debug build links these through GNU ld --wrap. This keeps the
+ * upstream startup code untouched while giving the ROM-present crash path
+ * precise before/after checkpoints that survive on the SD card.
+ */
+extern bool __real_main_rom_handler(void);
+extern void __real_rom_assets_load(void);
+
+bool __wrap_main_rom_handler(void) {
+    switch_crash_log_checkpoint("rom validation: begin");
+    const bool valid = __real_main_rom_handler();
+    switch_crash_log_checkpoint(valid
+        ? "rom validation: complete (valid)"
+        : "rom validation: complete (not ready)");
+    return valid;
+}
+
+void __wrap_rom_assets_load(void) {
+    switch_crash_log_checkpoint("rom assets: load begin");
+    __real_rom_assets_load();
+    switch_crash_log_checkpoint("rom assets: load complete");
+}
+
 
 #endif /* __SWITCH__ */
