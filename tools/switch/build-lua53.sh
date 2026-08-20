@@ -28,12 +28,22 @@ echo "${LUA_SHA256}  ${TARBALL}" | sha256sum --check --strict
 rm -rf "${SOURCE_DIR}"
 tar -xzf "${TARBALL}" -C "${BUILD_ROOT}"
 
+# Vanilla lua's Makefile has no explicit .c.o rule; it relies on make's
+# built-in one. Makefile.sdl3 sets MAKEFLAGS += --no-builtin-rules for the
+# main build, and that propagates to this nested make via the environment,
+# which silently drops every .o without a single compiler invocation. Clear
+# it here so lua gets make's default implicit rules back.
+MAKEFLAGS=
 make -C "${SOURCE_DIR}/src" clean
+# LUA_USE_POSIX is deliberately omitted: devkitA64's newlib does not declare
+# _setjmp/_longjmp under any of the usual feature-test macros, and Horizon has
+# no shell for os.execute/popen anyway. Lua falls back to its portable ISO C
+# setjmp/longjmp path instead.
 make -C "${SOURCE_DIR}/src" \
     CC="${CC}" \
     AR="${AR} rcu" \
     RANLIB="${RANLIB}" \
-    MYCFLAGS="-O2 -march=armv8-a+crc+crypto -mtune=cortex-a57 -mtp=soft -fPIC -ffunction-sections -fdata-sections -DLUA_USE_POSIX" \
+    MYCFLAGS="-O2 -march=armv8-a+crc+crypto -mtune=cortex-a57 -mtp=soft -fPIC -ffunction-sections -fdata-sections" \
     MYLDFLAGS="" \
     liblua.a
 

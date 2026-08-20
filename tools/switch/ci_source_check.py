@@ -289,8 +289,10 @@ def main() -> None:
         and "tools/switch/tests/run_tests.py" in workflow,
     )
     require(
-        "authoritative Switch CI cross-compiles real LDN integration objects",
-        "Compile real local-wireless integration" in workflow
+        "authoritative Switch CI cross-compiles every overlay and LDN object",
+        "Compile every Switch overlay and local-wireless object" in workflow
+        and "build/us_switch/src/pc/pc_main.o" in workflow
+        and "build/us_switch/src/pc/loading.o" in workflow
         and "socket_ldn.o" in workflow
         and "socket_ldn_glue.o" in workflow
         and "socket_ldn_util.o" in workflow

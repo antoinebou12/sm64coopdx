@@ -169,6 +169,14 @@ s32 delta_interpolate_s32(s32 a, s32 b, f32 delta) {
     return a * (1.0f - delta) + b * delta;
 }
 
+s16 delta_interpolate_angle(s16 a, s16 b, f32 delta) {
+    // s16 angles wrap at +-0x8000; interpolating the raw values would spin
+    // the long way around whenever a and b are on opposite sides of that
+    // wrap. Take the shortest signed difference instead.
+    s16 diff = (s16)(b - a);
+    return (s16)(a + (s16)(diff * delta));
+}
+
 void delta_interpolate_vec3f(VEC_OUT Vec3f res, Vec3f a, Vec3f b, f32 delta) {
     f32 antiDelta = 1.0f - delta;
     res[0] = ((a[0] * antiDelta) + (b[0] * delta));
@@ -715,6 +723,11 @@ void update_game(void) {
         CloseHandle(pi.hThread);
     }
     exit(0);
+#elif defined(__SWITCH__)
+    // Horizon has no process to exec into and ships no coopdx_updater
+    // binary; can_update_game() never returns true here, so this is
+    // unreachable in practice, but the symbol still needs a body.
+    (void)updateExecFilePath;
 #else
     freopen("/dev/null", "r", stdin);
     freopen("/dev/null", "w", stdout);
