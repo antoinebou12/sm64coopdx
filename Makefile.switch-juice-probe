@@ -38,8 +38,8 @@ all: probe
 probe: toolchain-check deps $(NRO)
 	@echo "Built $(NRO)"
 
-deps:
-	bash tools/switch/build-libjuice.sh
+deps: $(LIBJUICE)
+	@echo "Using $(LIBJUICE)"
 
 toolchain-check:
 	@test -x "$(CC)" || (echo "Missing devkitA64 compiler: $(CC)" && exit 1)
