@@ -1,6 +1,7 @@
 #ifdef __SWITCH__
 
 #include "switch_crash_log.h"
+#include "switch_rom_asset_trace.h"
 
 #include <switch.h>
 
@@ -186,6 +187,9 @@ uint64_t __nx_exception_stack_size = sizeof(__nx_exception_stack);
 void __libnx_exception_handler(ThreadExceptionDump *ctx) {
     switch_crash_log_debug_string("SM64CoopDX: fatal exception captured\n");
 
+    /* Preserve the exact in-memory ROM-asset event before doing more work. */
+    switch_rom_asset_trace_exception_snapshot();
+
     if (ctx == NULL || !switch_crash_log_prepare()) {
         return;
     }
@@ -198,6 +202,7 @@ void __libnx_exception_handler(ThreadExceptionDump *ctx) {
     fprintf(file, "\n=== fatal exception ===\n");
     fprintf(file, "epoch=%lld\n", switch_crash_log_epoch());
     fprintf(file, "last_checkpoint=%s\n", sLastCheckpoint);
+    fprintf(file, "rom_asset_failure_events=%u\n", switch_rom_asset_trace_failure_count());
     fprintf(file, "runtime_main=%p\n", (void *)&main);
     fprintf(file, "error_desc=0x%08" PRIx32 "\n", ctx->error_desc);
     fprintf(file, "pc=0x%016" PRIx64 "\n", (uint64_t)ctx->pc.x);
@@ -244,7 +249,12 @@ bool __wrap_main_rom_handler(void) {
 void __wrap_rom_assets_load(void) {
     switch_crash_log_checkpoint("rom assets: load begin");
     __real_rom_assets_load();
-    switch_crash_log_checkpoint("rom assets: load complete");
+
+    const unsigned int failure_events = switch_rom_asset_trace_failure_count();
+    switch_crash_log_printf("rom_assets_failure_events=%u", failure_events);
+    switch_crash_log_checkpoint(failure_events == 0
+        ? "rom assets: load complete"
+        : "rom assets: load complete with diagnostic failures");
 }
 
 void __wrap_mods_init(void) {
@@ -276,6 +286,5 @@ void __wrap_thread5_game_loop(void *arg) {
     __real_thread5_game_loop(arg);
     switch_crash_log_checkpoint("thread5 game bootstrap: complete");
 }
-
 
 #endif /* __SWITCH__ */
