@@ -11,7 +11,8 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 BUILD_ROOT="${ROOT_DIR}/build/switch-deps/libjuice"
 DOWNLOAD_DIR="${BUILD_ROOT}/download"
 SOURCE_DIR="${BUILD_ROOT}/libjuice-${LIBJUICE_COMMIT}"
-OUTPUT_DIR="${BUILD_ROOT}/output"
+INCLUDE_DIR="${BUILD_ROOT}/include/juice"
+LIB_DIR="${BUILD_ROOT}/lib"
 TARBALL="${DOWNLOAD_DIR}/libjuice-${LIBJUICE_COMMIT}.tar.gz"
 URL="https://github.com/paullouisageneau/libjuice/archive/${LIBJUICE_COMMIT}.tar.gz"
 PATCH_DIR="${ROOT_DIR}/tools/switch/patches/libjuice"
@@ -30,7 +31,7 @@ for tool in "${CC}" "${AR}" "${RANLIB}" "${READELF}" curl patch; do
     }
 done
 
-mkdir -p "${DOWNLOAD_DIR}" "${OUTPUT_DIR}/include/juice" "${OUTPUT_DIR}/lib"
+mkdir -p "${DOWNLOAD_DIR}" "${INCLUDE_DIR}" "${LIB_DIR}"
 
 if [[ ! -f "${TARBALL}" ]]; then
     curl --fail --location --retry 3 --output "${TARBALL}" "${URL}"
@@ -56,15 +57,15 @@ make -C "${SOURCE_DIR}" libjuice.a \
     CFLAGS="-O2 -pthread -fPIC -fvisibility=hidden -ffunction-sections -fdata-sections -Wno-address-of-packed-member -D__SWITCH__ -DJUICE_STATIC -DJUICE_EXPORTS -DUSE_NETTLE=0 -DNO_SERVER -DNO_IFADDRS -DNO_PMTUDISC" \
     INCLUDES="-Iinclude/juice -I${LIBNX}/include"
 
-cp "${SOURCE_DIR}/include/juice/juice.h" "${OUTPUT_DIR}/include/juice/juice.h"
-cp "${SOURCE_DIR}/libjuice.a" "${OUTPUT_DIR}/lib/libjuice.a"
-"${RANLIB}" "${OUTPUT_DIR}/lib/libjuice.a"
+cp "${SOURCE_DIR}/include/juice/juice.h" "${INCLUDE_DIR}/juice.h"
+cp "${SOURCE_DIR}/libjuice.a" "${LIB_DIR}/libjuice.a"
+"${RANLIB}" "${LIB_DIR}/libjuice.a"
 
-if ! "${READELF}" -h "${OUTPUT_DIR}/lib/libjuice.a" | grep -q "Machine:.*AArch64"; then
+if ! "${READELF}" -h "${LIB_DIR}/libjuice.a" | grep -q "Machine:.*AArch64"; then
     echo "libjuice.a is not an AArch64 archive" >&2
     exit 1
 fi
 
-printf '%s\n' "${LIBJUICE_COMMIT}" > "${OUTPUT_DIR}/SOURCE_COMMIT.txt"
-sha256sum "${OUTPUT_DIR}/lib/libjuice.a" | tee "${OUTPUT_DIR}/SHA256SUMS.txt"
-echo "Built Switch libjuice: ${OUTPUT_DIR}/lib/libjuice.a"
+printf '%s\n' "${LIBJUICE_COMMIT}" > "${BUILD_ROOT}/SOURCE_COMMIT.txt"
+sha256sum "${LIB_DIR}/libjuice.a" | tee "${BUILD_ROOT}/SHA256SUMS.txt"
+echo "Built Switch libjuice: ${LIB_DIR}/libjuice.a"
