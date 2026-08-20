@@ -119,7 +119,8 @@ jobs:
             build/us_switch/src/pc/network/socket/socket_ldn_glue.o \
             build/us_switch/src/pc/djui/djui_panel_host.o \
             build/us_switch/src/pc/djui/djui_panel_ldn_browser.o \
-            build/us_switch/src/pc/djui/djui_panel_join.o
+            build/us_switch/src/pc/djui/djui_panel_join.o \
+            build/us_switch/src/pc/platform/switch/switch_packet_safety.o
           for obj in \
             build/us_switch/src/pc/pc_main.o \
             build/us_switch/src/pc/platform.o \
@@ -132,10 +133,13 @@ jobs:
             build/us_switch/src/pc/network/socket/socket_ldn_glue.o \
             build/us_switch/src/pc/djui/djui_panel_host.o \
             build/us_switch/src/pc/djui/djui_panel_ldn_browser.o \
-            build/us_switch/src/pc/djui/djui_panel_join.o; do
+            build/us_switch/src/pc/djui/djui_panel_join.o \
+            build/us_switch/src/pc/platform/switch/switch_packet_safety.o; do
             test -s "$obj"
             aarch64-none-elf-readelf -h "$obj" >/dev/null
           done
+          aarch64-none-elf-nm build/us_switch/src/pc/platform/switch/switch_packet_safety.o | \
+            grep -E '__wrap_(network_receive|network_send|network_send_to|packet_compress|packet_decompress)'
 
       - name: Validate probe outputs
         shell: bash
