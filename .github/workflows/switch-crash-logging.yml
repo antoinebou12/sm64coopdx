@@ -9,6 +9,7 @@ on:
       - main
     paths:
       - 'src/pc/platform/switch/switch_crash_log.*'
+      - 'src/pc/platform/switch/switch_startup_trace.c'
       - 'Makefile.switch-sdmc'
       - '.github/workflows/switch-crash-logging.yml'
   workflow_dispatch:
@@ -45,14 +46,23 @@ jobs:
           set -euo pipefail
           make -f Makefile.switch-game switch-toolchain-check
 
-      - name: Cross-compile crash logger
+      - name: Cross-compile crash trace
         shell: bash
         run: |
           set -euo pipefail
-          make -f Makefile.switch-game -j2 build/us_switch/src/pc/platform/switch/switch_crash_log.o
-          test -s build/us_switch/src/pc/platform/switch/switch_crash_log.o
-          aarch64-none-elf-readelf -h build/us_switch/src/pc/platform/switch/switch_crash_log.o
-          aarch64-none-elf-nm build/us_switch/src/pc/platform/switch/switch_crash_log.o | grep -E '__libnx_exception_handler|userAppInit|userAppExit|__wrap_(main_rom_handler|rom_assets_load|mods_init|audio_init|sound_init|network_player_init|thread5_game_loop)'
+          make -f Makefile.switch-game -j2 \
+            build/us_switch/src/pc/platform/switch/switch_crash_log.o \
+            build/us_switch/src/pc/platform/switch/switch_startup_trace.o
+          for obj in \
+            build/us_switch/src/pc/platform/switch/switch_crash_log.o \
+            build/us_switch/src/pc/platform/switch/switch_startup_trace.o; do
+            test -s "$obj"
+            aarch64-none-elf-readelf -h "$obj" >/dev/null
+          done
+          aarch64-none-elf-nm build/us_switch/src/pc/platform/switch/switch_crash_log.o | \
+            grep -E '__libnx_exception_handler|userAppInit|userAppExit|__wrap_(main_rom_handler|rom_assets_load|mods_init|audio_init|sound_init|network_player_init|thread5_game_loop)'
+          aarch64-none-elf-nm build/us_switch/src/pc/platform/switch/switch_startup_trace.o | \
+            grep -E '__wrap_(djui_init|djui_unicode_init|djui_init_late)'
 
       - name: Validate SD layout target
         shell: bash
@@ -64,3 +74,6 @@ jobs:
           grep -q -- '--wrap=main_rom_handler' build/sdmc-layout-dry-run.txt
           grep -q -- '--wrap=rom_assets_load' build/sdmc-layout-dry-run.txt
           grep -q -- '--wrap=thread5_game_loop' build/sdmc-layout-dry-run.txt
+          grep -q -- '--wrap=djui_init' build/sdmc-layout-dry-run.txt
+          grep -q -- '--wrap=djui_unicode_init' build/sdmc-layout-dry-run.txt
+          grep -q -- '--wrap=djui_init_late' build/sdmc-layout-dry-run.txt
