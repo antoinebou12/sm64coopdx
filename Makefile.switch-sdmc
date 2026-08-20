@@ -21,12 +21,16 @@ override LDFLAGS += \
 
 # The normal full-game build compiles src/pc/rom_assets.c directly. For this
 # hardware-debug package only, replace that one object with a generated copy
-# that validates every ROM seek/read/range and records the current asset.
+# that validates every ROM seek/read/range, records the current asset, and uses
+# a bounds-checked MIO0 decoder.
 SWITCH_DEBUG_OVERLAY_DIR := $(BUILD_DIR)/switch-debug-overlay
 SWITCH_ROM_ASSETS_SOURCE := $(SWITCH_DEBUG_OVERLAY_DIR)/src/pc/rom_assets.c
+SWITCH_ROM_ASSETS_TRACE_SOURCE := $(SWITCH_ROM_ASSETS_SOURCE).trace
 
-$(SWITCH_ROM_ASSETS_SOURCE): src/pc/rom_assets.c tools/switch/rom_assets_overlay.py
-	$(PYTHON) tools/switch/rom_assets_overlay.py $< $@
+$(SWITCH_ROM_ASSETS_SOURCE): src/pc/rom_assets.c tools/switch/rom_assets_overlay.py tools/switch/rom_decompress_harden.py
+	$(PYTHON) tools/switch/rom_assets_overlay.py $< $(SWITCH_ROM_ASSETS_TRACE_SOURCE)
+	$(PYTHON) tools/switch/rom_decompress_harden.py $(SWITCH_ROM_ASSETS_TRACE_SOURCE) $@
+	@rm -f $(SWITCH_ROM_ASSETS_TRACE_SOURCE)
 
 $(BUILD_DIR)/src/pc/rom_assets.o: $(SWITCH_ROM_ASSETS_SOURCE)
 	@mkdir -p $(dir $@)
