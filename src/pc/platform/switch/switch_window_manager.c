@@ -1,7 +1,9 @@
 #ifdef __SWITCH__
 
 #include <SDL2/SDL.h>
+#include <switch.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 #include "pc/gfx/gfx_window_manager.h"
 #include "pc/gfx/gfx_window_opengl.h"
@@ -10,6 +12,8 @@
 #include "pc/configfile.h"
 #include "pc/cliopts.h"
 #include "pc/controller/controller_bind_mapping.h"
+#include "pc/djui/djui.h"
+#include "pc/djui/djui_inputbox.h"
 #include "pc/platform/switch/switch_platform.h"
 #include "pc/pc_main.h"
 
@@ -22,6 +26,7 @@ static enum GfxWindowBackend sBackend = GFX_WINDOW_BACKEND_DUMMY;
 static SDL_Window *sWindow = NULL;
 static SwitchPlatformState sPlatformState;
 static bool sPlatformReady = false;
+static bool sNativeKeyboardOpen = false;
 
 static kb_callback_t sKeyDown = NULL;
 static kb_callback_t sKeyUp = NULL;
@@ -45,6 +50,57 @@ static void switch_handle_key(bool down, SDL_Scancode scancode) {
     } else {
         if (sKeyUp) sKeyUp(code);
     }
+}
+
+static void switch_show_native_keyboard(void) {
+    if (sNativeKeyboardOpen || gInteractableFocus == NULL ||
+        gInteractableFocus->interactable == NULL ||
+        gInteractableFocus->interactable->on_text_input != djui_inputbox_on_text_input) {
+        return;
+    }
+
+    struct DjuiInputbox *inputbox = (struct DjuiInputbox *)gInteractableFocus;
+    if (inputbox->buffer == NULL || inputbox->bufferSize <= 1) {
+        return;
+    }
+
+    SwkbdConfig keyboard;
+    Result rc = swkbdCreate(&keyboard, 0);
+    if (R_FAILED(rc)) {
+        fprintf(stderr, "swkbdCreate failed: 0x%08x\n", (unsigned int)rc);
+        return;
+    }
+
+    sNativeKeyboardOpen = true;
+
+    if (inputbox->passwordChar[0] != '\0') {
+        swkbdConfigMakePresetPassword(&keyboard);
+    } else {
+        swkbdConfigMakePresetDefault(&keyboard);
+    }
+    swkbdConfigSetInitialText(&keyboard, inputbox->buffer);
+    swkbdConfigSetStringLenMax(&keyboard, (u32)inputbox->bufferSize - 1u);
+
+    /*
+     * stringLenMax is measured in characters while DjuiInputbox::bufferSize is
+     * measured in UTF-8 bytes. Give swkbd enough room for the worst-case UTF-8
+     * representation, then let the existing DJUI text-input callback perform
+     * its normal sanitizing/truncation and Unicode end cleanup.
+     */
+    size_t outputSize = ((size_t)inputbox->bufferSize * 4u) + 1u;
+    char *output = (char *)calloc(outputSize, 1);
+    if (output != NULL) {
+        struct DjuiBase *focus = gInteractableFocus;
+        rc = swkbdShow(&keyboard, output, outputSize);
+        if (R_SUCCEEDED(rc) && gInteractableFocus == focus && sTextInput != NULL) {
+            djui_inputbox_select_all(inputbox);
+            sTextInput(output);
+        }
+        free(output);
+    }
+
+    swkbdClose(&keyboard);
+    sNativeKeyboardOpen = false;
 }
 
 void gfx_wm_init(const char *window_title) {
@@ -190,6 +246,7 @@ bool gfx_wm_has_focus(void) {
 
 void gfx_wm_start_text_input(void) {
     SDL_StartTextInput();
+    switch_show_native_keyboard();
 }
 
 void gfx_wm_stop_text_input(void) {
