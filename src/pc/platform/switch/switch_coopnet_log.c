@@ -176,4 +176,50 @@ void switch_coopnet_log_shutdown_summary(void) {
     switch_coopnet_log_flush(true);
 }
 
+/*
+ * Weak callback target used by the source-built CoopNet library's Horizon-only
+ * diagnostics patch. The library remains usable without CoopDX; when this
+ * symbol is present it can report TCP/DNS and libjuice ICE state without
+ * linking directly against the game's logging implementation.
+ *
+ * Only non-secret fields are passed by the patch: server host/port, result
+ * codes, peer IDs, ICE state strings, and ICE candidate SDP. Passwords, TURN
+ * usernames/passwords, and auth tokens are never passed to this hook.
+ */
+void coopnet_horizon_diag(const char *event, uint64_t value0, uint64_t value1, const char *text) {
+    switch_coopnet_log_init();
+
+    if (event == NULL) {
+        event = "unknown";
+    }
+
+    char safeText[512];
+    safeText[0] = '\0';
+    if (text != NULL) {
+        size_t out = 0;
+        for (size_t i = 0; text[i] != '\0' && out + 1 < sizeof(safeText); ++i) {
+            const char c = text[i];
+            safeText[out++] = (c == '\r' || c == '\n') ? ' ' : c;
+        }
+        safeText[out] = '\0';
+    }
+
+    if (safeText[0] != '\0') {
+        switch_coopnet_log_printf("library event=%s value0=%" PRIu64 " value1=%" PRIu64 " text=%s",
+                                  event, value0, value1, safeText);
+    } else {
+        switch_coopnet_log_printf("library event=%s value0=%" PRIu64 " value1=%" PRIu64,
+                                  event, value0, value1);
+    }
+
+    const bool force = strstr(event, "error") != NULL
+                    || strstr(event, "state") != NULL
+                    || strstr(event, "selected") != NULL
+                    || strstr(event, "connect_") != NULL
+                    || strcmp(event, "ice.gathering_done") == 0;
+    if (force) {
+        switch_coopnet_log_flush(true);
+    }
+}
+
 #endif /* __SWITCH__ && COOPNET */
