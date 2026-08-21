@@ -105,8 +105,17 @@ fi
 echo "Verified pinned CoopNet header matches vendored libcoopnet.h"
 
 sync "${LIB_DIR}/libcoopnet.a" 2>/dev/null || true
-if ! "${READELF}" -h "${LIB_DIR}/libcoopnet.a" | grep -q "Machine:.*AArch64"; then
+# As with libjuice, avoid readelf | grep -q under pipefail. grep -q may close
+# the pipe after the first match, causing readelf to exit on SIGPIPE and making
+# a valid AArch64 archive look invalid.
+if ! readelf_output="$("${READELF}" -h "${LIB_DIR}/libcoopnet.a" 2>&1)"; then
+    echo "readelf failed for libcoopnet.a" >&2
+    printf '%s\n' "${readelf_output}" >&2
+    exit 1
+fi
+if ! grep -q "Machine:.*AArch64" <<< "${readelf_output}"; then
     echo "libcoopnet.a is not an AArch64 archive" >&2
+    printf '%s\n' "${readelf_output}" >&2
     exit 1
 fi
 
