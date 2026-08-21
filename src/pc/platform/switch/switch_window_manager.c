@@ -112,13 +112,35 @@ static void switch_show_native_keyboard(void) {
     size_t outputSize = ((size_t)inputbox->bufferSize * 4u) + 1u;
     char *output = (char *)calloc(outputSize, 1);
     if (output != NULL) {
-        struct DjuiBase *focus = gInteractableFocus;
         rc = swkbdShow(&keyboard, output, outputSize);
-        if (R_SUCCEEDED(rc) && gInteractableFocus == focus && sTextInput != NULL) {
+        if (R_SUCCEEDED(rc)) {
+            /*
+             * swkbdShow() is synchronous and returns the complete final
+             * string. Apply it to the exact inputbox that launched the applet
+             * instead of routing it back through the global keyboard callback.
+             * Horizon can transiently change application/window focus while a
+             * LibraryApplet is in the foreground; tying acceptance to the
+             * current global DJUI focus could therefore discard valid output.
+             */
+            switch_crash_log_printf(
+                "swkbdShow success: output_len=%u focus_same=%d",
+                (unsigned int)strlen(output),
+                gInteractableFocus == &inputbox->base ? 1 : 0);
             djui_inputbox_select_all(inputbox);
-            sTextInput(output);
+            djui_inputbox_on_text_input(&inputbox->base, output);
+            switch_crash_log_printf(
+                "swkbd applied: buffer_len=%u",
+                (unsigned int)strlen(inputbox->buffer));
+        } else {
+            /* Cancel is reported by libnx as LibAppletBadExit too, so log the
+             * result but leave the inputbox untouched. */
+            switch_crash_log_printf("swkbdShow ended without text: 0x%08x", (unsigned int)rc);
         }
         free(output);
+    } else {
+        switch_crash_log_printf(
+            "swkbd output allocation failed: size=%u",
+            (unsigned int)outputSize);
     }
 
     swkbdClose(&keyboard);
