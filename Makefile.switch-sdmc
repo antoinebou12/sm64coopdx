@@ -49,11 +49,14 @@ switch-sdmc-layout: switch-nro
 		'Copy the contents of this sdmc-layout directory to the root of the Switch SD card.' \
 		'SWITCH_COOPNET=$(SWITCH_COOPNET)' \
 		'The game writes startup diagnostics to /switch/sm64coopdx/logs/startup.log.' \
+		'CoopNet diagnostics are written to /switch/sm64coopdx/logs/coopnet.log.' \
+		'The last durable CoopNet library boundary is /switch/sm64coopdx/logs/coopnet_checkpoint.txt.' \
 		'The exact ROM asset/segment in progress is /switch/sm64coopdx/logs/current_rom_asset.txt.' \
 		'Fatal userland exceptions are written to /switch/sm64coopdx/logs/exception.log.' \
 		'Use debug/sm64coopdx.elf and debug/sm64coopdx.map with runtime_main and pc/lr from exception.log to symbolize a crash.' \
 		'If built separately, the standalone ICE probe is copied to debug/juice-probe.nro.' \
 		'' \
+		'Never share lobby passwords or TURN credentials in logs or bug reports.' \
 		'baserom.us.z64 is copyrighted game data. Keep your local copy private and do not upload it.' \
 		> "$(SWITCH_SDMC_LAYOUT)/README.txt"
 	@echo "SD layout: $(SWITCH_SDMC_LAYOUT)"
