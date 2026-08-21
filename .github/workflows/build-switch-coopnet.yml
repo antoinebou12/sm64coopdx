@@ -86,17 +86,23 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          make -f Makefile.switch-game switch-toolchain-check
-          make -f Makefile.switch-game -j2 build/us_switch/src/pc/platform/switch/switch_window_manager.o
+          make -f Makefile.switch-game SWITCH_COOPNET=0 switch-toolchain-check
+          make -f Makefile.switch-game SWITCH_COOPNET=0 -j2 build/us_switch/src/pc/platform/switch/switch_window_manager.o
           test -s build/us_switch/src/pc/platform/switch/switch_window_manager.o
           aarch64-none-elf-readelf -h build/us_switch/src/pc/platform/switch/switch_window_manager.o | grep 'Machine:.*AArch64'
 
-      - name: Verify control build remains CoopNet-disabled
+      - name: Verify CoopNet build gate
         shell: bash
         run: |
           set -euo pipefail
-          grep -F 'override COOPNET := 0' Makefile.switch-game
-          make -f Makefile.switch-game switch-toolchain-check
+          grep -F 'SWITCH_COOPNET ?= 1' Makefile.switch-game
+          grep -F 'override COOPNET := $(SWITCH_COOPNET)' Makefile.switch-game
+          make -f Makefile.switch-game SWITCH_COOPNET=0 switch-toolchain-check
+          make -f Makefile.switch-game SWITCH_COOPNET=1 switch-toolchain-check
+          if make -f Makefile.switch-game SWITCH_COOPNET=2 switch-toolchain-check; then
+            echo 'SWITCH_COOPNET=2 unexpectedly succeeded' >&2
+            exit 1
+          fi
 
       - name: Record dependency hashes
         shell: bash
