@@ -27,6 +27,31 @@ RANLIB="${CROSS}ranlib"
 READELF="${CROSS}readelf"
 LIBNX="${DEVKITPRO}/libnx"
 
+verify_aarch64_archive() {
+    local archive="$1"
+    local label="$2"
+    local readelf_output=""
+    local attempt=1
+
+    while (( attempt <= 5 )); do
+        if readelf_output="$("${READELF}" -h "${archive}" 2>&1)" &&
+           grep -q "Machine:.*AArch64" <<< "${readelf_output}"; then
+            return 0
+        fi
+
+        if (( attempt < 5 )); then
+            echo "${label}: validation attempt ${attempt} failed; retrying..." >&2
+            sync "${archive}" 2>/dev/null || true
+            sleep 0.2
+        fi
+        attempt=$((attempt + 1))
+    done
+
+    echo "${label} is not a readable AArch64 archive after 5 attempts" >&2
+    printf '%s\n' "${readelf_output}" >&2
+    return 1
+}
+
 for tool in "${CXX}" "${AR}" "${RANLIB}" "${READELF}" "${PYTHON}" curl patch cmp diff; do
     command -v "${tool}" >/dev/null 2>&1 || {
         echo "Missing required tool: ${tool}" >&2
@@ -105,19 +130,7 @@ fi
 echo "Verified pinned CoopNet header matches vendored libcoopnet.h"
 
 sync "${LIB_DIR}/libcoopnet.a" 2>/dev/null || true
-# As with libjuice, avoid readelf | grep -q under pipefail. grep -q may close
-# the pipe after the first match, causing readelf to exit on SIGPIPE and making
-# a valid AArch64 archive look invalid.
-if ! readelf_output="$("${READELF}" -h "${LIB_DIR}/libcoopnet.a" 2>&1)"; then
-    echo "readelf failed for libcoopnet.a" >&2
-    printf '%s\n' "${readelf_output}" >&2
-    exit 1
-fi
-if ! grep -q "Machine:.*AArch64" <<< "${readelf_output}"; then
-    echo "libcoopnet.a is not an AArch64 archive" >&2
-    printf '%s\n' "${readelf_output}" >&2
-    exit 1
-fi
+verify_aarch64_archive "${LIB_DIR}/libcoopnet.a" "libcoopnet.a"
 
 printf '%s\n' "${COOPNET_COMMIT}" > "${BUILD_ROOT}/SOURCE_COMMIT.txt"
 sha256sum "${LIB_DIR}/libcoopnet.a" | tee "${BUILD_ROOT}/SHA256SUMS.txt"
