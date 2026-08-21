@@ -1,6 +1,6 @@
 --- a/src/random.c
 +++ b/src/random.c
-@@ -12,8 +12,18 @@
+@@ -12,8 +12,17 @@
  #include <stdbool.h>
  #include <time.h>
  
