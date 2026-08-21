@@ -84,6 +84,23 @@ jobs:
             exit 1
           fi
 
+      - name: Enable Switch-only size optimization
+        if: steps.baserom.outputs.available == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('Makefile.switch-game')
+          text = path.read_text()
+          old = 'override OPT_FLAGS := -O2 -g $(SWITCH_ARCH) -fPIE -ffunction-sections -fdata-sections'
+          new = 'override OPT_FLAGS := -Os -g $(SWITCH_ARCH) -fPIE -ffunction-sections -fdata-sections'
+          if old not in text:
+              raise SystemExit('expected Switch OPT_FLAGS line not found')
+          path.write_text(text.replace(old, new, 1))
+          PY
+          grep -F 'override OPT_FLAGS := -Os -g $(SWITCH_ARCH) -fPIE -ffunction-sections -fdata-sections' Makefile.switch-game
+
       - name: Build full Switch NRO with CoopNet
         if: steps.baserom.outputs.available == 'true'
         shell: bash
@@ -112,7 +129,7 @@ jobs:
           cp build/switch-deps/coopnet/SOURCE_COMMIT.txt build/switch-coopnet-full/COOPNET_COMMIT.txt
           {
             echo "### Full Switch CoopNet NRO build passed"
-            echo "Built with \`SWITCH_COOPNET=1\` from the private verified baserom."
+            echo "Built with \`SWITCH_COOPNET=1\` and Switch-only \`-Os\` size optimization from the private verified baserom."
             echo "NRO size: $(stat -c '%s' "${prefix}.nro") bytes"
           } >> "$GITHUB_STEP_SUMMARY"
 
