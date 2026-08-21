@@ -24,6 +24,36 @@ RANLIB="${CROSS}ranlib"
 READELF="${CROSS}readelf"
 LIBNX="${DEVKITPRO}/libnx"
 
+verify_aarch64_archive() {
+    local archive="$1"
+    local label="$2"
+    local readelf_output=""
+    local attempt=1
+
+    # Cold -j2 builds can put enough concurrent I/O pressure on the dependency
+    # tree for an immediately-following archive read to fail transiently. Keep
+    # the validation strict, but retry the read instead of forcing users to
+    # rebuild with -j1. Capturing readelf output also avoids the pipefail +
+    # grep -q SIGPIPE false negative.
+    while (( attempt <= 5 )); do
+        if readelf_output="$("${READELF}" -h "${archive}" 2>&1)" &&
+           grep -q "Machine:.*AArch64" <<< "${readelf_output}"; then
+            return 0
+        fi
+
+        if (( attempt < 5 )); then
+            echo "${label}: validation attempt ${attempt} failed; retrying..." >&2
+            sync "${archive}" 2>/dev/null || true
+            sleep 0.2
+        fi
+        attempt=$((attempt + 1))
+    done
+
+    echo "${label} is not a readable AArch64 archive after 5 attempts" >&2
+    printf '%s\n' "${readelf_output}" >&2
+    return 1
+}
+
 for tool in "${CC}" "${AR}" "${RANLIB}" "${READELF}" curl patch; do
     command -v "${tool}" >/dev/null 2>&1 || {
         echo "Missing required tool: ${tool}" >&2
@@ -62,20 +92,7 @@ cp "${SOURCE_DIR}/libjuice.a" "${LIB_DIR}/libjuice.a"
 "${RANLIB}" "${LIB_DIR}/libjuice.a"
 
 sync "${LIB_DIR}/libjuice.a" 2>/dev/null || true
-# Do not pipe readelf directly into grep -q while pipefail is enabled: grep -q
-# can exit after its first match, SIGPIPE readelf, and make a valid archive look
-# like a failed validation under load. Capture readelf first so its exit status
-# and output are checked independently.
-if ! readelf_output="$("${READELF}" -h "${LIB_DIR}/libjuice.a" 2>&1)"; then
-    echo "readelf failed for libjuice.a" >&2
-    printf '%s\n' "${readelf_output}" >&2
-    exit 1
-fi
-if ! grep -q "Machine:.*AArch64" <<< "${readelf_output}"; then
-    echo "libjuice.a is not an AArch64 archive" >&2
-    printf '%s\n' "${readelf_output}" >&2
-    exit 1
-fi
+verify_aarch64_archive "${LIB_DIR}/libjuice.a" "libjuice.a"
 
 printf '%s\n' "${LIBJUICE_COMMIT}" > "${BUILD_ROOT}/SOURCE_COMMIT.txt"
 sha256sum "${LIB_DIR}/libjuice.a" | tee "${BUILD_ROOT}/SHA256SUMS.txt"
