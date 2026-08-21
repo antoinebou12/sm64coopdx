@@ -34,6 +34,7 @@
 #include "pc/djui/djui.h"
 #include "pc/djui/djui_inputbox.h"
 #include "pc/platform/switch/switch_platform.h"
+#include "pc/platform/switch/switch_crash_log.h"
 #include "pc/pc_main.h"
 
 static struct GfxWindowBackendAPI *sBackends[GFX_WINDOW_BACKEND_COUNT] = {
@@ -86,7 +87,9 @@ static void switch_show_native_keyboard(void) {
     SwkbdConfig keyboard;
     Result rc = swkbdCreate(&keyboard, 0);
     if (R_FAILED(rc)) {
-        fprintf(stderr, "swkbdCreate failed: 0x%08x\n", (unsigned int)rc);
+        /* stderr is discarded on Switch (no console) - without this, a
+         * swkbd applet failure never leaves the device. */
+        switch_crash_log_printf("swkbdCreate failed: 0x%08x", (unsigned int)rc);
         return;
     }
 
