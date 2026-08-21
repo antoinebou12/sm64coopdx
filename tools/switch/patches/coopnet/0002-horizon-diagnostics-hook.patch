@@ -1,0 +1,216 @@
+diff --git a/common/horizon_diag.hpp b/common/horizon_diag.hpp
+new file mode 100644
+index 0000000..d1a6001
+--- /dev/null
++++ b/common/horizon_diag.hpp
+@@ -0,0 +1,22 @@
++#pragma once
++
++#include <cstdint>
++
++#ifdef __SWITCH__
++extern "C" void coopnet_horizon_diag(const char* event,
++                                     uint64_t value0,
++                                     uint64_t value1,
++                                     const char* text) __attribute__((weak));
++
++static inline void horizon_diag(const char* event, uint64_t value0 = 0,
++                                uint64_t value1 = 0, const char* text = nullptr) {
++    if (coopnet_horizon_diag) {
++        coopnet_horizon_diag(event, value0, value1, text);
++    }
++}
++#else
++static inline void horizon_diag(const char*, uint64_t = 0,
++                                uint64_t = 0, const char* = nullptr) {
++}
++#endif
++diff --git a/common/client.cpp b/common/client.cpp
++index 6f375b4..9afdd87 100644
++--- a/common/client.cpp
+++++ b/common/client.cpp
++@@ -2,6 +2,7 @@
++ #include "mpacket.hpp"
++ #include "utils.hpp"
++ #include "logging.hpp"
+++#include "horizon_diag.hpp"
++ 
++ Client* gClient = NULL;
++ 
++@@ -24,20 +25,28 @@ bool Client::Begin(std::string aHost, uint32_t aPort, std::string aName, uint64_t aDestId)
++     mStunServer.port = 19302;
++ 
++     // setup a socket
+++    horizon_diag("signaling.socket_create", 0, 0, aHost.c_str());
++     mConnection->mSocket = SocketInitialize(AF_INET, SOCK_STREAM, IPPROTO_TCP);
++     if(mConnection->mSocket <= 0)
++     {
++         LOG_ERROR("Socket failed");
+++        horizon_diag("signaling.socket_error", (uint64_t)errno, 0, aHost.c_str());
++         return false;
++     }
++ 
++     // type of socket created
++     mConnection->mAddress.sin_family = AF_INET;
+++    horizon_diag("signaling.dns_begin", 0, 0, aHost.c_str());
++     mConnection->mAddress.sin_addr.s_addr = GetAddrFromDomain(aHost);
+++    horizon_diag("signaling.dns_result", (uint64_t)mConnection->mAddress.sin_addr.s_addr, 0, aHost.c_str());
++     mConnection->mAddress.sin_port = htons(aPort);
++ 
++     SocketSetOptions(mConnection->mSocket);
++     errno = 0;
++ 
+++    horizon_diag("signaling.connect_begin", (uint64_t)aPort, 0, aHost.c_str());
++     int rc = connect(mConnection->mSocket, (struct sockaddr*) &mConnection->mAddress, sizeof(struct sockaddr_in));
++     if (rc < 0) {
++         rc = errno;
++@@ -57,18 +66,22 @@ bool Client::Begin(std::string aHost, uint32_t aPort, std::string aName, uint64_t aDestId)
++             int selectResult = select(mConnection->mSocket + 1, nullptr, &writeSet, nullptr, &timeout);
++             if (selectResult == 0) {
++                 LOG_ERROR("Connection timed out");
+++                horizon_diag("signaling.connect_error", (uint64_t)ETIMEDOUT, 0, aHost.c_str());
++                 SocketClose(mConnection->mSocket);
++                 return false;
++             } else if (selectResult < 0) {
++                 LOG_ERROR("Error while waiting for connection");
+++                horizon_diag("signaling.connect_error", (uint64_t)errno, 0, aHost.c_str());
++                 SocketClose(mConnection->mSocket);
++                 return false;
++             }
++         } else {
++             // Other error occurred during connect
++             LOG_ERROR("Connect failed: %u", rc);
+++            horizon_diag("signaling.connect_error", (uint64_t)rc, 0, aHost.c_str());
++             SocketClose(mConnection->mSocket);
++             return false;
++         }
++     }
+++    horizon_diag("signaling.connect_ok", (uint64_t)aPort, 0, aHost.c_str());
++ 
++     mConnection->Begin(nullptr);
++ 
++diff --git a/common/peer.cpp b/common/peer.cpp
++index f0ee5ac..b92990f 100644
++--- a/common/peer.cpp
+++++ b/common/peer.cpp
++@@ -3,6 +3,7 @@
++ #include <mutex>
++ #include <cstdio>
++ #include <cstring>
+++#include <cerrno>
++ #include <unistd.h>
++ #include "libcoopnet.h"
++ #include "peer.hpp"
++@@ -10,6 +11,7 @@
++ #include "mpacket.hpp"
++ #include "logging.hpp"
++ #include "utils.hpp"
+++#include "horizon_diag.hpp"
++ 
++ // Set to true to force TURN / relay usage for testing
++ static bool sForceRelay = false;
++@@ -65,6 +67,7 @@ Peer::Peer(Client* aClient, uint64_t aId, uint32_t aPriority) {
++     config.stun_server_host = aClient->mStunServer.host.c_str();
++     config.stun_server_port = aClient->mStunServer.port;
++     LOG_INFO("STUN server: %s, %u", config.stun_server_host, config.stun_server_port);
+++    horizon_diag("ice.stun_server", mId, config.stun_server_port, config.stun_server_host);
++ 
++     // TURN server example (use your own server in production)
++     if (aClient->mTurnServers.size() > 0) {
++@@ -93,7 +96,9 @@ Peer::Peer(Client* aClient, uint64_t aId, uint32_t aPriority) {
++     config.concurrency_mode = JUICE_CONCURRENCY_MODE_POLL;
++ 
++     mConnected = false;
+++    horizon_diag("ice.agent_create_before", mId);
++     mAgent = juice_create(&config);
+++    horizon_diag("ice.agent_create_after", mId, (uint64_t)(uintptr_t)mAgent);
++ 
++     // Send if it is an ICE controller
++     if (mControlling) {
++@@ -124,9 +129,15 @@ void Peer::Connect(const char* aSdp) {
++     LOG_INFO("\n\nReceive SDP (%" PRIu64 "):\n------------------\n%s\n------------------\n", mId, aSdp);
+++    horizon_diag("ice.remote_description_before", mId);
++     juice_set_remote_description(mAgent, aSdp);
+++    horizon_diag("ice.remote_description_after", mId);
++     if (mControlling) {
+++        horizon_diag("ice.gather_before", mId);
++         juice_gather_candidates(mAgent);
+++        horizon_diag("ice.gather_after", mId);
++     }
++ 
++     // Send if it isn't an ICE controller
++@@ -147,7 +158,11 @@ bool Peer::Send(const uint8_t* aData, size_t aDataLength) {
++         LOG_INFO("Refusing send because not yet connected to (%" PRIu64 ")\n", mId);
++         return false;
++     }
++-    juice_send(mAgent, (const char*)aData, aDataLength);
+++    errno = 0;
+++    int rc = juice_send(mAgent, (const char*)aData, aDataLength);
+++    if (rc != 0) {
+++        horizon_diag("ice.send_error", mId, (uint64_t)errno);
+++    }
++     return true;
++ }
++ 
++@@ -155,7 +170,9 @@ void Peer::Disconnect() {
++     if (mAgent) {
++         LOG_INFO("Peer disconnect %" PRIu64 "", mId);
+++        horizon_diag("ice.agent_destroy_before", mId);
++         juice_destroy(mAgent);
+++        horizon_diag("ice.agent_destroy_after", mId);
++         mAgent = nullptr;
++         if (mTurnServers) {
++             free(mTurnServers);
++@@ -167,7 +184,9 @@ void Peer::Disconnect() {
++ 
++ void Peer::CandidateAdd(const char* aSdp) {
++     LOG_INFO("\n\nReceive Candidate (%" PRIu64 "):\n------------------\n%s\n------------------\n", mId, aSdp);
+++    horizon_diag("ice.remote_candidate_before", mId, 0, aSdp);
++     juice_add_remote_candidate(mAgent, aSdp);
+++    horizon_diag("ice.remote_candidate_after", mId);
++ }
++ 
++ void Peer::CandidateDone() {
++@@ -175,13 +194,18 @@ void Peer::CandidateDone() {
++     juice_set_remote_gathering_done(mAgent);
++     if (!mControlling) {
+++        horizon_diag("ice.gather_before", mId);
++         juice_gather_candidates(mAgent);
+++        horizon_diag("ice.gather_after", mId);
++     }
++ }
++ 
++ void Peer::OnStateChanged(juice_state_t aState) {
++     LOG_INFO("State change (%" PRIu64 "): %s", mId, juice_state_to_string(aState));
+++    horizon_diag("ice.state", mId, (uint64_t)aState, juice_state_to_string(aState));
++ 
++     bool wasConnected = (mLastState == JUICE_STATE_CONNECTED) || (mLastState == JUICE_STATE_COMPLETED);
++     bool wasDisconnected = (mLastState == JUICE_STATE_DISCONNECTED) || (mLastState == JUICE_STATE_FAILED);
++@@ -196,6 +220,8 @@ void Peer::OnStateChanged(juice_state_t aState) {
++         if (juice_get_selected_candidates(mAgent, local, JUICE_MAX_CANDIDATE_SDP_STRING_LEN, remote, JUICE_MAX_CANDIDATE_SDP_STRING_LEN) == 0) {
++             LOG_INFO("Local candidate : %s\n", local);
++             LOG_INFO("Remote candidate: %s\n", remote);
+++            horizon_diag("ice.selected_local", mId, 0, local);
+++            horizon_diag("ice.selected_remote", mId, 0, remote);
++ 
++             if (strstr(local, "relay") != NULL || strstr(remote, "relay") != NULL) {
++                 LOG_INFO("Using TURN relay server");
+++                horizon_diag("ice.turn_selected", mId);
++             }
++         }
++@@ -220,6 +246,7 @@ void Peer::OnStateChanged(juice_state_t aState) {
++ 
++ void Peer::OnCandidate(const char* aSdp) {
++     LOG_INFO("Candidate (%" PRIu64 "): %s", mId, aSdp);
+++    horizon_diag("ice.local_candidate", mId, 0, aSdp);
++ 
++     if (sForceRelay) {
++         if (mControlling) {
++@@ -246,6 +273,7 @@ void Peer::OnCandidate(const char* aSdp) {
++ 
++ void Peer::OnGatheringDone() {
++     LOG_INFO("Gathering done (%" PRIu64 ")", mId);
+++    horizon_diag("ice.gathering_done", mId);
++     MPacketPeerCandidateDone(
++         { .lobbyId = gClient->mCurrentLobbyId, .userId = mId }
++     ).Send(*gClient->mConnection);
