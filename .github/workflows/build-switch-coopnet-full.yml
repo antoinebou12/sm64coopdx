@@ -1,0 +1,139 @@
+name: Switch CoopNet Full NRO
+
+on:
+  push:
+    branches:
+      - agent/switch-coopnet-port
+    paths:
+      - '.github/workflows/build-switch-coopnet-full.yml'
+      - 'Makefile.switch-game'
+      - 'src/**'
+      - 'tools/switch/**'
+      - 'sm64.us.sha1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: switch-coopnet-full-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DEVKITPRO: /opt/devkitpro
+
+jobs:
+  full-nro:
+    name: Full Horizon CoopNet NRO
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    container:
+      image: devkitpro/devkita64:latest
+    env:
+      SM64_BASEROM_US_URL: ${{ secrets.SM64_BASEROM_US_URL }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Add devkitA64 to PATH
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "${DEVKITPRO}/devkitA64/bin" >> "$GITHUB_PATH"
+          echo "${DEVKITPRO}/tools/bin" >> "$GITHUB_PATH"
+
+      - name: Install asset pipeline dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          apt-get update -qq
+          apt-get install -y -qq bsdextrautils
+
+      - name: Detect private baserom source
+        id: baserom
+        shell: bash
+        run: |
+          if [[ -n "${SM64_BASEROM_US_URL}" ]]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "### CoopNet full NRO skipped"
+              echo "Set repository secret \`SM64_BASEROM_US_URL\` to a private HTTPS URL for your legally obtained US baserom."
+              echo "The source-only CoopNet portability workflow can still run without the ROM."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Fetch and verify private US baserom
+        if: steps.baserom.outputs.available == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 --proto '=https' --tlsv1.2 \
+            "${SM64_BASEROM_US_URL}" -o baserom.us.z64
+          expected="$(awk 'NR==1 {print $1}' sm64.us.sha1)"
+          actual="$(sha1sum baserom.us.z64 | awk '{print $1}')"
+          test -n "$expected"
+          if [[ "$actual" != "$expected" ]]; then
+            echo "baserom.us.z64 SHA-1 mismatch" >&2
+            echo "expected=$expected" >&2
+            echo "actual=$actual" >&2
+            exit 1
+          fi
+
+      - name: Build full Switch NRO with CoopNet
+        if: steps.baserom.outputs.available == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          make -f Makefile.switch-game SWITCH_COOPNET=1 switch-nro -j2
+
+      - name: Validate CoopNet NRO
+        if: steps.baserom.outputs.available == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/switch-coopnet-full
+          prefix=build/us_switch/sm64coopdx
+          test -s "${prefix}.nro"
+          test -s "${prefix}.elf"
+          test -s "${prefix}.map"
+          test -s "${prefix}.nacp"
+          test "$(dd if="${prefix}.nro" bs=1 skip=16 count=4 2>/dev/null)" = "NRO0"
+          aarch64-none-elf-readelf -h "${prefix}.elf" | tee build/switch-coopnet-full/ELF_HEADER.txt
+          aarch64-none-elf-size "${prefix}.elf" | tee build/switch-coopnet-full/SIZE.txt
+          grep -E 'libcoopnet|libjuice|coopnet' "${prefix}.map" | head -n 100 > build/switch-coopnet-full/COOPNET_MAP.txt
+          test -s build/switch-coopnet-full/COOPNET_MAP.txt
+          sha256sum "${prefix}.nro" "${prefix}.elf" "${prefix}.map" "${prefix}.nacp" | tee build/switch-coopnet-full/SHA256SUMS.txt
+          cp build/switch-deps/libjuice/SOURCE_COMMIT.txt build/switch-coopnet-full/LIBJUICE_COMMIT.txt
+          cp build/switch-deps/coopnet/SOURCE_COMMIT.txt build/switch-coopnet-full/COOPNET_COMMIT.txt
+          {
+            echo "### Full Switch CoopNet NRO build passed"
+            echo "Built with \`SWITCH_COOPNET=1\` from the private verified baserom."
+            echo "NRO size: $(stat -c '%s' "${prefix}.nro") bytes"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Remove private baserom
+        if: always() && steps.baserom.outputs.available == 'true'
+        shell: bash
+        run: rm -f baserom.us.z64
+
+      - name: Upload CoopNet NRO
+        if: steps.baserom.outputs.available == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: sm64coopdx-switch-coopnet-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 1
+          path: |
+            build/us_switch/sm64coopdx.nro
+            build/us_switch/sm64coopdx.map
+            build/switch-coopnet-full/ELF_HEADER.txt
+            build/switch-coopnet-full/SIZE.txt
+            build/switch-coopnet-full/COOPNET_MAP.txt
+            build/switch-coopnet-full/SHA256SUMS.txt
+            build/switch-coopnet-full/LIBJUICE_COMMIT.txt
+            build/switch-coopnet-full/COOPNET_COMMIT.txt
