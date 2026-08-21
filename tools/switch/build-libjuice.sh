@@ -62,8 +62,18 @@ cp "${SOURCE_DIR}/libjuice.a" "${LIB_DIR}/libjuice.a"
 "${RANLIB}" "${LIB_DIR}/libjuice.a"
 
 sync "${LIB_DIR}/libjuice.a" 2>/dev/null || true
-if ! "${READELF}" -h "${LIB_DIR}/libjuice.a" | grep -q "Machine:.*AArch64"; then
+# Do not pipe readelf directly into grep -q while pipefail is enabled: grep -q
+# can exit after its first match, SIGPIPE readelf, and make a valid archive look
+# like a failed validation under load. Capture readelf first so its exit status
+# and output are checked independently.
+if ! readelf_output="$("${READELF}" -h "${LIB_DIR}/libjuice.a" 2>&1)"; then
+    echo "readelf failed for libjuice.a" >&2
+    printf '%s\n' "${readelf_output}" >&2
+    exit 1
+fi
+if ! grep -q "Machine:.*AArch64" <<< "${readelf_output}"; then
     echo "libjuice.a is not an AArch64 archive" >&2
+    printf '%s\n' "${readelf_output}" >&2
     exit 1
 fi
 
