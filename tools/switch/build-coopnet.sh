@@ -15,6 +15,8 @@ TARBALL="${DOWNLOAD_DIR}/coopnet-${COOPNET_COMMIT}.tar.gz"
 URL="https://github.com/coop-deluxe/coopnet/archive/${COOPNET_COMMIT}.tar.gz"
 PATCH_DIR="${ROOT_DIR}/tools/switch/patches/coopnet"
 LIBJUICE_ROOT="${ROOT_DIR}/build/switch-deps/libjuice"
+VENDORED_HEADER="${ROOT_DIR}/lib/coopnet/include/libcoopnet.h"
+BUILT_HEADER="${INCLUDE_DIR}/libcoopnet.h"
 
 CROSS="${DEVKITPRO}/devkitA64/bin/aarch64-none-elf-"
 CXX="${CROSS}g++"
@@ -23,7 +25,7 @@ RANLIB="${CROSS}ranlib"
 READELF="${CROSS}readelf"
 LIBNX="${DEVKITPRO}/libnx"
 
-for tool in "${CXX}" "${AR}" "${RANLIB}" "${READELF}" curl patch; do
+for tool in "${CXX}" "${AR}" "${RANLIB}" "${READELF}" curl patch cmp diff; do
     command -v "${tool}" >/dev/null 2>&1 || {
         echo "Missing required tool: ${tool}" >&2
         exit 1
@@ -76,7 +78,22 @@ done
 
 "${AR}" rcs "${LIB_DIR}/libcoopnet.a" "${objects[@]}"
 "${RANLIB}" "${LIB_DIR}/libcoopnet.a"
-cp "${SOURCE_DIR}/common/libcoopnet.h" "${INCLUDE_DIR}/libcoopnet.h"
+cp "${SOURCE_DIR}/common/libcoopnet.h" "${BUILT_HEADER}"
+
+if [[ ! -f "${VENDORED_HEADER}" ]]; then
+    echo "Missing vendored CoopNet header: ${VENDORED_HEADER}" >&2
+    exit 1
+fi
+
+if ! cmp -s "${VENDORED_HEADER}" "${BUILT_HEADER}"; then
+    echo "ERROR: CoopNet header drift detected." >&2
+    echo "Vendored: ${VENDORED_HEADER}" >&2
+    echo "Pinned:   ${BUILT_HEADER}" >&2
+    diff -u "${VENDORED_HEADER}" "${BUILT_HEADER}" || true
+    exit 1
+fi
+
+echo "Verified pinned CoopNet header matches vendored libcoopnet.h"
 
 sync "${LIB_DIR}/libcoopnet.a" 2>/dev/null || true
 if ! "${READELF}" -h "${LIB_DIR}/libcoopnet.a" | grep -q "Machine:.*AArch64"; then
