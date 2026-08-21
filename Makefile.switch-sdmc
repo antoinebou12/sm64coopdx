@@ -22,10 +22,12 @@ override LDFLAGS += \
 SWITCH_SDMC_LAYOUT := $(BUILD_DIR)/sdmc-layout
 SWITCH_SDMC_APP_DIR := $(SWITCH_SDMC_LAYOUT)/switch/sm64coopdx
 SWITCH_SDMC_DEBUG_DIR := $(SWITCH_SDMC_LAYOUT)/debug
+SWITCH_TRANSFER_ROOT := $(BUILD_DIR)/easy-transfer
+SWITCH_TRANSFER_APP_DIR := $(SWITCH_TRANSFER_ROOT)/switch/sm64coopdx
 SWITCH_LOCAL_BASEROM := baserom.$(VERSION).z64
 SWITCH_JUICE_PROBE_NRO := build/switch-juice-probe/sm64coopdx-switch-juice-probe.nro
 
-.PHONY: switch-sdmc-layout
+.PHONY: switch-sdmc-layout switch-transfer-folder
 
 switch-sdmc-layout: switch-nro
 	@rm -rf "$(SWITCH_SDMC_LAYOUT)"
@@ -60,3 +62,17 @@ switch-sdmc-layout: switch-nro
 		'baserom.us.z64 is copyrighted game data. Keep your local copy private and do not upload it.' \
 		> "$(SWITCH_SDMC_LAYOUT)/README.txt"
 	@echo "SD layout: $(SWITCH_SDMC_LAYOUT)"
+
+# Minimal copy-ready tree for normal hardware testing. This intentionally omits
+# debug ELF/map files so copying the folder to the SD root only installs the app.
+switch-transfer-folder: switch-sdmc-layout
+	@rm -rf "$(SWITCH_TRANSFER_ROOT)"
+	@mkdir -p "$(SWITCH_TRANSFER_APP_DIR)"
+	@cp -r "$(SWITCH_SDMC_APP_DIR)/." "$(SWITCH_TRANSFER_APP_DIR)/"
+	@printf '%s\n' \
+		'SM64CoopDX Switch - copy-ready folder' \
+		'' \
+		'Copy the contents of this easy-transfer directory to the root of the Switch SD card.' \
+		'This installs /switch/sm64coopdx with the NRO, language files, logs directory, and local baserom when present.' \
+		> "$(SWITCH_TRANSFER_ROOT)/README.txt"
+	@echo "Copy-ready Switch folder: $(SWITCH_TRANSFER_ROOT)"
