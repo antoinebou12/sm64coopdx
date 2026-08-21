@@ -1,7 +1,26 @@
 #ifdef __SWITCH__
 
 #include <SDL2/SDL.h>
+
+/* libnx's switch/types.h unconditionally typedefs s64/u64/vs64/vu64 to the
+ * same names PR/ultratypes.h uses everywhere else in this codebase, but to a
+ * different underlying type (int64_t/long vs. long long) - both are 8 bytes
+ * on this ABI but ISO C treats them as distinct types, so including both in
+ * one translation unit is a hard "conflicting types" error. Neither header
+ * guards against the other (both use #pragma once, no detectable macro), so
+ * rename libnx's four conflicting typedefs for the duration of this include
+ * only, leaving PR/ultratypes.h's s64/u64/vs64/vu64 (used throughout the
+ * rest of this file) untouched. */
+#define s64 switch_libnx_s64
+#define u64 switch_libnx_u64
+#define vs64 switch_libnx_vs64
+#define vu64 switch_libnx_vu64
 #include <switch.h>
+#undef s64
+#undef u64
+#undef vs64
+#undef vu64
+
 #include <stdio.h>
 #include <stdlib.h>
 
