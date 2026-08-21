@@ -14,9 +14,11 @@ LIB_DIR="${BUILD_ROOT}/lib"
 TARBALL="${DOWNLOAD_DIR}/coopnet-${COOPNET_COMMIT}.tar.gz"
 URL="https://github.com/coop-deluxe/coopnet/archive/${COOPNET_COMMIT}.tar.gz"
 PATCH_DIR="${ROOT_DIR}/tools/switch/patches/coopnet"
+DIAG_PATCHER="${ROOT_DIR}/tools/switch/patch-coopnet-diagnostics.py"
 LIBJUICE_ROOT="${ROOT_DIR}/build/switch-deps/libjuice"
 VENDORED_HEADER="${ROOT_DIR}/lib/coopnet/include/libcoopnet.h"
 BUILT_HEADER="${INCLUDE_DIR}/libcoopnet.h"
+PYTHON="${PYTHON:-python3}"
 
 CROSS="${DEVKITPRO}/devkitA64/bin/aarch64-none-elf-"
 CXX="${CROSS}g++"
@@ -25,12 +27,17 @@ RANLIB="${CROSS}ranlib"
 READELF="${CROSS}readelf"
 LIBNX="${DEVKITPRO}/libnx"
 
-for tool in "${CXX}" "${AR}" "${RANLIB}" "${READELF}" curl patch cmp diff; do
+for tool in "${CXX}" "${AR}" "${RANLIB}" "${READELF}" "${PYTHON}" curl patch cmp diff; do
     command -v "${tool}" >/dev/null 2>&1 || {
         echo "Missing required tool: ${tool}" >&2
         exit 1
     }
 done
+
+if [[ ! -f "${DIAG_PATCHER}" ]]; then
+    echo "Missing CoopNet diagnostics patcher: ${DIAG_PATCHER}" >&2
+    exit 1
+fi
 
 if [[ ! -f "${LIBJUICE_ROOT}/lib/libjuice.a" ]]; then
     bash "${ROOT_DIR}/tools/switch/build-libjuice.sh"
@@ -50,6 +57,8 @@ for patch_file in "${PATCH_DIR}"/*.patch; do
     [[ -e "${patch_file}" ]] || continue
     patch --directory="${SOURCE_DIR}" -p1 --forward < "${patch_file}"
 done
+
+"${PYTHON}" "${DIAG_PATCHER}" "${SOURCE_DIR}"
 
 COMMON_FLAGS=(
     -O2
