@@ -78,6 +78,7 @@ done
 "${RANLIB}" "${LIB_DIR}/libcoopnet.a"
 cp "${SOURCE_DIR}/common/libcoopnet.h" "${INCLUDE_DIR}/libcoopnet.h"
 
+sync "${LIB_DIR}/libcoopnet.a" 2>/dev/null || true
 if ! "${READELF}" -h "${LIB_DIR}/libcoopnet.a" | grep -q "Machine:.*AArch64"; then
     echo "libcoopnet.a is not an AArch64 archive" >&2
     exit 1
