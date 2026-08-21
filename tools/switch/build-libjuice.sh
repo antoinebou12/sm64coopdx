@@ -61,6 +61,7 @@ cp "${SOURCE_DIR}/include/juice/juice.h" "${INCLUDE_DIR}/juice.h"
 cp "${SOURCE_DIR}/libjuice.a" "${LIB_DIR}/libjuice.a"
 "${RANLIB}" "${LIB_DIR}/libjuice.a"
 
+sync "${LIB_DIR}/libjuice.a" 2>/dev/null || true
 if ! "${READELF}" -h "${LIB_DIR}/libjuice.a" | grep -q "Machine:.*AArch64"; then
     echo "libjuice.a is not an AArch64 archive" >&2
     exit 1
