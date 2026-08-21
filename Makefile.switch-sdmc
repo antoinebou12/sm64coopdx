@@ -23,6 +23,7 @@ SWITCH_SDMC_LAYOUT := $(BUILD_DIR)/sdmc-layout
 SWITCH_SDMC_APP_DIR := $(SWITCH_SDMC_LAYOUT)/switch/sm64coopdx
 SWITCH_SDMC_DEBUG_DIR := $(SWITCH_SDMC_LAYOUT)/debug
 SWITCH_LOCAL_BASEROM := baserom.$(VERSION).z64
+SWITCH_JUICE_PROBE_NRO := build/switch-juice-probe/sm64coopdx-switch-juice-probe.nro
 
 .PHONY: switch-sdmc-layout
 
@@ -30,7 +31,11 @@ switch-sdmc-layout: switch-nro
 	@rm -rf "$(SWITCH_SDMC_LAYOUT)"
 	@mkdir -p "$(SWITCH_SDMC_APP_DIR)/logs" "$(SWITCH_SDMC_DEBUG_DIR)"
 	@cp "$(SWITCH_NRO)" "$(SWITCH_SDMC_APP_DIR)/sm64coopdx.nro"
+	@cp "$(ELF)" "$(SWITCH_SDMC_DEBUG_DIR)/sm64coopdx.elf"
 	@cp "$(BUILD_DIR)/sm64coopdx.map" "$(SWITCH_SDMC_DEBUG_DIR)/sm64coopdx.map"
+	@if [ -f "$(SWITCH_JUICE_PROBE_NRO)" ]; then \
+		cp "$(SWITCH_JUICE_PROBE_NRO)" "$(SWITCH_SDMC_DEBUG_DIR)/juice-probe.nro"; \
+	fi
 	@cp -r lang "$(SWITCH_SDMC_APP_DIR)/lang"
 	@if [ -f "$(SWITCH_LOCAL_BASEROM)" ]; then \
 		cp "$(SWITCH_LOCAL_BASEROM)" "$(SWITCH_SDMC_APP_DIR)/baserom.$(VERSION).z64"; \
@@ -42,10 +47,12 @@ switch-sdmc-layout: switch-nro
 		'SM64CoopDX Switch SD layout' \
 		'' \
 		'Copy the contents of this sdmc-layout directory to the root of the Switch SD card.' \
+		'SWITCH_COOPNET=$(SWITCH_COOPNET)' \
 		'The game writes startup diagnostics to /switch/sm64coopdx/logs/startup.log.' \
 		'The exact ROM asset/segment in progress is /switch/sm64coopdx/logs/current_rom_asset.txt.' \
 		'Fatal userland exceptions are written to /switch/sm64coopdx/logs/exception.log.' \
-		'Use debug/sm64coopdx.map together with runtime_main and pc/lr from exception.log to symbolize a crash.' \
+		'Use debug/sm64coopdx.elf and debug/sm64coopdx.map with runtime_main and pc/lr from exception.log to symbolize a crash.' \
+		'If built separately, the standalone ICE probe is copied to debug/juice-probe.nro.' \
 		'' \
 		'baserom.us.z64 is copyrighted game data. Keep your local copy private and do not upload it.' \
 		> "$(SWITCH_SDMC_LAYOUT)/README.txt"
