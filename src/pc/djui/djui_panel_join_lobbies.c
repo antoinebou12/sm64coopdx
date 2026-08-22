@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <inttypes.h>
 #include "djui.h"
 #include "djui_panel.h"
 #include "djui_panel_menu.h"
@@ -12,6 +13,9 @@
 #include "pc/configfile.h"
 #include "pc/debuglog.h"
 #include "macros.h"
+#ifdef __SWITCH__
+#include "pc/platform/switch/switch_coopnet_log.h"
+#endif
 
 #ifdef COOPNET
 
@@ -67,6 +71,10 @@ static void djui_lobby_on_hover_end(UNUSED struct DjuiBase* base) {
 
 void djui_panel_join_lobby(struct DjuiBase* caller) {
     gCoopNetDesiredLobby = (uint64_t)caller->tag;
+#ifdef __SWITCH__
+    switch_coopnet_log_printf("lobby ui select lobby_id=%" PRIu64, gCoopNetDesiredLobby);
+    switch_coopnet_log_flush(true);
+#endif
     snprintf(gCoopNetPassword, 64, "%s", sPassword);
     network_reset_reconnect_and_rehost();
     network_set_system(NS_COOPNET);
@@ -89,6 +97,14 @@ void djui_panel_join_query(uint64_t aLobbyId, UNUSED uint64_t aOwnerId, uint16_t
     char version[MAX_VERSION_LENGTH] = { 0 };
     snprintf(version, MAX_VERSION_LENGTH, "%s", get_version());
     bool disabled = strcmp(version, aVersion) != 0;
+#ifdef __SWITCH__
+    switch_coopnet_log_printf(
+        "lobby ui entry lobby_id=%" PRIu64 " local_version=%s remote_version=%s disabled=%d",
+        aLobbyId,
+        version,
+        aVersion != NULL ? aVersion : "(null)",
+        disabled ? 1 : 0);
+#endif
     if (disabled) {
         snprintf(mode, 64, "\\#f00\\[%s]", aVersion);
     }
