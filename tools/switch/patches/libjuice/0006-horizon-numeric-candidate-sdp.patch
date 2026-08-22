@@ -1,6 +1,6 @@
 --- a/src/ice.c
 +++ b/src/ice.c
-@@ -153,10 +153,35 @@ int ice_create_local_candidate(ice_candidate_type_t type, int component, int ind
+@@ -169,10 +169,38 @@ int ice_create_local_candidate(ice_candidate_type_t type, int component, int ind
  	candidate->priority = ice_compute_priority(candidate->type, candidate->resolved.addr.ss_family,
  	                                           candidate->component, index);
  
