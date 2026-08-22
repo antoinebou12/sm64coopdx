@@ -12,7 +12,6 @@ static AppletHookCookie sAppletHookCookie;
 static SwitchPlatformState *sState = NULL;
 static SwitchPlatformExitFn sExitCallback = NULL;
 static bool sSocketsInitialized = false;
-static bool sNifmInitialized = false;
 
 typedef struct SwitchMainThreadContext {
     SwitchPlatformMainFn entry;
@@ -132,27 +131,23 @@ bool switch_platform_init(SwitchPlatformState *state) {
     }
 
     /*
-     * CoopDX uses BSD sockets directly. Modern libnx deliberately keeps NIFM
-     * separate from socketInitialize(), so both services must remain alive for
-     * the lifetime of internet play. Without a NIFM session Horizon can let the
-     * active interface go away underneath an otherwise valid signaling socket,
-     * which surfaces as ENETDOWN/ENETUNREACH on CoopNet.
+     * Keep only BSD sockets alive during game bootstrap. A previous Switch-only
+     * change eagerly initialized NIFM here and the first full ROM builds after
+     * that change began faulting inside thread5_game_loop. Signaling worked on
+     * hardware before that change with socketInitializeDefault() alone.
      *
-     * Keep offline/local play available when either service is unavailable: we
-     * record the failure but do not abort platform startup.
+     * NIFM is now initialized lazily by the CoopNet peer/ICE path, after the
+     * game has completed its bootstrap. This keeps offline startup identical to
+     * the last known-good path while still keeping NIFM alive for ICE once the
+     * user actually hosts or joins a CoopNet lobby.
      */
     Result socketRc = socketInitializeDefault();
     sSocketsInitialized = R_SUCCEEDED(socketRc);
 
-    Result nifmRc = nifmInitialize(NifmServiceType_User);
-    sNifmInitialized = R_SUCCEEDED(nifmRc);
-
     switch_crash_log_printf(
-        "network services socket_rc=0x%08x socket_ready=%d nifm_rc=0x%08x nifm_ready=%d",
+        "network services socket_rc=0x%08x socket_ready=%d nifm=deferred",
         (unsigned int)socketRc,
-        sSocketsInitialized ? 1 : 0,
-        (unsigned int)nifmRc,
-        sNifmInitialized ? 1 : 0);
+        sSocketsInitialized ? 1 : 0);
 
     switch_platform_refresh_state(state);
     appletHook(&sAppletHookCookie, switch_platform_applet_hook, state);
@@ -171,11 +166,6 @@ void switch_platform_shutdown(SwitchPlatformState *state) {
     if (sSocketsInitialized) {
         socketExit();
         sSocketsInitialized = false;
-    }
-
-    if (sNifmInitialized) {
-        nifmExit();
-        sNifmInitialized = false;
     }
 
     state->initialized = false;
