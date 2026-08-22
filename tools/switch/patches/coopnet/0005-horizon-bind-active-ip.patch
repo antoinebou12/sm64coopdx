@@ -1,0 +1,29 @@
+--- a/common/peer.cpp
++++ b/common/peer.cpp
+@@ -103,6 +103,25 @@ Peer::Peer(Client* aClient, uint64_t aId, uint32_t aPriority) {
+     config.cb_recv = sOnRecv;
+     config.user_ptr = this;
+     config.concurrency_mode = JUICE_CONCURRENCY_MODE_POLL;
++
++#ifdef __SWITCH__
++    // With NO_IFADDRS, libjuice normally falls back to SIOCGIFCONF to discover
++    // host candidates. Horizon does not reliably expose the active interface
++    // through that path, so the Switch ends up advertising only srflx/relay
++    // candidates. Reuse the local IPv4 selected for the already-connected
++    // signaling TCP socket. juice_create() copies bind_address, so this stack
++    // buffer only needs to remain valid for the call below.
++    char horizonBindAddress[INET_ADDRSTRLEN] = { 0 };
++    if (aClient && aClient->mConnection && aClient->mConnection->mSocket > 0) {
++        struct sockaddr_in local = { 0 };
++        socklen_t localLen = sizeof(local);
++        if (getsockname(aClient->mConnection->mSocket, (struct sockaddr*)&local, &localLen) == 0 &&
++            local.sin_family == AF_INET && local.sin_addr.s_addr != htonl(INADDR_ANY) &&
++            inet_ntop(AF_INET, &local.sin_addr, horizonBindAddress, sizeof(horizonBindAddress))) {
++            config.bind_address = horizonBindAddress;
++            LOG_INFO("Switch ICE bind address: %s", horizonBindAddress);
++        }
++    }
++#endif
+ 
+     mConnected = false;
+     mAgent = juice_create(&config);
