@@ -1,12 +1,16 @@
 --- a/common/connection.cpp
 +++ b/common/connection.cpp
-@@ -125,6 +125,12 @@ void Connection::Receive() {
+@@ -125,6 +125,16 @@ void Connection::Receive() {
      if ((ret == -1) && (rc == SOCKET_EAGAIN || rc == SOCKET_EWOULDBLOCK)) {
          //LOG_INFO("[%" PRIu64 "] continue", mId);
          return;
 +#ifdef __SWITCH__
 +    } else if ((ret == -1) && (rc == EINTR)) {
 +        horizon_diag("signaling.recv_interrupted", (uint64_t)(int64_t)ret,
++                     (uint64_t)(uint32_t)rc);
++        return;
++    } else if ((ret == -1) && (rc == EINPROGRESS)) {
++        horizon_diag("signaling.recv_inprogress", (uint64_t)(int64_t)ret,
 +                     (uint64_t)(uint32_t)rc);
 +        return;
 +#endif
