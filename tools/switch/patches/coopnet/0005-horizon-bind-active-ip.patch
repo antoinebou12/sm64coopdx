@@ -1,6 +1,6 @@
 --- a/common/peer.cpp
 +++ b/common/peer.cpp
-@@ -103,6 +103,25 @@ Peer::Peer(Client* aClient, uint64_t aId, uint32_t aPriority) {
+@@ -103,6 +103,26 @@ Peer::Peer(Client* aClient, uint64_t aId, uint32_t aPriority) {
      config.cb_recv = sOnRecv;
      config.user_ptr = this;
      config.concurrency_mode = JUICE_CONCURRENCY_MODE_POLL;
@@ -21,6 +21,7 @@
 +            inet_ntop(AF_INET, &local.sin_addr, horizonBindAddress, sizeof(horizonBindAddress))) {
 +            config.bind_address = horizonBindAddress;
 +            LOG_INFO("Switch ICE bind address: %s", horizonBindAddress);
++            horizon_diag("ice.bind_address", mId, (uint64_t)ntohl(local.sin_addr.s_addr), horizonBindAddress);
 +        }
 +    }
 +#endif
