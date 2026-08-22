@@ -30,6 +30,9 @@ static enum NetworkType sNetworkType;
 static bool sReconnecting = false;
 static QueryCallbackPtr sQueryCallback = NULL;
 static QueryFinishCallbackPtr sQueryFinishCallback = NULL;
+#ifdef __SWITCH__
+static bool sPendingModListRequest = false;
+#endif
 
 static CoopNetRc coopnet_initialize(void);
 
@@ -106,6 +109,7 @@ static void coopnet_on_disconnected(bool intentional) {
 #ifdef __SWITCH__
     switch_coopnet_log_printf("disconnect callback shutdown rc=%d", (int)rc);
     switch_coopnet_log_checkpoint("LIBCOOPNET", "coopnet_shutdown", "AFTER");
+    sPendingModListRequest = false;
 #endif
     gCoopNetCallbacks.OnLobbyListGot = NULL;
     gCoopNetCallbacks.OnLobbyListFinish = NULL;
@@ -127,6 +131,11 @@ static void coopnet_on_lobby_created(uint64_t lobbyId, const char* game, const c
 static void coopnet_on_peer_connected(uint64_t peerId) {
 #ifdef __SWITCH__
     switch_coopnet_log_printf("peer connected peer_id=%" PRIu64, peerId);
+    if (sPendingModListRequest && gNetworkType == NT_CLIENT && peerId == sLocalLobbyOwnerId) {
+        sPendingModListRequest = false;
+        switch_coopnet_log_printf("peer ready, sending deferred mod list request peer_id=%" PRIu64, peerId);
+        network_send_mod_list_request();
+    }
     switch_coopnet_log_flush(true);
 #else
     (void)peerId;
@@ -136,6 +145,9 @@ static void coopnet_on_peer_connected(uint64_t peerId) {
 static void coopnet_on_peer_disconnected(uint64_t peerId) {
 #ifdef __SWITCH__
     switch_coopnet_log_printf("peer disconnected peer_id=%" PRIu64, peerId);
+    if (peerId == sLocalLobbyOwnerId && gNetworkType == NT_CLIENT) {
+        sPendingModListRequest = true;
+    }
     switch_coopnet_log_flush(true);
 #endif
     u8 localIndex = coopnet_user_id_to_local_index(peerId);
@@ -186,7 +198,17 @@ static void coopnet_on_lobby_joined(uint64_t lobbyId, uint64_t userId, uint64_t 
     coopnet_save_dest_id(userId, destId);
 
     if (userId == coopnet_get_local_user_id() && gNetworkType == NT_CLIENT) {
+#ifdef __SWITCH__
+        /* libcoopnet reports lobby membership before libjuice has nominated an
+         * ICE pair. Sending here produces COOPNET_FAILED until OnPeerConnected
+         * and caused the repeated 26-byte failures seen on hardware. */
+        sPendingModListRequest = true;
+        switch_coopnet_log_printf("mod list request deferred until ICE peer connection owner_id=%" PRIu64,
+                                  ownerId);
+        switch_coopnet_log_flush(true);
+#else
         network_send_mod_list_request();
+#endif
     }
 #ifdef DISCORD_SDK
     if (gDiscordInitialized) {
@@ -200,6 +222,9 @@ static void coopnet_on_lobby_left(uint64_t lobbyId, uint64_t userId) {
 #ifdef __SWITCH__
     switch_coopnet_log_printf("lobby left lobby_id=%" PRIu64 " user_id=%" PRIu64,
                               lobbyId, userId);
+    if (userId == coopnet_get_local_user_id()) {
+        sPendingModListRequest = false;
+    }
     switch_coopnet_log_flush(true);
 #endif
     coopnet_clear_dest_id(userId);
@@ -259,6 +284,9 @@ static bool ns_coopnet_initialize(enum NetworkType networkType, bool reconnectin
     switch_coopnet_log_init();
     switch_coopnet_log_printf("network initialize type=%d reconnecting=%d",
                               (int)networkType, reconnecting ? 1 : 0);
+    if (!reconnecting && networkType != NT_CLIENT) {
+        sPendingModListRequest = false;
+    }
 #endif
     sNetworkType = networkType;
     sReconnecting = reconnecting;
@@ -441,6 +469,7 @@ static void ns_coopnet_shutdown(bool reconnecting) {
     sLocalLobbyId = 0;
     sLocalLobbyOwnerId = 0;
 #ifdef __SWITCH__
+    sPendingModListRequest = false;
     switch_coopnet_log_shutdown_summary();
 #endif
 }
