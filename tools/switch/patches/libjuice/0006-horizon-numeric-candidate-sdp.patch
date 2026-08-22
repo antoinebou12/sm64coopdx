@@ -1,12 +1,13 @@
 --- a/src/ice.c
 +++ b/src/ice.c
-@@ -169,10 +169,38 @@ int ice_create_local_candidate(ice_candidate_type_t type, int component, int ind
- 	candidate->priority = ice_compute_priority(candidate->type, candidate->resolved.addr.ss_family,
- 	                                           candidate->component, index);
- 
+@@ -173,5 +173,24 @@ int ice_create_local_candidate(ice_candidate_type_t type, int component, int index,
+-	if (getnameinfo((struct sockaddr *)&record->addr, record->len, candidate->hostname, 256,
+-	                candidate->service, 32, NI_NUMERICHOST | NI_NUMERICSERV | NI_DGRAM)) {
+-		JLOG_ERROR("getnameinfo failed, errno=%d", sockerrno);
+-		return -1;
+-	}
 +#ifdef __SWITCH__
-+	/* Horizon may return a PTR hostname even with NI_NUMERICHOST. Keep the
-+	 * candidate model numeric from creation time onward. */
++	/* Keep every locally generated candidate numeric on Horizon. */
 +	const struct sockaddr *sa = (const struct sockaddr *)&record->addr;
 +	const void *src = NULL;
 +	if (sa->sa_family == AF_INET) {
@@ -23,27 +24,18 @@
 +	}
 +	snprintf(candidate->service, sizeof(candidate->service), "%u", (unsigned)addr_get_port(sa));
 +#else
- 	if (getnameinfo((struct sockaddr *)&record->addr, record->len, candidate->hostname, 256,
- 	                candidate->service, 32, NI_NUMERICHOST | NI_NUMERICSERV | NI_DGRAM)) {
- 		JLOG_ERROR("getnameinfo failed, errno=%d", sockerrno);
- 		return -1;
- 	}
++	if (getnameinfo((struct sockaddr *)&record->addr, record->len, candidate->hostname, 256,
++	                candidate->service, 32, NI_NUMERICHOST | NI_NUMERICSERV | NI_DGRAM)) {
++		JLOG_ERROR("getnameinfo failed, errno=%d", sockerrno);
++		return -1;
++	}
 +#endif
- 	return 0;
- }
-@@ -321,10 +349,41 @@ int ice_generate_candidate_sdp(const ice_candidate_t *candidate, char *buffer, s
- 		JLOG_ERROR("Unknown candidate type");
- 		return -1;
- 	}
-+
+@@ -324,4 +343,31 @@ int ice_generate_candidate_sdp(const ice_candidate_t *candidate, char *buffer, size_t size) {
+-	return snprintf(buffer, size, "a=candidate:%s %u UDP %u %s %s typ %s%s%s",
+-	                candidate->foundation, candidate->component, candidate->priority,
+-	                candidate->hostname, candidate->service, type, suffix ? " " : "",
+-	                suffix ? suffix : "");
 +#ifdef __SWITCH__
-+	/*
-+	 * Serialize from the resolved sockaddr at the final SDP boundary as well.
-+	 * This is intentionally redundant with ice_create_local_candidate(): STUN
-+	 * and TURN candidates can replace/update candidate fields later in the
-+	 * gathering path. The wire format must never contain Horizon PTR names,
-+	 * because the remote libjuice parser uses AI_NUMERICHOST for trickled ICE.
-+	 */
 +	char numeric_host[INET6_ADDRSTRLEN] = { 0 };
 +	char numeric_service[16] = { 0 };
 +	const struct sockaddr *sa = (const struct sockaddr *)&candidate->resolved.addr;
@@ -69,9 +61,8 @@
 +	                candidate->foundation, candidate->component, candidate->priority,
 +	                numeric_host, numeric_service, type, suffix ? " " : "", suffix ? suffix : "");
 +#else
- 	return snprintf(buffer, size, "a=candidate:%s %u UDP %u %s %s typ %s%s%s",
- 	                candidate->foundation, candidate->component, candidate->priority,
- 	                candidate->hostname, candidate->service, type, suffix ? " " : "",
- 	                suffix ? suffix : "");
++	return snprintf(buffer, size, "a=candidate:%s %u UDP %u %s %s typ %s%s%s",
++	                candidate->foundation, candidate->component, candidate->priority,
++	                candidate->hostname, candidate->service, type, suffix ? " " : "",
++	                suffix ? suffix : "");
 +#endif
- }

@@ -131,15 +131,21 @@ bool switch_platform_init(SwitchPlatformState *state) {
     }
 
     /*
-     * CoopDX uses BSD sockets directly. Socket service is initialized early
-     * for IPv4/IPv6 usage. NIFM is initialized lazily on first CoopNet ICE
-     * bind to avoid eager network service startup that regresses Switch boot.
+     * Keep only BSD sockets alive during game bootstrap. A previous Switch-only
+     * change eagerly initialized NIFM here and the first full ROM builds after
+     * that change began faulting inside thread5_game_loop. Signaling worked on
+     * hardware before that change with socketInitializeDefault() alone.
+     *
+     * NIFM is now initialized lazily by the CoopNet peer/ICE path, after the
+     * game has completed its bootstrap. This keeps offline startup identical to
+     * the last known-good path while still keeping NIFM alive for ICE once the
+     * user actually hosts or joins a CoopNet lobby.
      */
     Result socketRc = socketInitializeDefault();
     sSocketsInitialized = R_SUCCEEDED(socketRc);
 
     switch_crash_log_printf(
-        "network services socket_rc=0x%08x socket_ready=%d",
+        "network services socket_rc=0x%08x socket_ready=%d nifm=deferred",
         (unsigned int)socketRc,
         sSocketsInitialized ? 1 : 0);
 
