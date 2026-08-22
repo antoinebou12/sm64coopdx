@@ -90,11 +90,25 @@ int main(int argc, char **argv) {
         return 2;
     }
 
+    Result nifmRc = nifmInitialize(NifmServiceType_User);
+    probe_log("nifmInitialize=0x%08x", (unsigned int)nifmRc);
+    if (R_FAILED(nifmRc)) {
+        socketExit();
+        if (sLog) fclose(sLog);
+        return 5;
+    }
+
+    u32 currentIp = 0;
+    Result ipRc = nifmGetCurrentIpAddress(&currentIp);
+    probe_log("nifmGetCurrentIpAddress=0x%08x raw=0x%08x",
+              (unsigned int)ipRc, (unsigned int)currentIp);
+
     juice_set_log_level(JUICE_LOG_LEVEL_DEBUG);
 
     juice_config_t config;
     memset(&config, 0, sizeof(config));
-    config.concurrency_mode = JUICE_CONCURRENCY_MODE_POLL;
+    config.concurrency_mode = JUICE_CONCURRENCY_MODE_THREAD;
+    config.bind_address = "0.0.0.0";
     config.stun_server_host = "stun.l.google.com";
     config.stun_server_port = 19302;
     config.cb_state_changed = on_state_changed;
@@ -102,10 +116,12 @@ int main(int argc, char **argv) {
     config.cb_gathering_done = on_gathering_done;
     config.cb_recv = on_recv;
 
+    probe_log("ice_mode=thread bind=%s", config.bind_address);
     probe_log("stun=%s:%u", config.stun_server_host, config.stun_server_port);
     juice_agent_t *agent = juice_create(&config);
     probe_log("juice_create=%p", (void *)agent);
     if (agent == NULL) {
+        nifmExit();
         socketExit();
         if (sLog) fclose(sLog);
         return 3;
@@ -136,6 +152,7 @@ int main(int argc, char **argv) {
               sCandidateCount, sNonLoopbackCandidateCount, sGatheringDone ? 1 : 0);
 
     juice_destroy(agent);
+    nifmExit();
     socketExit();
 
     const bool pass = gatherRc == JUICE_ERR_SUCCESS && sNonLoopbackCandidateCount > 0;
