@@ -10,12 +10,29 @@
  #include <unistd.h>
  #include "libcoopnet.h"
  #include "peer.hpp"
-@@ -103,6 +106,39 @@ Peer::Peer(Client* aClient, uint64_t aId, uint32_t aPriority) {
+@@ -103,6 +106,58 @@ Peer::Peer(Client* aClient, uint64_t aId, uint32_t aPriority) {
      config.cb_recv = sOnRecv;
      config.user_ptr = this;
      config.concurrency_mode = JUICE_CONCURRENCY_MODE_POLL;
 +
 +#ifdef __SWITCH__
++    /*
++     * NIFM used to be initialized during global platform startup. The first
++     * full-ROM builds after that change started faulting in thread5_game_loop,
++     * before CoopNet is used. Keep the service completely out of game bootstrap
++     * and initialize it once, lazily, when the first ICE peer is created.
++     *
++     * The session intentionally remains alive until process exit. Multiple ICE
++     * peers share it, so tearing NIFM down from an individual Peer destructor
++     * would invalidate other active peers.
++     */
++    static std::once_flag horizonNifmOnce;
++    static Result horizonNifmInitRc = 1;
++    std::call_once(horizonNifmOnce, []() {
++        horizonNifmInitRc = nifmInitialize(NifmServiceType_User);
++    });
++    horizon_diag("ice.nifm_init", mId, (uint64_t)(uint32_t)horizonNifmInitRc);
++
 +    /*
 +     * Do not derive the ICE bind address from the signaling socket. On Horizon
 +     * getsockname() can still report INADDR_ANY for a valid connected socket,
@@ -26,7 +43,10 @@
 +     */
 +    char horizonBindAddress[INET_ADDRSTRLEN] = { 0 };
 +    u32 horizonIpv4 = 0;
-+    Result nifmRc = nifmGetCurrentIpAddress(&horizonIpv4);
++    Result nifmRc = horizonNifmInitRc;
++    if (R_SUCCEEDED(horizonNifmInitRc)) {
++        nifmRc = nifmGetCurrentIpAddress(&horizonIpv4);
++    }
 +    if (R_SUCCEEDED(nifmRc) && horizonIpv4 != 0 &&
 +        inet_ntop(AF_INET, &horizonIpv4, horizonBindAddress, sizeof(horizonBindAddress))) {
 +        config.bind_address = horizonBindAddress;
