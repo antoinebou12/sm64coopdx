@@ -5,16 +5,8 @@
  	                                           candidate->component, index);
  
 +#ifdef __SWITCH__
-+	/*
-+	 * Horizon's getnameinfo() has been observed returning reverse-DNS names even
-+	 * when NI_NUMERICHOST is requested.  ICE candidate parsing in libjuice uses
-+	 * AI_NUMERICHOST for trickled candidates, so advertising a PTR hostname makes
-+	 * an otherwise valid host/srflx/relay candidate unusable by a normal PC peer
-+	 * and by another Switch peer.
-+	 *
-+	 * Serialize the sockaddr directly on Switch so every candidate sent through
-+	 * CoopNet contains a literal IPv4/IPv6 address and a numeric port.
-+	 */
++	/* Horizon may return a PTR hostname even with NI_NUMERICHOST. Keep the
++	 * candidate model numeric from creation time onward. */
 +	const struct sockaddr *sa = (const struct sockaddr *)&record->addr;
 +	const void *src = NULL;
 +	if (sa->sa_family == AF_INET) {
@@ -38,4 +30,48 @@
  	}
 +#endif
  	return 0;
+ }
+@@ -321,10 +349,41 @@ int ice_generate_candidate_sdp(const ice_candidate_t *candidate, char *buffer, s
+ 		JLOG_ERROR("Unknown candidate type");
+ 		return -1;
+ 	}
++
++#ifdef __SWITCH__
++	/*
++	 * Serialize from the resolved sockaddr at the final SDP boundary as well.
++	 * This is intentionally redundant with ice_create_local_candidate(): STUN
++	 * and TURN candidates can replace/update candidate fields later in the
++	 * gathering path. The wire format must never contain Horizon PTR names,
++	 * because the remote libjuice parser uses AI_NUMERICHOST for trickled ICE.
++	 */
++	char numeric_host[INET6_ADDRSTRLEN] = { 0 };
++	char numeric_service[16] = { 0 };
++	const struct sockaddr *sa = (const struct sockaddr *)&candidate->resolved.addr;
++	const void *src = NULL;
++	if (candidate->resolved.len == 0) {
++		JLOG_ERROR("Candidate has no resolved address");
++		return -1;
++	}
++	if (sa->sa_family == AF_INET) {
++		src = &((const struct sockaddr_in *)sa)->sin_addr;
++	} else if (sa->sa_family == AF_INET6) {
++		src = &((const struct sockaddr_in6 *)sa)->sin6_addr;
++	} else {
++		JLOG_ERROR("Unsupported candidate address family %d", sa->sa_family);
++		return -1;
++	}
++	if (inet_ntop(sa->sa_family, src, numeric_host, sizeof(numeric_host)) == NULL) {
++		JLOG_ERROR("inet_ntop failed while serializing candidate, errno=%d", sockerrno);
++		return -1;
++	}
++	snprintf(numeric_service, sizeof(numeric_service), "%u", (unsigned)addr_get_port(sa));
++	return snprintf(buffer, size, "a=candidate:%s %u UDP %u %s %s typ %s%s%s",
++	                candidate->foundation, candidate->component, candidate->priority,
++	                numeric_host, numeric_service, type, suffix ? " " : "", suffix ? suffix : "");
++#else
+ 	return snprintf(buffer, size, "a=candidate:%s %u UDP %u %s %s typ %s%s%s",
+ 	                candidate->foundation, candidate->component, candidate->priority,
+ 	                candidate->hostname, candidate->service, type, suffix ? " " : "",
+ 	                suffix ? suffix : "");
++#endif
  }
