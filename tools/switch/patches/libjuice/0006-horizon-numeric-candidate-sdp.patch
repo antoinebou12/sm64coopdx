@@ -1,0 +1,41 @@
+--- a/src/ice.c
++++ b/src/ice.c
+@@ -153,10 +153,35 @@ int ice_create_local_candidate(ice_candidate_type_t type, int component, int ind
+ 	candidate->priority = ice_compute_priority(candidate->type, candidate->resolved.addr.ss_family,
+ 	                                           candidate->component, index);
+ 
++#ifdef __SWITCH__
++	/*
++	 * Horizon's getnameinfo() has been observed returning reverse-DNS names even
++	 * when NI_NUMERICHOST is requested.  ICE candidate parsing in libjuice uses
++	 * AI_NUMERICHOST for trickled candidates, so advertising a PTR hostname makes
++	 * an otherwise valid host/srflx/relay candidate unusable by a normal PC peer
++	 * and by another Switch peer.
++	 *
++	 * Serialize the sockaddr directly on Switch so every candidate sent through
++	 * CoopNet contains a literal IPv4/IPv6 address and a numeric port.
++	 */
++	const struct sockaddr *sa = (const struct sockaddr *)&record->addr;
++	const void *src = NULL;
++	if (sa->sa_family == AF_INET) {
++		src = &((const struct sockaddr_in *)sa)->sin_addr;
++	} else if (sa->sa_family == AF_INET6) {
++		src = &((const struct sockaddr_in6 *)sa)->sin6_addr;
++	} else {
++		JLOG_ERROR("Unsupported candidate address family %d", sa->sa_family);
++		return -1;
++	}
++	if (inet_ntop(sa->sa_family, src, candidate->hostname, sizeof(candidate->hostname)) == NULL) {
++		JLOG_ERROR("inet_ntop failed, errno=%d", sockerrno);
++		return -1;
++	}
++	snprintf(candidate->service, sizeof(candidate->service), "%u", (unsigned)addr_get_port(sa));
++#else
+ 	if (getnameinfo((struct sockaddr *)&record->addr, record->len, candidate->hostname, 256,
+ 	                candidate->service, 32, NI_NUMERICHOST | NI_NUMERICSERV | NI_DGRAM)) {
+ 		JLOG_ERROR("getnameinfo failed, errno=%d", sockerrno);
+ 		return -1;
+ 	}
++#endif
+ 	return 0;
+ }
