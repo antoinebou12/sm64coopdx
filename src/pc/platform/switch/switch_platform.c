@@ -6,10 +6,13 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "pc/platform/switch/switch_crash_log.h"
+
 static AppletHookCookie sAppletHookCookie;
 static SwitchPlatformState *sState = NULL;
 static SwitchPlatformExitFn sExitCallback = NULL;
 static bool sSocketsInitialized = false;
+static bool sNifmInitialized = false;
 
 typedef struct SwitchMainThreadContext {
     SwitchPlatformMainFn entry;
@@ -129,11 +132,27 @@ bool switch_platform_init(SwitchPlatformState *state) {
     }
 
     /*
-     * CoopDX uses BSD sockets directly. On Horizon those calls require the
-     * libnx socket service to be initialized first. Keep platform startup
-     * alive if the service is unavailable so offline play still works.
+     * CoopDX uses BSD sockets directly. Modern libnx deliberately keeps NIFM
+     * separate from socketInitialize(), so both services must remain alive for
+     * the lifetime of internet play. Without a NIFM session Horizon can let the
+     * active interface go away underneath an otherwise valid signaling socket,
+     * which surfaces as ENETDOWN/ENETUNREACH on CoopNet.
+     *
+     * Keep offline/local play available when either service is unavailable: we
+     * record the failure but do not abort platform startup.
      */
-    sSocketsInitialized = R_SUCCEEDED(socketInitializeDefault());
+    Result socketRc = socketInitializeDefault();
+    sSocketsInitialized = R_SUCCEEDED(socketRc);
+
+    Result nifmRc = nifmInitialize(NifmServiceType_User);
+    sNifmInitialized = R_SUCCEEDED(nifmRc);
+
+    switch_crash_log_printf(
+        "network services socket_rc=0x%08x socket_ready=%d nifm_rc=0x%08x nifm_ready=%d",
+        (unsigned int)socketRc,
+        sSocketsInitialized ? 1 : 0,
+        (unsigned int)nifmRc,
+        sNifmInitialized ? 1 : 0);
 
     switch_platform_refresh_state(state);
     appletHook(&sAppletHookCookie, switch_platform_applet_hook, state);
@@ -152,6 +171,11 @@ void switch_platform_shutdown(SwitchPlatformState *state) {
     if (sSocketsInitialized) {
         socketExit();
         sSocketsInitialized = false;
+    }
+
+    if (sNifmInitialized) {
+        nifmExit();
+        sNifmInitialized = false;
     }
 
     state->initialized = false;
