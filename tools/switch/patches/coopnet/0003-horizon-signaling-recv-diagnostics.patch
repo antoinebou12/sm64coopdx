@@ -1,0 +1,25 @@
+--- a/common/connection.cpp
++++ b/common/connection.cpp
+@@ -8,6 +8,7 @@
+ #include "connection.hpp"
+ #include "libcoopnet.h"
+ #include "logging.hpp"
++#include "horizon_diag.hpp"
+ #include "mpacket.hpp"
+ #include "peer.hpp"
+ #include "server.hpp"
+@@ -125,10 +126,14 @@ void Connection::Receive() {
+         //LOG_INFO("[%" PRIu64 "] continue", mId);
+         return;
+     } else if (ret == 0 || (rc == SOCKET_ECONNRESET)) {
++        horizon_diag("signaling.recv_closed", (uint64_t)(int64_t)ret,
++                     (uint64_t)(uint32_t)rc);
+         LOG_INFO("[%" PRIu64 "] Connection closed (%d, %d).", mId, ret, rc);
+         Disconnect(false);
+         return;
+     } else if (ret < 0) {
++        horizon_diag("signaling.recv_error", (uint64_t)(int64_t)ret,
++                     (uint64_t)(uint32_t)rc);
+         LOG_ERROR("[%" PRIu64 "] Error receiving data (%d)!", mId, rc);
+         Disconnect(false);
+         return;

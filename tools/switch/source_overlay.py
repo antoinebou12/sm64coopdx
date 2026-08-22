@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Generate narrow Switch-only source overlays from current upstream files.
+'''Generate narrow Switch-only source overlays from current upstream files.
 
 Each transformation is intentionally exact. If upstream changes the expected
 code, the Switch build fails here instead of silently compiling an outdated
 fork of a large source file.
-"""
+'''
 
 from __future__ import annotations
 
@@ -73,7 +73,53 @@ def overlay_platform(text: str) -> str:
     )
 
     marker = '#else\n\n#include <SDL3/SDL.h>\n\nconst char *sys_user_path(void) {'
-    switch_impl = '''#elif defined(__SWITCH__)\n\n#include <errno.h>\n#include <sys/stat.h>\n#include "pc/platform/switch/switch_platform.h"\n\nstatic bool switch_ensure_directory(const char *path) {\n    if (mkdir(path, 0777) == 0) {\n        return true;\n    }\n    return errno == EEXIST;\n}\n\nstatic bool switch_ensure_data_root(void) {\n    if (!switch_ensure_directory("sdmc:/switch")) {\n        return false;\n    }\n    return switch_ensure_directory(switch_platform_data_root());\n}\n\nconst char *sys_user_path(void) {\n    return switch_ensure_data_root() ? switch_platform_data_root() : NULL;\n}\n\nconst char *sys_resource_path(void) {\n    return switch_platform_data_root();\n}\n\nconst char *sys_exe_path_dir(void) {\n    return switch_platform_data_root();\n}\n\nconst char *sys_exe_path_file(void) {\n    return "sdmc:/switch/sm64coopdx/sm64coopdx.nro";\n}\n\nstatic void sys_fatal_impl(const char *msg) {\n    fprintf(stderr, "FATAL ERROR:\\n%s\\n", msg);\n    fflush(stderr);\n    exit(1);\n}\n\n#else\n\n#include <SDL3/SDL.h>\n\nconst char *sys_user_path(void) {'''
+    switch_impl = '''#elif defined(__SWITCH__)
+
+#include <errno.h>
+#include <sys/stat.h>
+#include "pc/platform/switch/switch_platform.h"
+
+static bool switch_ensure_directory(const char *path) {
+    if (mkdir(path, 0777) == 0) {
+        return true;
+    }
+    return errno == EEXIST;
+}
+
+static bool switch_ensure_data_root(void) {
+    if (!switch_ensure_directory("sdmc:/switch")) {
+        return false;
+    }
+    return switch_ensure_directory(switch_platform_data_root());
+}
+
+const char *sys_user_path(void) {
+    return switch_ensure_data_root() ? switch_platform_data_root() : NULL;
+}
+
+const char *sys_resource_path(void) {
+    return switch_platform_data_root();
+}
+
+const char *sys_exe_path_dir(void) {
+    return switch_platform_data_root();
+}
+
+const char *sys_exe_path_file(void) {
+    return "sdmc:/switch/sm64coopdx/sm64coopdx.nro";
+}
+
+static void sys_fatal_impl(const char *msg) {
+    fprintf(stderr, "FATAL ERROR:\\n%s\\n", msg);
+    fflush(stderr);
+    exit(1);
+}
+
+#else
+
+#include <SDL3/SDL.h>
+
+const char *sys_user_path(void) {'''
     text = replace_once(text, marker, switch_impl, "platform Switch filesystem branch")
     return text
 
@@ -106,7 +152,12 @@ def overlay_djui_controls(text: str) -> str:
     start = text.index('        int numJoys;\n')
     end_marker = '        free(gamepadChoices);\n'
     end = text.index(end_marker, start) + len(end_marker)
-    replacement = '''        /* Native Horizon input is not an SDL gamepad. */\n        char *gamepadChoices[] = { "Nintendo Switch" };\n        int numJoys = 1;\n        configGamepadNumber = 0;\n        djui_selectionbox_create(body, DLANG(CONTROLS, GAMEPAD), gamepadChoices, numJoys, &configGamepadNumber, NULL);\n'''
+    replacement = '''        /* Native Horizon input is not an SDL gamepad. */
+        char *gamepadChoices[] = { "Nintendo Switch" };
+        int numJoys = 1;
+        configGamepadNumber = 0;
+        djui_selectionbox_create(body, DLANG(CONTROLS, GAMEPAD), gamepadChoices, numJoys, &configGamepadNumber, NULL);
+'''
     return text[:start] + replacement + text[end:]
 
 
@@ -179,7 +230,7 @@ def overlay_network(text: str) -> str:
 
 
 def overlay_djui_host(text: str) -> str:
-    return replace_once(
+    text = replace_once(
         text,
         'void djui_panel_host_create(struct DjuiBase* caller) {\n',
         'void djui_panel_host_create(struct DjuiBase* caller) {\n'
@@ -192,6 +243,51 @@ def overlay_djui_host(text: str) -> str:
         '#endif\n',
         "Switch direct host resets LDN selection",
     )
+
+    text = replace_once(
+        text,
+        'static void djui_panel_host_network_system_change(UNUSED struct DjuiBase* base) {\n'
+        '    djui_base_set_visible(&sRectPort->base, (configNetworkSystem == NS_SOCKET));\n'
+        '    djui_base_set_visible(&sRectPassword->base, (configNetworkSystem == NS_COOPNET));\n'
+        '    djui_base_set_enabled(&sInputboxPort->base, (configNetworkSystem == NS_SOCKET));\n'
+        '    djui_base_set_enabled(&sInputboxPassword->base, (configNetworkSystem == NS_COOPNET));\n'
+        '}\n',
+        'static void djui_panel_host_network_system_change(UNUSED struct DjuiBase* base) {\n'
+        '    /* Horizon users still need an editable host port when CoopNet is selected. */\n'
+        '    djui_base_set_visible(&sRectPort->base, true);\n'
+        '    djui_base_set_visible(&sRectPassword->base, (configNetworkSystem == NS_COOPNET));\n'
+        '    djui_base_set_enabled(&sInputboxPort->base, (gNetworkType != NT_SERVER));\n'
+        '    djui_base_set_enabled(&sInputboxPassword->base, (configNetworkSystem == NS_COOPNET));\n'
+        '}\n',
+        "Switch CoopNet host port stays editable",
+    )
+
+    text = replace_once(
+        text,
+        '        struct DjuiRect* rect1 = djui_rect_container_create(body, 32);\n',
+        '        /* Switch CoopNet shows Port and Password as separate rows. */\n'
+        '        struct DjuiRect* rect1 = djui_rect_container_create(body, 64);\n',
+        "Switch host network fields height",
+    )
+    text = replace_once(
+        text,
+        '            djui_base_set_visible(&sRectPort->base, (configNetworkSystem == NS_SOCKET));\n',
+        '            djui_base_set_visible(&sRectPort->base, true);\n',
+        "Switch host port initially visible",
+    )
+    text = replace_once(
+        text,
+        '                    djui_base_set_enabled(&sInputboxPort->base, (configNetworkSystem == NS_SOCKET));\n',
+        '                    djui_base_set_enabled(&sInputboxPort->base, true);\n',
+        "Switch host port initially enabled",
+    )
+    text = replace_once(
+        text,
+        '            djui_base_set_location(&sRectPassword->base, 0, 0);\n',
+        '            djui_base_set_location(&sRectPassword->base, 0, 32);\n',
+        "Switch host password second row",
+    )
+    return text
 
 
 OVERLAYS = {

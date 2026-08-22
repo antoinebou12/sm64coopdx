@@ -1,0 +1,19 @@
+--- a/common/peer.cpp
++++ b/common/peer.cpp
+@@ -72,6 +72,15 @@ Peer::Peer(Client* aClient, uint64_t aId, uint32_t aPriority) {
+     juice_config_t config;
+     memset(&config, 0, sizeof(config));
+ 
++#ifdef __SWITCH__
++    /*
++     * Horizon's BSD service is reliable on IPv4, while libjuice's default
++     * AF_UNSPEC path prefers an IPv6 dual-stack socket first. Force the ICE
++     * transport onto IPv4 so host, STUN and TURN candidates all use the same
++     * address family on Switch.
++     */
++    config.bind_address = "0.0.0.0";
++#endif
++
+     // STUN server example
+     config.stun_server_host = aClient->mStunServer.host.c_str();
+     config.stun_server_port = aClient->mStunServer.port;

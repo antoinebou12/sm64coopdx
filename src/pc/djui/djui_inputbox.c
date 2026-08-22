@@ -368,9 +368,22 @@ void djui_inputbox_on_text_input(struct DjuiBase *base, char* text) {
         return;
     }
 
+    // account for the selected range that's about to be erased below, so
+    // replacing an existing selection isn't truncated against content that
+    // won't be there anymore (e.g. select-all-then-replace from a native
+    // on-screen keyboard)
+    int effectiveMsgLen = msgLen;
+    if (inputbox->selection[0] != inputbox->selection[1]) {
+        u16 s1 = fmin(inputbox->selection[0], inputbox->selection[1]);
+        u16 s2 = fmax(inputbox->selection[0], inputbox->selection[1]);
+        size_t s1len = djui_unicode_at_index(msg, s1) - msg;
+        size_t s2len = djui_unicode_at_index(msg, s2) - msg;
+        effectiveMsgLen = msgLen - (int)(s2len - s1len);
+    }
+
     // truncate
-    if (textLen + msgLen >= inputbox->bufferSize) {
-        int space = (inputbox->bufferSize - msgLen);
+    if (textLen + effectiveMsgLen >= inputbox->bufferSize) {
+        int space = (inputbox->bufferSize - effectiveMsgLen);
         if (space <= 1) { return; }
         text[space - 1] = '\0';
         textLen = space - 1;

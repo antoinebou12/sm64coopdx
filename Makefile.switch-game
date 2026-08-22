@@ -6,6 +6,13 @@ $(error "Please set DEVKITPRO, for example /opt/devkitpro")
 endif
 
 VERSION ?= us
+SWITCH_COOPNET ?= 1
+
+ifneq ($(SWITCH_COOPNET),0)
+ifneq ($(SWITCH_COOPNET),1)
+$(error SWITCH_COOPNET must be 0 or 1)
+endif
+endif
 
 LIBNX       := $(DEVKITPRO)/libnx
 DEVKITA64   := $(DEVKITPRO)/devkitA64
@@ -26,7 +33,7 @@ override TARGET_BITS := 0
 override TARGET_ARCH := armv8-a
 override CROSS := $(SWITCH_CROSS)
 override DISCORD_SDK := 0
-override COOPNET := 0
+override COOPNET := $(SWITCH_COOPNET)
 override UPDATER := 0
 override USE_APP := 0
 override ICON := 0
@@ -37,11 +44,22 @@ override BUILD_DIR := build/$(VERSION)_switch
 override EXE := $(BUILD_DIR)/sm64coopdx.elf
 override ELF := $(EXE)
 
+SWITCH_COOPNET_SRC_DIRS :=
+SWITCH_COOPNET_LDFLAGS :=
+ifeq ($(SWITCH_COOPNET),1)
+SWITCH_COOPNET_SRC_DIRS := src/pc/network/coopnet
+SWITCH_COOPNET_LDFLAGS := \
+    -Lbuild/switch-deps/coopnet/lib \
+    -Lbuild/switch-deps/libjuice/lib \
+    -l:libcoopnet.a \
+    -l:libjuice.a
+endif
+
 # Current upstream sources plus the isolated Horizon platform layer.
 override SRC_DIRS := \
     src src/engine src/game src/audio src/menu src/buffers actors levels bin data assets asm lib sound \
     src/pc src/pc/gfx src/pc/audio src/pc/controller src/pc/fs src/pc/fs/packtypes src/pc/mods src/pc/dev \
-    src/pc/network src/pc/network/packets src/pc/network/socket \
+    src/pc/network src/pc/network/packets src/pc/network/socket $(SWITCH_COOPNET_SRC_DIRS) \
     src/pc/utils src/pc/utils/miniz src/pc/djui src/pc/lua src/pc/lua/utils src/pc/os \
     src/pc/platform/switch
 
@@ -83,6 +101,7 @@ override LDFLAGS := -specs=$(LIBNX)/switch.specs $(SWITCH_ARCH) -fPIE \
     -Wl,--wrap=network_receive -Wl,--wrap=network_send -Wl,--wrap=network_send_to \
     -Wl,--wrap=packet_compress -Wl,--wrap=packet_decompress \
     -L$(LIBNX)/lib -L$(PORTLIBS)/lib -Lbuild/switch-deps/lua/lib \
+    $(SWITCH_COOPNET_LDFLAGS) \
     $(BACKEND_LDFLAGS) -l:liblua53.a -lcurl -lz -lGLESv2 -lEGL -lglapi -ldrm_nouveau -lnx -lm
 
 include Makefile
@@ -122,6 +141,10 @@ switch-toolchain-check:
 
 switch-deps: switch-toolchain-check
 	bash tools/switch/build-lua53.sh
+ifeq ($(SWITCH_COOPNET),1)
+	bash tools/switch/build-libjuice.sh
+	bash tools/switch/build-coopnet.sh
+endif
 
 $(SWITCH_PC_MAIN_SOURCE): src/pc/pc_main.c tools/switch/source_overlay.py
 	$(PYTHON) tools/switch/source_overlay.py pc_main $< $@

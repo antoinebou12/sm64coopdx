@@ -1,7 +1,28 @@
 #ifdef __SWITCH__
 
 #include <SDL2/SDL.h>
+
+/* libnx's switch/types.h unconditionally typedefs s64/u64/vs64/vu64 to the
+ * same names PR/ultratypes.h uses everywhere else in this codebase, but to a
+ * different underlying type (int64_t/long vs. long long) - both are 8 bytes
+ * on this ABI but ISO C treats them as distinct types, so including both in
+ * one translation unit is a hard "conflicting types" error. Neither header
+ * guards against the other (both use #pragma once, no detectable macro), so
+ * rename libnx's four conflicting typedefs for the duration of this include
+ * only, leaving PR/ultratypes.h's s64/u64/vs64/vu64 (used throughout the
+ * rest of this file) untouched. */
+#define s64 switch_libnx_s64
+#define u64 switch_libnx_u64
+#define vs64 switch_libnx_vs64
+#define vu64 switch_libnx_vu64
+#include <switch.h>
+#undef s64
+#undef u64
+#undef vs64
+#undef vu64
+
 #include <stdio.h>
+#include <stdlib.h>
 
 #include "pc/gfx/gfx_window_manager.h"
 #include "pc/gfx/gfx_window_opengl.h"
@@ -10,7 +31,10 @@
 #include "pc/configfile.h"
 #include "pc/cliopts.h"
 #include "pc/controller/controller_bind_mapping.h"
+#include "pc/djui/djui.h"
+#include "pc/djui/djui_inputbox.h"
 #include "pc/platform/switch/switch_platform.h"
+#include "pc/platform/switch/switch_crash_log.h"
 #include "pc/pc_main.h"
 
 static struct GfxWindowBackendAPI *sBackends[GFX_WINDOW_BACKEND_COUNT] = {
@@ -22,6 +46,7 @@ static enum GfxWindowBackend sBackend = GFX_WINDOW_BACKEND_DUMMY;
 static SDL_Window *sWindow = NULL;
 static SwitchPlatformState sPlatformState;
 static bool sPlatformReady = false;
+static bool sNativeKeyboardOpen = false;
 
 static kb_callback_t sKeyDown = NULL;
 static kb_callback_t sKeyUp = NULL;
@@ -45,6 +70,81 @@ static void switch_handle_key(bool down, SDL_Scancode scancode) {
     } else {
         if (sKeyUp) sKeyUp(code);
     }
+}
+
+static void switch_show_native_keyboard(void) {
+    if (sNativeKeyboardOpen || gInteractableFocus == NULL ||
+        gInteractableFocus->interactable == NULL ||
+        gInteractableFocus->interactable->on_text_input != djui_inputbox_on_text_input) {
+        return;
+    }
+
+    struct DjuiInputbox *inputbox = (struct DjuiInputbox *)gInteractableFocus;
+    if (inputbox->buffer == NULL || inputbox->bufferSize <= 1) {
+        return;
+    }
+
+    SwkbdConfig keyboard;
+    Result rc = swkbdCreate(&keyboard, 0);
+    if (R_FAILED(rc)) {
+        /* stderr is discarded on Switch (no console) - without this, a
+         * swkbd applet failure never leaves the device. */
+        switch_crash_log_printf("swkbdCreate failed: 0x%08x", (unsigned int)rc);
+        return;
+    }
+
+    sNativeKeyboardOpen = true;
+
+    if (inputbox->passwordChar[0] != '\0') {
+        swkbdConfigMakePresetPassword(&keyboard);
+    } else {
+        swkbdConfigMakePresetDefault(&keyboard);
+    }
+    swkbdConfigSetInitialText(&keyboard, inputbox->buffer);
+    swkbdConfigSetStringLenMax(&keyboard, (u32)inputbox->bufferSize - 1u);
+
+    /*
+     * stringLenMax is measured in characters while DjuiInputbox::bufferSize is
+     * measured in UTF-8 bytes. Give swkbd enough room for the worst-case UTF-8
+     * representation, then let the existing DJUI text-input callback perform
+     * its normal sanitizing/truncation and Unicode end cleanup.
+     */
+    size_t outputSize = ((size_t)inputbox->bufferSize * 4u) + 1u;
+    char *output = (char *)calloc(outputSize, 1);
+    if (output != NULL) {
+        rc = swkbdShow(&keyboard, output, outputSize);
+        if (R_SUCCEEDED(rc)) {
+            /*
+             * swkbdShow() is synchronous and returns the complete final
+             * string. Apply it to the exact inputbox that launched the applet
+             * instead of routing it back through the global keyboard callback.
+             * Horizon can transiently change application/window focus while a
+             * LibraryApplet is in the foreground; tying acceptance to the
+             * current global DJUI focus could therefore discard valid output.
+             */
+            switch_crash_log_printf(
+                "swkbdShow success: output_len=%u focus_same=%d",
+                (unsigned int)strlen(output),
+                gInteractableFocus == &inputbox->base ? 1 : 0);
+            djui_inputbox_select_all(inputbox);
+            djui_inputbox_on_text_input(&inputbox->base, output);
+            switch_crash_log_printf(
+                "swkbd applied: buffer_len=%u",
+                (unsigned int)strlen(inputbox->buffer));
+        } else {
+            /* Cancel is reported by libnx as LibAppletBadExit too, so log the
+             * result but leave the inputbox untouched. */
+            switch_crash_log_printf("swkbdShow ended without text: 0x%08x", (unsigned int)rc);
+        }
+        free(output);
+    } else {
+        switch_crash_log_printf(
+            "swkbd output allocation failed: size=%u",
+            (unsigned int)outputSize);
+    }
+
+    swkbdClose(&keyboard);
+    sNativeKeyboardOpen = false;
 }
 
 void gfx_wm_init(const char *window_title) {
@@ -190,6 +290,7 @@ bool gfx_wm_has_focus(void) {
 
 void gfx_wm_start_text_input(void) {
     SDL_StartTextInput();
+    switch_show_native_keyboard();
 }
 
 void gfx_wm_stop_text_input(void) {

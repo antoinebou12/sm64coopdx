@@ -1,0 +1,20 @@
+--- a/common/connection.cpp
++++ b/common/connection.cpp
+@@ -101,8 +101,16 @@ void Connection::Receive() {
+         return;
+     }
+ 
+-    // limit the buffer to the available amount
++    // Desktop builds preflight the readable byte count with FIONREAD. Horizon
++    // should not: an idle non-blocking TCP socket legitimately reports zero
++    // readable bytes, and using that value as recv()'s buffer length turns the
++    // call into recv(..., 0), which returns 0 and is indistinguishable from EOF
++    // in the logic below. Let recv(MSG_DONTWAIT) perform the readiness check on
++    // Switch instead; EAGAIN/EWOULDBLOCK already mean "idle", while ret == 0
++    // remains a real peer close.
++#ifndef __SWITCH__
+     SocketLimitBuffer(mSocket, &remaining);
++#endif
+ 
+ #ifdef OSX_BUILD
+     // OSX seems to return errno 0, size 0 on recv() when there is nothing to receive.

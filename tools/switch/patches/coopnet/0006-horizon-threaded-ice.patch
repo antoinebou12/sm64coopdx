@@ -1,0 +1,15 @@
+--- a/common/peer.cpp
++++ b/common/peer.cpp
+@@ -103,7 +103,11 @@ Peer::Peer(Client* aClient, uint64_t aId, uint32_t aPriority) {
+     config.cb_candidate = sOnCandidate;
+     config.cb_gathering_done = sOnGatheringDone;
+     config.cb_recv = sOnRecv;
+     config.user_ptr = this;
++#ifdef __SWITCH__
++    config.concurrency_mode = JUICE_CONCURRENCY_MODE_THREAD;
++#else
+     config.concurrency_mode = JUICE_CONCURRENCY_MODE_POLL;
++#endif
+ 
+     mConnected = false;
+     mAgent = juice_create(&config);
