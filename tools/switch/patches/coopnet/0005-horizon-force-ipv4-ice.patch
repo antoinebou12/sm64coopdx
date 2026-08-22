@@ -1,9 +1,10 @@
 --- a/common/peer.cpp
 +++ b/common/peer.cpp
-@@ -72,6 +72,15 @@ Peer::Peer(Client* aClient, uint64_t aId, uint32_t aPriority) {
+@@ -68,7 +68,16 @@ Peer::Peer(Client* aClient, uint64_t aId, uint32_t aPriority) {
+     // Agent 1: Create agent
      juice_config_t config;
      memset(&config, 0, sizeof(config));
- 
+-
 +#ifdef __SWITCH__
 +    /*
 +     * Horizon's BSD service is reliable on IPv4, while libjuice's default
