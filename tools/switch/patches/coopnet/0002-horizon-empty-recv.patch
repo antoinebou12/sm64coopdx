@@ -1,6 +1,6 @@
 --- a/common/connection.cpp
 +++ b/common/connection.cpp
-@@ -101,8 +101,17 @@ void Connection::Receive() {
+@@ -101,8 +101,16 @@ void Connection::Receive() {
          return;
      }
  
