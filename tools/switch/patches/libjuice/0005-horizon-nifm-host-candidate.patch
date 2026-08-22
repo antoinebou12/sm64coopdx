@@ -25,7 +25,15 @@
 +	 * STUN/TURN gathering still runs normally after this host candidate is
 +	 * returned, so NAT traversal is preserved; this only replaces local address
 +	 * discovery.
++	 *
++	 * NIFM is initialized lazily to avoid eager network service startup during
++	 * platform init which regresses Switch boot.
 +	 */
++	static bool sNifmInitializedLibjuice = false;
++	if (!sNifmInitializedLibjuice) {
++		nifmInitialize(NifmServiceType_User);
++		sNifmInitializedLibjuice = true;
++	}
 +	if (bound.addr.ss_family == AF_INET) {
 +		u32 ipv4 = 0;
 +		Result nifm_rc = nifmGetCurrentIpAddress(&ipv4);

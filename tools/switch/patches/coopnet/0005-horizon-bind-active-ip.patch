@@ -23,7 +23,16 @@
 +     * host candidate. NIFM owns the active interface and returns the current
 +     * IPv4 address in struct-in_addr byte order, so use it as the authoritative
 +     * source. Keep getsockname() only as a fallback for unusual NIFM failures.
++     *
++     * NIFM is initialized lazily here to avoid eager network service startup
++     * during platform init, which has been observed to regress the Switch boot
++     * path. Initialize once per process.
 +     */
++    static bool sNifmInitialized = false;
++    if (!sNifmInitialized) {
++        nifmInitialize(NifmServiceType_User);
++        sNifmInitialized = true;
++    }
 +    char horizonBindAddress[INET_ADDRSTRLEN] = { 0 };
 +    u32 horizonIpv4 = 0;
 +    Result nifmRc = nifmGetCurrentIpAddress(&horizonIpv4);
