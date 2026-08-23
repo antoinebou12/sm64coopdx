@@ -7,6 +7,33 @@
 #include "pc/debuglog.h"
 #include "pc/mods/mod_cache.h"
 
+static bool network_remote_mod_path_is_safe(char* path, u16 length, size_t capacity) {
+    if (path == NULL || length == 0 || length >= capacity) {
+        return false;
+    }
+
+    path[length] = '\0';
+    normalize_path(path);
+
+    // Lobby-provided mod paths must always stay relative to the generated
+    // download root. Reject absolute paths, Switch/Windows device prefixes,
+    // and any . / .. traversal component before anything is written to disk.
+    if (path[0] == *PATH_SEPARATOR || path[0] == *PATH_SEPARATOR_ALT) {
+        return false;
+    }
+    if (strchr(path, ':') != NULL || path_has_traversal(path)) {
+        return false;
+    }
+
+    return true;
+}
+
+static void network_reject_remote_mod_manifest(const char* reason) {
+    LOG_ERROR("Rejecting remote mod manifest: %s", reason ? reason : "invalid manifest");
+    network_shutdown(true, false, false, false);
+    djui_panel_join_message_error("\\#ffa0a0\\Error:\\#dcdcdc\\ Lobby sent an invalid or unsafe mod manifest.");
+}
+
 void network_send_mod_list_request(void) {
     SOFT_ASSERT(gNetworkType == NT_CLIENT);
     mods_clear(&gActiveMods);
@@ -220,12 +247,19 @@ void network_receive_mod_list_entry(struct Packet* p) {
     // get other fields
     u16 relativePathLength = 0;
     packet_read(p, &relativePathLength, sizeof(u16));
+    if (relativePathLength == 0 || relativePathLength >= sizeof(mod->relativePath)) {
+        network_reject_remote_mod_manifest("invalid mod relative path length");
+        return;
+    }
     packet_read(p, mod->relativePath, relativePathLength * sizeof(u8));
+    if (!network_remote_mod_path_is_safe(mod->relativePath, relativePathLength, sizeof(mod->relativePath))) {
+        network_reject_remote_mod_manifest("unsafe mod relative path");
+        return;
+    }
     packet_read(p, &mod->size, sizeof(u64));
     packet_read(p, &mod->isDirectory, sizeof(u8));
     packet_read(p, &mod->pausable, sizeof(u8));
     packet_read(p, &mod->ignoreScriptWarnings, sizeof(u8));
-    normalize_path(mod->relativePath);
     LOG_INFO("    '%s': %llu", mod->name, (u64)mod->size);
 
     // figure out base path
@@ -289,15 +323,27 @@ void network_receive_mod_list_file(struct Packet* p) {
         return;
     }
     struct ModFile* file = &mod->files[fileIndex];
-    if (mod == NULL) {
+    if (file == NULL) {
         LOG_ERROR("Received null mod file");
         return;
     }
 
     u16 relativePathLength = 0;
     packet_read(p, &relativePathLength, sizeof(u16));
+    if (relativePathLength == 0 || relativePathLength >= sizeof(file->relativePath)) {
+        network_reject_remote_mod_manifest("invalid mod file relative path length");
+        return;
+    }
     packet_read(p, file->relativePath, relativePathLength * sizeof(u8));
+    if (!network_remote_mod_path_is_safe(file->relativePath, relativePathLength, sizeof(file->relativePath))) {
+        network_reject_remote_mod_manifest("unsafe mod file relative path");
+        return;
+    }
     packet_read(p, &file->size, sizeof(u64));
+    if (file->size >= MAX_MOD_SIZE) {
+        network_reject_remote_mod_manifest("mod file exceeds maximum mod size");
+        return;
+    }
     packet_read(p, &file->dataHash, sizeof(u8) * 16);
     file->fp = NULL;
     LOG_INFO("      '%s': %llu", file->relativePath, (u64)file->size);
@@ -326,7 +372,34 @@ void network_receive_mod_list_done(struct Packet* p) {
     size_t totalSize = 0;
     for (u16 i = 0; i < gRemoteMods.entryCount; i++) {
         struct Mod* mod = gRemoteMods.entries[i];
-        totalSize += mod->size;
+        if (mod == NULL) {
+            network_reject_remote_mod_manifest("missing mod entry");
+            return;
+        }
+
+        u64 calculatedModSize = 0;
+        for (u16 j = 0; j < mod->fileCount; j++) {
+            struct ModFile* file = &mod->files[j];
+            if (file->relativePath[0] == '\0') {
+                network_reject_remote_mod_manifest("missing mod file entry");
+                return;
+            }
+            if (UINT64_MAX - calculatedModSize < file->size) {
+                network_reject_remote_mod_manifest("mod size overflow");
+                return;
+            }
+            calculatedModSize += file->size;
+        }
+
+        if (calculatedModSize != mod->size || calculatedModSize >= MAX_MOD_SIZE) {
+            network_reject_remote_mod_manifest("mod size does not match file manifest");
+            return;
+        }
+        if (SIZE_MAX - totalSize < calculatedModSize) {
+            network_reject_remote_mod_manifest("total mod size overflow");
+            return;
+        }
+        totalSize += calculatedModSize;
     }
     gRemoteMods.size = totalSize;
 
