@@ -12,7 +12,7 @@
          mLastReceiveTime = now;
 --- a/common/mpacket.cpp
 +++ b/common/mpacket.cpp
-@@ -137,6 +137,8 @@ void MPacket::Process(Connection* connection, uint8_t* aData) {
+@@ -137,5 +137,7 @@ void MPacket::Process(Connection* connection, uint8_t* aData) {
      // sanity check packet type
      if (header.packetType >= MPACKET_MAX || header.packetType == MPACKET_NONE) {
 +        horizon_diag("signaling.reject_packet_type", (uint64_t)header.packetType,
@@ -30,7 +30,7 @@
              LOG_ERROR("Received the wrong data size: %u != %" PRId64 " (required %" PRId64 ") (packetType %u)", header.dataSize, packet->mVoidDataSize, packet->mRequiredSize, header.packetType);
              return;
          }
-@@ -199,17 +204,26 @@ void MPacket::Process(Connection* connection, uint8_t* aData) {
+@@ -199,18 +204,24 @@ void MPacket::Process(Connection* connection, uint8_t* aData) {
      // check impl settings
      MPacketImplSettings impl = packet->GetImplSettings();
      if (header.packetType != impl.packetType) {
@@ -55,7 +55,7 @@
          LOG_ERROR("Received client packet while being a client!");
          return;
      }
-@@ -217,9 +231,14 @@ void MPacket::Process(Connection* connection, uint8_t* aData) {
+@@ -217,8 +228,16 @@ void MPacket::Process(Connection* connection, uint8_t* aData) {
      // receive the packet
      if (parseError) {
 +        horizon_diag("signaling.packet_parse_error", (uint64_t)header.packetType,
