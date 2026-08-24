@@ -34,12 +34,73 @@ static QueryCallbackPtr sQueryCallback = NULL;
 static QueryFinishCallbackPtr sQueryFinishCallback = NULL;
 #ifdef __SWITCH__
 static bool sPendingModListRequest = false;
+static uint64_t sConnectedPeerIds[MAX_PLAYERS] = { 0 };
 static uint64_t sCoopNetJoinLobbyId = 0;
 static time_t sCoopNetJoinStartTime = 0;
 static int sCoopNetJoinRetryCount = 0;
 #endif
 
 static CoopNetRc coopnet_initialize(void);
+
+#ifdef __SWITCH__
+static void coopnet_switch_clear_connected_peers(void) {
+    memset(sConnectedPeerIds, 0, sizeof(sConnectedPeerIds));
+}
+
+static bool coopnet_switch_peer_is_connected(uint64_t peerId) {
+    if (peerId == 0) { return false; }
+    for (u32 i = 0; i < MAX_PLAYERS; i++) {
+        if (sConnectedPeerIds[i] == peerId) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static void coopnet_switch_set_peer_connected(uint64_t peerId, bool connected) {
+    if (peerId == 0) { return; }
+
+    if (!connected) {
+        for (u32 i = 0; i < MAX_PLAYERS; i++) {
+            if (sConnectedPeerIds[i] == peerId) {
+                sConnectedPeerIds[i] = 0;
+            }
+        }
+        return;
+    }
+
+    if (coopnet_switch_peer_is_connected(peerId)) {
+        return;
+    }
+
+    for (u32 i = 0; i < MAX_PLAYERS; i++) {
+        if (sConnectedPeerIds[i] == 0) {
+            sConnectedPeerIds[i] = peerId;
+            return;
+        }
+    }
+
+    switch_coopnet_log_printf("peer tracking table full peer_id=%" PRIu64, peerId);
+}
+
+static void coopnet_switch_try_send_mod_list_request(const char* trigger) {
+    if (!sPendingModListRequest || gNetworkType != NT_CLIENT || sLocalLobbyOwnerId == 0) {
+        return;
+    }
+
+    if (!coopnet_switch_peer_is_connected(sLocalLobbyOwnerId)) {
+        switch_coopnet_log_printf("mod list request still deferred trigger=%s owner_id=%" PRIu64,
+                                  trigger != NULL ? trigger : "unknown", sLocalLobbyOwnerId);
+        return;
+    }
+
+    sPendingModListRequest = false;
+    switch_coopnet_log_printf("peer ready, sending deferred mod list request trigger=%s owner_id=%" PRIu64,
+                              trigger != NULL ? trigger : "unknown", sLocalLobbyOwnerId);
+    switch_crash_log_checkpoint("network: mod list request sent");
+    network_send_mod_list_request();
+}
+#endif
 
 static void coopnet_on_lobby_list_got(uint64_t lobbyId, uint64_t ownerId, uint16_t connections,
                                       uint16_t maxConnections, const char* game, const char* version,
@@ -92,6 +153,7 @@ bool ns_coopnet_query(QueryCallbackPtr callback, QueryFinishCallbackPtr finishCa
 
 static void coopnet_on_connected(uint64_t userId) {
 #ifdef __SWITCH__
+    coopnet_switch_clear_connected_peers();
     switch_coopnet_log_printf("signaling connected user_id=%" PRIu64, userId);
     switch_coopnet_log_flush(true);
 #endif
@@ -115,6 +177,7 @@ static void coopnet_on_disconnected(bool intentional) {
     switch_coopnet_log_printf("disconnect callback shutdown rc=%d", (int)rc);
     switch_coopnet_log_checkpoint("LIBCOOPNET", "coopnet_shutdown", "AFTER");
     sPendingModListRequest = false;
+    coopnet_switch_clear_connected_peers();
 #endif
     gCoopNetCallbacks.OnLobbyListGot = NULL;
     gCoopNetCallbacks.OnLobbyListFinish = NULL;
@@ -135,12 +198,9 @@ static void coopnet_on_lobby_created(uint64_t lobbyId, const char* game, const c
 
 static void coopnet_on_peer_connected(uint64_t peerId) {
 #ifdef __SWITCH__
+    coopnet_switch_set_peer_connected(peerId, true);
     switch_coopnet_log_printf("peer connected peer_id=%" PRIu64, peerId);
-    if (sPendingModListRequest && gNetworkType == NT_CLIENT && peerId == sLocalLobbyOwnerId) {
-        sPendingModListRequest = false;
-        switch_coopnet_log_printf("peer ready, sending deferred mod list request peer_id=%" PRIu64, peerId);
-        network_send_mod_list_request();
-    }
+    coopnet_switch_try_send_mod_list_request("peer_connected");
     switch_coopnet_log_flush(true);
 #else
     (void)peerId;
@@ -149,6 +209,7 @@ static void coopnet_on_peer_connected(uint64_t peerId) {
 
 static void coopnet_on_peer_disconnected(uint64_t peerId) {
 #ifdef __SWITCH__
+    coopnet_switch_set_peer_connected(peerId, false);
     switch_coopnet_log_printf("peer disconnected peer_id=%" PRIu64, peerId);
     if (peerId == sLocalLobbyOwnerId && gNetworkType == NT_CLIENT) {
         sPendingModListRequest = true;
@@ -215,12 +276,13 @@ static void coopnet_on_lobby_joined(uint64_t lobbyId, uint64_t userId, uint64_t 
 
     if (userId == coopnet_get_local_user_id() && gNetworkType == NT_CLIENT) {
 #ifdef __SWITCH__
-        /* libcoopnet reports lobby membership before libjuice has nominated an
-         * ICE pair. Sending here produces COOPNET_FAILED until OnPeerConnected
-         * and caused the repeated 26-byte failures seen on hardware. */
+        /* libcoopnet can report OnPeerConnected either before or after lobby
+         * membership. Track both states so whichever callback arrives second
+         * sends the request exactly once. */
         sPendingModListRequest = true;
         switch_coopnet_log_printf("mod list request deferred until ICE peer connection owner_id=%" PRIu64,
                                   ownerId);
+        coopnet_switch_try_send_mod_list_request("lobby_joined");
         switch_coopnet_log_flush(true);
 #else
         network_send_mod_list_request();
@@ -240,6 +302,7 @@ static void coopnet_on_lobby_left(uint64_t lobbyId, uint64_t userId) {
                               lobbyId, userId);
     if (userId == coopnet_get_local_user_id()) {
         sPendingModListRequest = false;
+        coopnet_switch_clear_connected_peers();
     }
     switch_coopnet_log_flush(true);
 #endif
@@ -302,6 +365,7 @@ static bool ns_coopnet_initialize(enum NetworkType networkType, bool reconnectin
                               (int)networkType, reconnecting ? 1 : 0);
     if (!reconnecting && networkType != NT_CLIENT) {
         sPendingModListRequest = false;
+        coopnet_switch_clear_connected_peers();
     }
 #endif
     sNetworkType = networkType;
@@ -521,6 +585,7 @@ static void ns_coopnet_shutdown(bool reconnecting) {
     sLocalLobbyOwnerId = 0;
 #ifdef __SWITCH__
     sPendingModListRequest = false;
+    coopnet_switch_clear_connected_peers();
     switch_coopnet_log_shutdown_summary();
 #endif
 }
