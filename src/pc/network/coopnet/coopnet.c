@@ -7,6 +7,7 @@
 #include "pc/network/version.h"
 #include "pc/djui/djui_language.h"
 #include "pc/djui/djui_popup.h"
+#include "pc/djui/djui_panel_join_message.h"
 #include "pc/mods/mods.h"
 #include "pc/utils/misc.h"
 #include "pc/debuglog.h"
@@ -253,28 +254,35 @@ static void coopnet_on_receive(uint64_t userId, const uint8_t* data, uint64_t da
 
 static void coopnet_on_lobby_joined(uint64_t lobbyId, uint64_t userId, uint64_t ownerId, uint64_t destId) {
     LOG_INFO("coopnet_on_lobby_joined!");
+    const bool localJoin = (userId == coopnet_get_local_user_id());
 #ifdef __SWITCH__
-    switch_coopnet_log_printf("lobby joined lobby_id=%" PRIu64 " user_id=%" PRIu64
-                              " owner_id=%" PRIu64,
-                              lobbyId, userId, ownerId);
+    switch_coopnet_log_printf("lobby joined event lobby_id=%" PRIu64 " user_id=%" PRIu64
+                              " owner_id=%" PRIu64 " local=%d",
+                              lobbyId, userId, ownerId, localJoin ? 1 : 0);
+    if (localJoin) {
+        sCoopNetJoinLobbyId = 0;
+        sCoopNetJoinStartTime = 0;
+        sCoopNetJoinRetryCount = 0;
+        switch_crash_log_checkpoint("network: local lobby joined");
+    } else if (sCoopNetJoinLobbyId != 0) {
+        switch_coopnet_log_printf("ignoring remote lobby-joined event while waiting for local join lobby_id=%" PRIu64,
+                                  sCoopNetJoinLobbyId);
+    }
     switch_coopnet_log_flush(true);
-    // Reset join watchdog on success
-    sCoopNetJoinLobbyId = 0;
-    sCoopNetJoinStartTime = 0;
-    switch_crash_log_checkpoint("network: lobby joined");
 #endif
-    coopnet_set_user_id(0, ownerId);
-    sLocalLobbyId = lobbyId;
-    sLocalLobbyOwnerId = ownerId;
 
-    if (userId == coopnet_get_local_user_id()) {
+    coopnet_set_user_id(0, ownerId);
+
+    if (localJoin) {
+        sLocalLobbyId = lobbyId;
+        sLocalLobbyOwnerId = ownerId;
         coopnet_clear_dest_ids();
         snprintf(configDestId, MAX_CONFIG_STRING, "%" PRIu64 "", destId);
     }
 
     coopnet_save_dest_id(userId, destId);
 
-    if (userId == coopnet_get_local_user_id() && gNetworkType == NT_CLIENT) {
+    if (localJoin && gNetworkType == NT_CLIENT) {
 #ifdef __SWITCH__
         /* libcoopnet can report OnPeerConnected either before or after lobby
          * membership. Track both states so whichever callback arrives second
@@ -363,7 +371,13 @@ static bool ns_coopnet_initialize(enum NetworkType networkType, bool reconnectin
     switch_coopnet_log_init();
     switch_coopnet_log_printf("network initialize type=%d reconnecting=%d",
                               (int)networkType, reconnecting ? 1 : 0);
-    if (!reconnecting && networkType != NT_CLIENT) {
+    if (!reconnecting && networkType == NT_CLIENT) {
+        sCoopNetJoinLobbyId = 0;
+        sCoopNetJoinStartTime = 0;
+        sCoopNetJoinRetryCount = 0;
+        sPendingModListRequest = false;
+        coopnet_switch_clear_connected_peers();
+    } else if (!reconnecting && networkType != NT_CLIENT) {
         sPendingModListRequest = false;
         coopnet_switch_clear_connected_peers();
     }
@@ -433,31 +447,57 @@ void ns_coopnet_update(void) {
         switch_coopnet_log_printf("coopnet_update rc=%d", (int)updateRc);
         switch_coopnet_log_flush(true);
     }
-    // Client join timeout watchdog
+
+    // Only the local user's OnLobbyJoined completes the join. Remote member
+    // events must not cancel this watchdog.
     if (sCoopNetJoinLobbyId != 0 && sCoopNetJoinStartTime != 0) {
         time_t now = time(NULL);
         if (now - sCoopNetJoinStartTime > 15) {
-            switch_coopnet_log_printf("coopnet lobby join timeout lobby_id=%" PRIu64 " elapsed=%ld retry=%d", sCoopNetJoinLobbyId, (long)(now - sCoopNetJoinStartTime), sCoopNetJoinRetryCount);
+            const uint64_t retryLobbyId = sCoopNetJoinLobbyId;
+            switch_coopnet_log_printf("coopnet local lobby join timeout lobby_id=%" PRIu64 " elapsed=%ld retry=%d",
+                                      retryLobbyId, (long)(now - sCoopNetJoinStartTime), sCoopNetJoinRetryCount);
             switch_coopnet_log_printf("coopnet join state local_user_id=%" PRIu64 " local_lobby_id=%" PRIu64 " owner_id=%" PRIu64,
                                       coopnet_get_local_user_id(), sLocalLobbyId, sLocalLobbyOwnerId);
             switch_coopnet_log_flush(true);
-            // Generic recovery: do NOT retry coopnet_lobby_join on the same connection.
-            // Destroy the signaling connection to get a fresh user ID, then re-query and re-join.
-            switch_coopnet_log_printf("coopnet join recovery: reconnect required lobby=%" PRIu64, sCoopNetJoinLobbyId);
-            switch_coopnet_log_flush(true);
-            coopnet_shutdown();
+
             sCoopNetJoinLobbyId = 0;
             sCoopNetJoinStartTime = 0;
+            sPendingModListRequest = false;
+            sLocalLobbyId = 0;
+            sLocalLobbyOwnerId = 0;
+            coopnet_switch_clear_connected_peers();
+
             if (sCoopNetJoinRetryCount >= 1) {
-                // Give up after two attempts
-                switch_coopnet_log_printf("coopnet lobby join failed after retry, giving up");
+                switch_coopnet_log_printf("coopnet local lobby join failed after fresh-connection retry");
+                switch_crash_log_checkpoint("network: lobby join timed out");
                 switch_coopnet_log_flush(true);
                 sCoopNetJoinRetryCount = 0;
                 sNetworkType = NT_NONE;
-                // djui_popup_create(DLANG(NOTIF, LOBBY_JOIN_FAILED), 2);
+                djui_panel_join_message_error("\\#ffa0a0\\Error:\\#dcdcdc\\ Lobby join timed out.");
+                network_shutdown(false, false, false, false);
             } else {
                 sCoopNetJoinRetryCount++;
-                sNetworkType = NT_NONE;
+                switch_coopnet_log_printf("coopnet join recovery: fresh connection retry lobby=%" PRIu64,
+                                          retryLobbyId);
+                switch_crash_log_checkpoint("network: lobby join retry");
+                switch_coopnet_log_flush(true);
+
+                CoopNetRc shutdownRc = coopnet_shutdown();
+                switch_coopnet_log_printf("coopnet join recovery shutdown rc=%d", (int)shutdownRc);
+
+                gCoopNetDesiredLobby = retryLobbyId;
+                CoopNetRc initRc = coopnet_initialize();
+                switch_coopnet_log_printf("coopnet join recovery begin rc=%d", (int)initRc);
+                switch_coopnet_log_flush(true);
+                if (initRc == COOPNET_OK) {
+                    sNetworkType = NT_CLIENT;
+                    sReconnecting = false;
+                } else {
+                    sNetworkType = NT_NONE;
+                    sCoopNetJoinRetryCount = 0;
+                    djui_panel_join_message_error("\\#ffa0a0\\Error:\\#dcdcdc\\ Could not reconnect to CoopNet.");
+                    network_shutdown(false, false, false, false);
+                }
             }
         }
     }
@@ -497,11 +537,11 @@ void ns_coopnet_update(void) {
             LOG_INFO("Join lobby");
 #ifdef __SWITCH__
             switch_coopnet_log_checkpoint("LIBCOOPNET", "coopnet_lobby_join", "BEFORE");
-            switch_coopnet_log_printf("coopnet join attempt lobby_id=%" PRIu64 " local_user_id=%" PRIu64 " signaling_connected=%d",
-                                      gCoopNetDesiredLobby, coopnet_get_local_user_id(), coopnet_is_connected() ? 1 : 0);
+            switch_coopnet_log_printf("coopnet join attempt lobby_id=%" PRIu64 " local_user_id=%" PRIu64 " signaling_connected=%d retry=%d",
+                                      gCoopNetDesiredLobby, coopnet_get_local_user_id(), coopnet_is_connected() ? 1 : 0,
+                                      sCoopNetJoinRetryCount);
             sCoopNetJoinLobbyId = gCoopNetDesiredLobby;
             sCoopNetJoinStartTime = time(NULL);
-            sCoopNetJoinRetryCount = 0;
             switch_crash_log_checkpoint("network: lobby join attempted");
 #endif
             CoopNetRc rc = coopnet_lobby_join(gCoopNetDesiredLobby, gCoopNetPassword);
@@ -585,6 +625,9 @@ static void ns_coopnet_shutdown(bool reconnecting) {
     sLocalLobbyOwnerId = 0;
 #ifdef __SWITCH__
     sPendingModListRequest = false;
+    sCoopNetJoinLobbyId = 0;
+    sCoopNetJoinStartTime = 0;
+    sCoopNetJoinRetryCount = 0;
     coopnet_switch_clear_connected_peers();
     switch_coopnet_log_shutdown_summary();
 #endif
