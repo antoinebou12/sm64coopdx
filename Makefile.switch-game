@@ -7,6 +7,7 @@ endif
 
 VERSION ?= us
 SWITCH_COOPNET ?= 1
+SWITCH_DISABLE_LOGS ?= 0
 
 ifneq ($(SWITCH_COOPNET),0)
 ifneq ($(SWITCH_COOPNET),1)
@@ -89,6 +90,9 @@ override EXTRA_CFLAGS := -D__SWITCH__ -D__CONSOLE__ -DUSE_GLES=1 -DEGL_NO_X11 -D
     -I$(LIBNX)/include -I$(PORTLIBS)/include \
     -Wno-format-security -Wno-trigraphs -Wno-missing-braces -Wno-missing-field-initializers \
     -Wno-unused-result -Wno-format-truncation
+ifeq ($(SWITCH_DISABLE_LOGS),1)
+override EXTRA_CFLAGS += -DSWITCH_NO_LOGS
+endif
 # devkitA64's newlib limits.h leaves LLONG_MAX undefined in C++ mode, and lua's
 # luaconf.h reads that as "compiler has no long long" and #errors out. Pulling
 # in <climits> up front defines it for every C++ translation unit.

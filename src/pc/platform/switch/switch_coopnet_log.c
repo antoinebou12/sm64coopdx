@@ -73,6 +73,10 @@ void switch_coopnet_log_flush(bool force) {
 }
 
 void switch_coopnet_log_printf(const char *fmt, ...) {
+#ifdef SWITCH_NO_LOGS
+    (void)fmt;
+    return;
+#endif
     if (fmt == NULL || !switch_coopnet_prepare()) {
         return;
     }
@@ -98,6 +102,9 @@ void switch_coopnet_log_printf(const char *fmt, ...) {
 }
 
 void switch_coopnet_log_init(void) {
+#ifdef SWITCH_NO_LOGS
+    return;
+#endif
     if (!switch_coopnet_prepare() || sSessionStarted) {
         return;
     }
