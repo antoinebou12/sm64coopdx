@@ -1,6 +1,6 @@
 --- a/common/client.cpp
 +++ b/common/client.cpp
-@@ -47,12 +47,18 @@ bool Client::Begin(std::string aHost, uint32_t aPort, std::string aName, uint64
+@@ -47,10 +47,15 @@ bool Client::Begin(std::string aHost, uint32_t aPort, std::string aName, uint64
  
      mConnection->Begin(nullptr);
  
@@ -18,7 +18,7 @@
      }, { aName }).Send(*mConnection);
  
      return true;
-@@ -164,6 +170,10 @@ void Client::LobbyUpdate(uint64_t aLobbyId, std::string aGame, std::string aVers
+@@ -164,6 +169,10 @@ void Client::LobbyUpdate(uint64_t aLobbyId, std::string aGame, std::string aVers
  }
  
  void Client::LobbyJoin(uint64_t aLobbyId, std::string aPassword) {
@@ -31,14 +31,14 @@
          { aPassword.substr(0, 64) }
 --- a/common/mpacket.cpp
 +++ b/common/mpacket.cpp
-@@ -245,6 +245,8 @@ bool MPacketJoined::Receive(Connection* connection) {
+@@ -245,4 +245,6 @@ bool MPacketJoined::Receive(Connection* connection) {
      LOG_INFO("[%" PRIu64 "] MPACKET_JOINED received: userID %" PRIu64 ", version %u", connection->mId, mData.userId, mData.version);
 +    horizon_diag("signaling.identity", (uint64_t)mData.userId,
 +                 (uint64_t)mData.version);
      if (mData.version != MPACKET_PROTOCOL_VERSION) {
          if (gCoopNetCallbacks.OnError) {
              gCoopNetCallbacks.OnError(MERR_COOPNET_VERSION, mData.version);
-@@ -336,17 +338,37 @@ bool MPacketLobbyJoined::Receive(Connection* connection) {
+@@ -336,17 +338,36 @@ bool MPacketLobbyJoined::Receive(Connection* connection) {
      LOG_INFO("[%" PRIu64 "] MPACKET_LOBBY_JOINED received: lobbyId %" PRIu64 ", userId %" PRIu64 ", priority %u, ownerId %" PRIu64 ", destId %" PRIu64 "",
          connection->mId, mData.lobbyId, mData.userId, mData.priority, mData.ownerId, mData.destId);
  
@@ -75,7 +75,7 @@
          gCoopNetCallbacks.OnLobbyJoined(mData.lobbyId, mData.userId, mData.ownerId, mData.destId);
      }
  
-@@ -367,6 +389,14 @@ bool MPacketLobbyLeft::Receive(Connection* connection) {
+@@ -367,5 +388,11 @@ bool MPacketLobbyLeft::Receive(Connection* connection) {
      LOG_INFO("[%" PRIu64 "] MPACKET_LOBBY_LEFT received: lobbyId %" PRIu64 ", userId %" PRIu64 "", connection->mId, mData.lobbyId, mData.userId);
  
 +    horizon_diag("lobby.left_payload", (uint64_t)mData.lobbyId,
