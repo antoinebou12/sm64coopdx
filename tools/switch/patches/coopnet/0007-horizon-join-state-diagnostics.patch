@@ -1,0 +1,89 @@
+--- a/common/client.cpp
++++ b/common/client.cpp
+@@ -47,12 +47,18 @@ bool Client::Begin(std::string aHost, uint32_t aPort, std::string aName, uint64
+ 
+     mConnection->Begin(nullptr);
+ 
++    const uint64_t clientInfoBits = (uint64_t)SocketGetInfoBits(mConnection->mSocket);
++    const uint64_t clientHash = (uint64_t)hashFile();
++    horizon_diag("signaling.client_info", aDestId, clientHash);
++    horizon_diag("signaling.client_info_bits", clientInfoBits, 0);
++
+     MPacketInfo({
+         .destId = aDestId,
+-        .infoBits = SocketGetInfoBits(mConnection->mSocket),
+-        .hash = hashFile(),
++        .infoBits = clientInfoBits,
++        .hash = clientHash,
+     }, { aName }).Send(*mConnection);
+ 
+     return true;
+@@ -164,6 +170,10 @@ void Client::LobbyUpdate(uint64_t aLobbyId, std::string aGame, std::string aVers
+ }
+ 
+ void Client::LobbyJoin(uint64_t aLobbyId, std::string aPassword) {
++    horizon_diag("lobby.join_request", aLobbyId, mCurrentUserId);
++    horizon_diag("lobby.join_request_state", mCurrentLobbyId,
++                 (uint64_t)aPassword.size());
++
+     MPacketLobbyJoin(
+         { .lobbyId = aLobbyId },
+         { aPassword.substr(0, 64) }
+--- a/common/mpacket.cpp
++++ b/common/mpacket.cpp
+@@ -245,6 +245,8 @@ bool MPacketJoined::Receive(Connection* connection) {
+     LOG_INFO("[%" PRIu64 "] MPACKET_JOINED received: userID %" PRIu64 ", version %u", connection->mId, mData.userId, mData.version);
++    horizon_diag("signaling.identity", (uint64_t)mData.userId,
++                 (uint64_t)mData.version);
+     if (mData.version != MPACKET_PROTOCOL_VERSION) {
+         if (gCoopNetCallbacks.OnError) {
+             gCoopNetCallbacks.OnError(MERR_COOPNET_VERSION, mData.version);
+@@ -336,17 +338,37 @@ bool MPacketLobbyJoined::Receive(Connection* connection) {
+     LOG_INFO("[%" PRIu64 "] MPACKET_LOBBY_JOINED received: lobbyId %" PRIu64 ", userId %" PRIu64 ", priority %u, ownerId %" PRIu64 ", destId %" PRIu64 "",
+         connection->mId, mData.lobbyId, mData.userId, mData.priority, mData.ownerId, mData.destId);
+ 
++    horizon_diag("lobby.joined_payload", (uint64_t)mData.lobbyId,
++                 (uint64_t)mData.userId);
++    horizon_diag("lobby.joined_owner_dest", (uint64_t)mData.ownerId,
++                 (uint64_t)mData.destId);
++    horizon_diag("lobby.joined_client_state",
++                 gClient ? (uint64_t)gClient->mCurrentUserId : 0,
++                 gClient ? (uint64_t)gClient->mCurrentLobbyId : 0);
++    horizon_diag("lobby.joined_priority", (uint64_t)mData.priority,
++                 gClient ? (uint64_t)gClient->mCurrentPriority : 0);
++
+     if (mData.userId == gClient->mCurrentUserId) {
++        horizon_diag("lobby.joined_accept_self", (uint64_t)mData.lobbyId,
++                     (uint64_t)mData.userId);
+         gClient->mCurrentLobbyId = mData.lobbyId;
+         gClient->mCurrentPriority = mData.priority;
+     } else if (mData.lobbyId == gClient->mCurrentLobbyId) {
++        horizon_diag("lobby.joined_accept_peer", (uint64_t)mData.lobbyId,
++                     (uint64_t)mData.userId);
+         gClient->PeerBegin(mData.userId, mData.priority);
+     } else {
++        horizon_diag("lobby.joined_reject_wrong_lobby",
++                     (uint64_t)mData.lobbyId,
++                     gClient ? (uint64_t)gClient->mCurrentLobbyId : 0);
+         LOG_ERROR("Received 'joined' for the wrong lobby");
+         return false;
+     }
+ 
+     if (gCoopNetCallbacks.OnLobbyJoined) {
++        horizon_diag("lobby.joined_callback", (uint64_t)mData.lobbyId,
++                     (uint64_t)mData.userId);
+         gCoopNetCallbacks.OnLobbyJoined(mData.lobbyId, mData.userId, mData.ownerId, mData.destId);
+     }
+ 
+@@ -367,6 +389,14 @@ bool MPacketLobbyLeft::Receive(Connection* connection) {
+     LOG_INFO("[%" PRIu64 "] MPACKET_LOBBY_LEFT received: lobbyId %" PRIu64 ", userId %" PRIu64 "", connection->mId, mData.lobbyId, mData.userId);
+ 
++    horizon_diag("lobby.left_payload", (uint64_t)mData.lobbyId,
++                 (uint64_t)mData.userId);
++    horizon_diag("lobby.left_client_state",
++                 gClient ? (uint64_t)gClient->mCurrentUserId : 0,
++                 gClient ? (uint64_t)gClient->mCurrentLobbyId : 0);
++
+     if (mData.userId == gClient->mCurrentUserId) {
+         gClient->mCurrentLobbyId = 0;
+         gClient->mCurrentPriority = 0;
