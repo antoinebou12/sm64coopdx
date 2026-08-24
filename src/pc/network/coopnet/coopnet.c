@@ -413,14 +413,12 @@ bool ns_coopnet_is_connected(void) {
 static void coopnet_populate_description(void) {
     char* buffer = sCoopNetDescription;
     int bufferLength = MAX_COOPNET_DESCRIPTION_LENGTH;
-    // get version
     const char* version = get_version();
     int versionLength = strlen(version);
     snprintf(buffer, bufferLength, "%s", version);
     buffer += versionLength;
     bufferLength -= versionLength;
 
-    // get mod strings
     if (gActiveMods.entryCount <= 0) { return; }
     char* strings[gActiveMods.entryCount];
     for (int i = 0; i < gActiveMods.entryCount; i++) {
@@ -428,13 +426,11 @@ static void coopnet_populate_description(void) {
         strings[i] = mod->name;
     }
 
-    // add seperator
     char* sep = "\n\nMods:\n";
     snprintf(buffer, bufferLength, "%s", sep);
     buffer += strlen(sep);
     bufferLength -= strlen(sep);
 
-    // concat mod strings
     str_seperator_concat(buffer, bufferLength, strings, gActiveMods.entryCount, "\\#\\\n");
 }
 
@@ -448,8 +444,6 @@ void ns_coopnet_update(void) {
         switch_coopnet_log_flush(true);
     }
 
-    // Only the local user's OnLobbyJoined completes the join. Remote member
-    // events must not cancel this watchdog.
     if (sCoopNetJoinLobbyId != 0 && sCoopNetJoinStartTime != 0) {
         time_t now = time(NULL);
         if (now - sCoopNetJoinStartTime > 15) {
@@ -492,6 +486,7 @@ void ns_coopnet_update(void) {
                 if (initRc == COOPNET_OK) {
                     sNetworkType = NT_CLIENT;
                     sReconnecting = false;
+                    return;
                 } else {
                     sNetworkType = NT_NONE;
                     sCoopNetJoinRetryCount = 0;
@@ -558,7 +553,6 @@ void ns_coopnet_update(void) {
 
 static int ns_coopnet_network_send(u8 localIndex, void* address, u8* data, u16 dataLength) {
     if (!coopnet_is_connected()) { return 1; }
-    //if (gCurLobbyId == 0) { return 2; }
     u64 userId = coopnet_raw_get_id(localIndex);
     if (localIndex == 0 && address != NULL) { userId = *(u64*)address; }
     CoopNetRc rc = coopnet_send_to(userId, data, dataLength);
