@@ -35,8 +35,9 @@ def main() -> int:
     common = root / "common"
     client = common / "client.cpp"
     peer = common / "peer.cpp"
+    mpacket = common / "mpacket.cpp"
 
-    for path in (client, peer):
+    for path in (client, peer, mpacket):
         if not path.is_file():
             raise SystemExit(f"missing pinned CoopNet source: {path}")
 
@@ -67,6 +68,44 @@ static inline void horizon_diag(const char*, uint64_t = 0,
 
     # Central TCP signaling diagnostics. Never pass player names or passwords.
     after(client, '#include "logging.hpp"\n', '#include "horizon_diag.hpp"\n')
+    after(mpacket, '#include "logging.hpp"\n', '#include "horizon_diag.hpp"\n')
+    # Signaling packet send/receive diagnostics
+    before(
+        mpacket,
+        '    // send data buffer\n    SOCKET_RESET_ERROR();\n',
+        '    horizon_diag("signaling.packet_send", (uint64_t)impl.packetType, (uint64_t)connection.mId);\n'
+    )
+    after(
+        mpacket,
+        'void MPacket::Process(Connection* connection, uint8_t* aData) {\n',
+        '    horizon_diag("signaling.packet_process_start", (uint64_t)connection->mId);\n'
+    )
+    after(
+        mpacket,
+        '    // extract variables from data\n    MPacketHeader header = *(MPacketHeader*)aData;\n',
+        '    horizon_diag("signaling.packet_header", (uint64_t)header.packetType, ((uint64_t)header.dataSize << 32) | header.stringSize);\n'
+    )
+    after(
+        mpacket,
+        '    int sent = sendto(connection.mSocket, (char*)&data[0], dataSize, MSG_NOSIGNAL, (const sockaddr*)&connection.mAddress, sizeof(struct sockaddr_in));\n',
+        '    horizon_diag("signaling.send_result", (uint64_t)(int64_t)sent, (uint64_t)dataSize);\n'
+    )
+    after(
+        mpacket,
+        '    if (sent < 0) {\n',
+        '        horizon_diag("signaling.send_errno", (uint64_t)rc, (uint64_t)impl.packetType);\n'
+    )
+    after(
+        mpacket,
+        '    LOG_INFO("[%" PRIu64 "] MPACKET_ERROR received: errno %u", connection->mId, mData.errorNumber);\n',
+        '    horizon_diag("signaling.server_error", (uint64_t)mData.errorNumber, (uint64_t)mData.tag);\n'
+    )
+    # Note: packet_received injection removed to avoid duplicate anchor in pinned source
+    # before(
+    #     mpacket,
+    #     '    MPacketHeader header = *(MPacketHeader*)aData;\n',
+    #     '    horizon_diag("signaling.packet_received", (uint64_t)header.packetType, (uint64_t)connection->mId);\n'
+    # )
     before(
         client,
         '    mConnection->mSocket = SocketInitialize(AF_INET, SOCK_STREAM, IPPROTO_TCP);\n',
@@ -199,6 +238,13 @@ static inline void horizon_diag(const char*, uint64_t = 0,
         peer,
         '    LOG_INFO("Gathering done (%" PRIu64 ")", mId);\n',
         '    horizon_diag("ice.gathering_done", mId);\n',
+    )
+
+    # MPacketLobbyJoined diagnostic for join validation
+    after(
+        mpacket,
+        'bool MPacketLobbyJoined::Receive(Connection* connection) {\n',
+        '    horizon_diag("lobby.joined_packet", (uint64_t)mData.lobbyId, (uint64_t)mData.userId);\n'
     )
 
     print(f"Injected Horizon diagnostics into {root}")

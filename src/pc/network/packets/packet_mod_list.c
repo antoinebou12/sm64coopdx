@@ -7,9 +7,6 @@
 #include "pc/debuglog.h"
 #include "pc/mods/mod_cache.h"
 
-#define MAX_REMOTE_MOD_FILES       65535
-#define MAX_REMOTE_TOTAL_FILES     100000
-
 static bool network_remote_mod_path_is_safe(char* path, u16 length, size_t capacity) {
     if (path == NULL || length == 0 || length >= capacity) {
         return false;
@@ -182,7 +179,6 @@ void network_receive_mod_list(struct Packet* p) {
     }
 
     packet_read(p, &gRemoteMods.entryCount, sizeof(u16));
-    LOG_INFO("MOD_MANIFEST_BEGIN version=%s mod_count=%u", version, gRemoteMods.entryCount);
     gRemoteMods.entries = calloc(gRemoteMods.entryCount, sizeof(struct Mod*));
     if (gRemoteMods.entries == NULL) {
         LOG_ERROR("Failed to allocate remote mod entries");
@@ -230,8 +226,6 @@ void network_receive_mod_list_entry(struct Packet* p) {
     // get name
     packet_read(p, mod->name, nameLength * sizeof(u8));
     mod->name[nameLength] = 0;
-
-    LOG_INFO("MOD_MANIFEST_ENTRY mod_index=%u name='%s'", modIndex, mod->name);
 
     // get incompatible length
     u16 incompatibleLength = 0;
@@ -291,11 +285,6 @@ void network_receive_mod_list_entry(struct Packet* p) {
 
     // get file count and allocate them
     packet_read(p, &mod->fileCount, sizeof(u16));
-    LOG_INFO("MOD_MANIFEST_ENTRY_FILES mod_index=%u file_count=%u", modIndex, mod->fileCount);
-    if (mod->fileCount > MAX_REMOTE_MOD_FILES) {
-        network_reject_remote_mod_manifest("mod file count exceeds limit");
-        return;
-    }
     mod->files = calloc(mod->fileCount, sizeof(struct ModFile));
     if (mod->files == NULL) {
         LOG_ERROR("Failed to allocate mod files!");
@@ -357,9 +346,6 @@ void network_receive_mod_list_file(struct Packet* p) {
     }
     packet_read(p, &file->dataHash, sizeof(u8) * 16);
     file->fp = NULL;
-    if ((fileIndex % 256) == 0) {
-        LOG_INFO("MOD_MANIFEST_FILES mod_index=%u files_received=%u/%u", modIndex, fileIndex + 1, mod->fileCount);
-    }
     LOG_INFO("      '%s': %llu", file->relativePath, (u64)file->size);
 
     struct ModCacheEntry* cache = mod_cache_get_from_hash(file->dataHash);
@@ -381,25 +367,6 @@ void network_receive_mod_list_done(struct Packet* p) {
             LOG_ERROR("Received download from known local index '%d'", p->localIndex);
             return;
         }
-    }
-
-    // enforce total file count cap
-    size_t totalFiles = 0;
-    for (u16 i = 0; i < gRemoteMods.entryCount; i++) {
-        struct Mod* mod = gRemoteMods.entries[i];
-        if (mod == NULL) {
-            network_reject_remote_mod_manifest("missing mod entry");
-            return;
-        }
-        if (SIZE_MAX - totalFiles < mod->fileCount) {
-            network_reject_remote_mod_manifest("total file count overflow");
-            return;
-        }
-        totalFiles += mod->fileCount;
-    }
-    if (totalFiles > MAX_REMOTE_TOTAL_FILES) {
-        network_reject_remote_mod_manifest("total file count exceeds limit");
-        return;
     }
 
     size_t totalSize = 0;
@@ -436,6 +403,5 @@ void network_receive_mod_list_done(struct Packet* p) {
     }
     gRemoteMods.size = totalSize;
 
-    LOG_INFO("MOD_MANIFEST_DONE total_mods=%u total_files=%zu total_bytes=%llu", gRemoteMods.entryCount, totalFiles, (unsigned long long)totalSize);
     network_start_download_requests();
 }
