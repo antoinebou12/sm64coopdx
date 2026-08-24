@@ -75,7 +75,8 @@ static void mark_groups_loaded_from_hash(void) {
             } else {
                 // if we haven't loaded from cache, we need this offset group
                 u64 ogIndexStart = fileStartOffset / GROUP_SIZE;
-                u64 ogIndexEnd = (fileStartOffset + mod->size) / GROUP_SIZE;
+                u64 fileEndOffset = fileStartOffset + file->size;
+                u64 ogIndexEnd = (file->size == 0) ? ogIndexStart : (fileEndOffset - 1) / GROUP_SIZE;
                 do {
                     if (ogIndexStart < sOffsetGroupCount) {
                         LOG_INFO("Marking group as required: %llu (%s)", ogIndexStart, file->relativePath);

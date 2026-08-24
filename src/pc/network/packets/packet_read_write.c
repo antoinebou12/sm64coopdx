@@ -184,12 +184,17 @@ u8 packet_initial_read(struct Packet* packet) {
 }
 
 void packet_read(struct Packet* packet, void* data, u16 length) {
-    u16 cursor = packet->cursor;
+    if (length == 0) {
+        return;
+    }
     if (data == NULL) { packet->error = true; return; }
-    if (cursor + length >= PACKET_LENGTH) { packet->error = true; return; }
+    if (packet->cursor > packet->dataLength || length > packet->dataLength - packet->cursor) {
+        packet->error = true;
+        return;
+    }
 
-    memcpy(data, &packet->buffer[cursor], length);
-    packet->cursor = cursor + length;
+    memcpy(data, &packet->buffer[packet->cursor], length);
+    packet->cursor += length;
 }
 
 u32 packet_hash(struct Packet* packet) {
