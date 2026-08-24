@@ -1,0 +1,75 @@
+--- a/common/connection.cpp
++++ b/common/connection.cpp
+@@ -141,6 +141,9 @@ void Connection::Receive() {
+     }
+ 
+     if (ret > 0) {
++        horizon_diag("signaling.recv_data", (uint64_t)ret,
++                     (uint64_t)(mDataSize + ret));
++
+         std::chrono::system_clock::time_point nowTp = std::chrono::system_clock::now();
+         uint64_t now = std::chrono::system_clock::to_time_t(nowTp);
+         mLastReceiveTime = now;
+--- a/common/mpacket.cpp
++++ b/common/mpacket.cpp
+@@ -137,6 +137,8 @@ void MPacket::Process(Connection* connection, uint8_t* aData) {
+     // sanity check packet type
+     if (header.packetType >= MPACKET_MAX || header.packetType == MPACKET_NONE) {
++        horizon_diag("signaling.reject_packet_type", (uint64_t)header.packetType,
++                     ((uint64_t)header.dataSize << 32) | header.stringSize);
+         LOG_ERROR("Received an unknown packet type: %u, data size: %u, string size: %u", header.packetType, header.dataSize, header.stringSize);
+         return;
+     }
+@@ -151,6 +153,9 @@ void MPacket::Process(Connection* connection, uint8_t* aData) {
+         if (header.packetType == MPACKET_INFO && (int64_t)header.dataSize == packet->mRequiredSize) {
+             packetSize = packet->mRequiredSize;
+         } else {
++            horizon_diag("signaling.reject_data_size", (uint64_t)header.packetType,
++                         ((uint64_t)header.dataSize << 32) |
++                         ((uint64_t)packet->mVoidDataSize & 0xffffffffULL));
+             LOG_ERROR("Received the wrong data size: %u != %" PRId64 " (required %" PRId64 ") (packetType %u)", header.dataSize, packet->mVoidDataSize, packet->mRequiredSize, header.packetType);
+             return;
+         }
+@@ -199,17 +204,26 @@ void MPacket::Process(Connection* connection, uint8_t* aData) {
+     // check impl settings
+     MPacketImplSettings impl = packet->GetImplSettings();
+     if (header.packetType != impl.packetType) {
++        horizon_diag("signaling.reject_type_mismatch", (uint64_t)header.packetType,
++                     (uint64_t)impl.packetType);
+         LOG_ERROR("Received packet type mismatch: %u != %u", header.packetType, impl.packetType);
+         return;
+     }
+     if (packet->mStringData.size() != impl.stringCount) {
++        horizon_diag("signaling.reject_string_count", (uint64_t)header.packetType,
++                     ((uint64_t)packet->mStringData.size() << 32) | impl.stringCount);
+         LOG_ERROR("Received packet string count mismatch: %" PRIu64 " != %u", (uint64_t)packet->mStringData.size(), impl.stringCount);
+         return;
+     }
+     if (gServer && impl.sendType == MSEND_TYPE_SERVER) {
++        horizon_diag("signaling.reject_server_packet", (uint64_t)header.packetType, 0);
+         LOG_ERROR("Received server packet while being a server!");
+         return;
+     }
+     if (gClient && impl.sendType == MSEND_TYPE_CLIENT) {
++        horizon_diag("signaling.reject_client_packet", (uint64_t)header.packetType, 0);
+         LOG_ERROR("Received client packet while being a client!");
+         return;
+     }
+@@ -217,9 +231,14 @@ void MPacket::Process(Connection* connection, uint8_t* aData) {
+     // receive the packet
+     if (parseError) {
++        horizon_diag("signaling.packet_parse_error", (uint64_t)header.packetType,
++                     ((uint64_t)header.dataSize << 32) | header.stringSize);
+         LOG_ERROR("Packet parse error!");
+     } else {
++        horizon_diag("signaling.packet_dispatch", (uint64_t)header.packetType,
++                     (uint64_t)connection->mId);
+         bool ret = packet->Receive(connection);
+-        if (!ret) { LOG_ERROR("Packet receive error %u!", header.packetType); }
++        if (!ret) {
++            horizon_diag("signaling.packet_receive_rejected", (uint64_t)header.packetType,
++                         (uint64_t)connection->mId);
++            LOG_ERROR("Packet receive error %u!", header.packetType);
++        }
+     }
+ }
