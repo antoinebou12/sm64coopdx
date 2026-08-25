@@ -14,6 +14,8 @@
 #include "pc/debuglog.h"
 #include "macros.h"
 #ifdef __SWITCH__
+#include "pc/platform/switch/switch_coopnet_identity.h"
+#include "pc/platform/switch/switch_coopnet_join_gate.h"
 #include "pc/platform/switch/switch_coopnet_log.h"
 #endif
 
@@ -72,6 +74,25 @@ static void djui_lobby_on_hover_end(UNUSED struct DjuiBase* base) {
 void djui_panel_join_lobby(struct DjuiBase* caller) {
     gCoopNetDesiredLobby = (uint64_t)caller->tag;
 #ifdef __SWITCH__
+    switch_coopnet_join_gate_reset();
+    if (sPassword == NULL || sPassword[0] == '\0') {
+        uint64_t identityBytes = 0;
+        bool cacheHit = false;
+        const size_t fingerprint = switch_coopnet_identity_get(&identityBytes, &cacheHit);
+        if (fingerprint == 0) {
+            switch_coopnet_log_printf("public join blocked: build identity unavailable");
+            switch_coopnet_log_flush(true);
+            djui_panel_join_message_error(
+                "Switch build identity unavailable.\nReinstall the exact verified NRO at\nsdmc:/switch/sm64coopdx/sm64coopdx.nro");
+            return;
+        }
+        switch_coopnet_log_printf(
+            "public join identity lobby_id=%" PRIu64 " bytes=%" PRIu64 " fingerprint=%016" PRIx64 " cache=%d",
+            gCoopNetDesiredLobby,
+            identityBytes,
+            (uint64_t)fingerprint,
+            cacheHit ? 1 : 0);
+    }
     switch_coopnet_log_printf("lobby ui select lobby_id=%" PRIu64, gCoopNetDesiredLobby);
     switch_coopnet_log_flush(true);
 #endif
@@ -89,7 +110,6 @@ void djui_panel_join_query(uint64_t aLobbyId, UNUSED uint64_t aOwnerId, uint16_t
 
     char playerText[64] = "";
     snprintf(playerText, 63, "%u/%u", aConnections, aMaxConnections);
-
 
     char mode[64] = "";
     snprintf(mode, 64, "%s", aMode);
