@@ -191,7 +191,7 @@ void djui_panel_host_create(struct DjuiBase* caller) {
     {
 #ifdef __SWITCH__
         if (gNetworkType != NT_SERVER) {
-            djui_button_create(body, "PLAY SOLO (NO NETWORK)", DJUI_BUTTON_STYLE_NORMAL, djui_panel_host_play_solo);
+            djui_button_create(body, "PLAY SOLO", DJUI_BUTTON_STYLE_NORMAL, djui_panel_host_play_solo);
         }
 #endif
 #ifdef COOPNET
@@ -319,7 +319,7 @@ void djui_panel_host_create(struct DjuiBase* caller) {
             djui_base_set_size_type(&message->base, DJUI_SVT_RELATIVE, DJUI_SVT_ABSOLUTE);
             djui_base_set_size(&message->base, 1.0f, 1.0f);
             djui_base_set_color(&message->base, 255, 255, 160, 255);
-            djui_text_set_alignment(message, DJUI_HALIGN_CENTER, DJUI_VALIGN_BOTTOM);
+            djui_text_set_alignment(message, configExCoopTheme ? DJUI_HALIGN_CENTER : DJUI_HALIGN_RIGHT, DJUI_VALIGN_BOTTOM);
         }
     }
 
