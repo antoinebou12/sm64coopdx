@@ -100,6 +100,7 @@ override LDFLAGS := -specs=$(LIBNX)/switch.specs $(SWITCH_ARCH) -fPIE \
     -Wl,--gc-sections -Wl,-Map,$(BUILD_DIR)/sm64coopdx.map \
     -Wl,--wrap=network_receive -Wl,--wrap=network_send -Wl,--wrap=network_send_to \
     -Wl,--wrap=packet_compress -Wl,--wrap=packet_decompress \
+    -Wl,--wrap=network_send_join_request \
     -L$(LIBNX)/lib -L$(PORTLIBS)/lib -Lbuild/switch-deps/lua/lib \
     $(SWITCH_COOPNET_LDFLAGS) \
     $(BACKEND_LDFLAGS) -l:liblua53.a -lcurl -lz -lGLESv2 -lEGL -lglapi -ldrm_nouveau -lnx -lm
@@ -110,6 +111,7 @@ SWITCH_NACPTOOL := $(DKP_TOOLS)/nacptool
 SWITCH_ELF2NRO  := $(DKP_TOOLS)/elf2nro
 SWITCH_NACP     := $(BUILD_DIR)/sm64coopdx.nacp
 SWITCH_NRO      := $(BUILD_DIR)/sm64coopdx.nro
+SWITCH_ICON     := tools/switch/assets/sm64coopdx-switch.jpg
 SWITCH_VERSION  ?= 1.5.1-switch
 SWITCH_OVERLAY_DIR := $(BUILD_DIR)/switch-overlay
 
@@ -218,8 +220,8 @@ $(SWITCH_NACP):
 	@mkdir -p $(dir $@)
 	$(SWITCH_NACPTOOL) --create "SM64CoopDX" "SM64CoopDX contributors" "$(SWITCH_VERSION)" $@
 
-$(SWITCH_NRO): $(EXE) $(SWITCH_NACP)
-	$(SWITCH_ELF2NRO) $(EXE) $@ --nacp=$(SWITCH_NACP)
+$(SWITCH_NRO): $(EXE) $(SWITCH_NACP) $(SWITCH_ICON)
+	$(SWITCH_ELF2NRO) $(EXE) $@ --nacp=$(SWITCH_NACP) --icon=$(SWITCH_ICON)
 
 switch-nro: $(SWITCH_NRO)
 	@echo "Built Switch NRO: $(SWITCH_NRO)"
