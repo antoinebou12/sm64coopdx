@@ -69,6 +69,14 @@ void mod_cache_shutdown(void) {
 }
 
 void mod_cache_md5(const char* inPath, u8* outDataPath) {
+    if (outDataPath == NULL) {
+        LOG_ERROR("Cannot hash mod file without an output hash buffer");
+        return;
+    }
+    if (inPath == NULL || inPath[0] == '\0') {
+        LOG_ERROR("Cannot hash mod file without a path");
+        return;
+    }
     char cpath[SYS_MAX_PATH] = { 0 };
     u8 buffer[MD5_BUFFER_SIZE] = { 0 };
 

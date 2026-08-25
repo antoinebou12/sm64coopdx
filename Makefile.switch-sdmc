@@ -24,6 +24,7 @@ SWITCH_SDMC_APP_DIR := $(SWITCH_SDMC_LAYOUT)/switch/sm64coopdx
 SWITCH_SDMC_DEBUG_DIR := $(SWITCH_SDMC_LAYOUT)/debug
 SWITCH_TRANSFER_ROOT := $(BUILD_DIR)/easy-transfer
 SWITCH_TRANSFER_APP_DIR := $(SWITCH_TRANSFER_ROOT)/switch/sm64coopdx
+SWITCH_ICON := res/switch/icon.jpg
 SWITCH_LOCAL_BASEROM := baserom.$(VERSION).z64
 SWITCH_JUICE_PROBE_NRO := build/switch-juice-probe/sm64coopdx-switch-juice-probe.nro
 
@@ -33,6 +34,8 @@ switch-sdmc-layout: switch-nro
 	@rm -rf "$(SWITCH_SDMC_LAYOUT)"
 	@mkdir -p "$(SWITCH_SDMC_APP_DIR)/logs" "$(SWITCH_SDMC_DEBUG_DIR)"
 	@cp "$(SWITCH_NRO)" "$(SWITCH_SDMC_APP_DIR)/sm64coopdx.nro"
+	@test -s "$(SWITCH_ICON)" || (echo "Missing Switch icon: $(SWITCH_ICON)" && exit 1)
+	@cp "$(SWITCH_ICON)" "$(SWITCH_SDMC_APP_DIR)/icon.jpg"
 	@cp "$(ELF)" "$(SWITCH_SDMC_DEBUG_DIR)/sm64coopdx.elf"
 	@cp "$(BUILD_DIR)/sm64coopdx.map" "$(SWITCH_SDMC_DEBUG_DIR)/sm64coopdx.map"
 	@if [ -f "$(SWITCH_JUICE_PROBE_NRO)" ]; then \
@@ -50,6 +53,7 @@ switch-sdmc-layout: switch-nro
 		'' \
 		'Copy the contents of this sdmc-layout directory to the root of the Switch SD card.' \
 		'SWITCH_COOPNET=$(SWITCH_COOPNET)' \
+		'The homebrew menu icon is /switch/sm64coopdx/icon.jpg.' \
 		'The game writes startup diagnostics to /switch/sm64coopdx/logs/startup.log.' \
 		'CoopNet diagnostics are written to /switch/sm64coopdx/logs/coopnet.log.' \
 		'The last durable CoopNet library boundary is /switch/sm64coopdx/logs/coopnet_checkpoint.txt.' \

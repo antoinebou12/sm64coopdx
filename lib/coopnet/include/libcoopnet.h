@@ -57,6 +57,7 @@ extern CoopNetCallbacks gCoopNetCallbacks;
 extern CoopNetSettings gCoopNetSettings;
 
 bool coopnet_is_connected(void);
+uint64_t coopnet_get_client_hash(void);
 CoopNetRc coopnet_begin(const char* aHost, uint32_t aPort, const char* aName, uint64_t aDestId);
 CoopNetRc coopnet_shutdown(void);
 CoopNetRc coopnet_update(void);

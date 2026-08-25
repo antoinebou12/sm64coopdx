@@ -1,0 +1,85 @@
+diff --git a/common/libcoopnet.cpp b/common/libcoopnet.cpp
+index d310e31..f72c672 100644
+--- a/common/libcoopnet.cpp
++++ b/common/libcoopnet.cpp
+@@ -1,5 +1,6 @@
+ #include "client.hpp"
+ #include "libcoopnet.h"
++#include "utils.hpp"
+ 
+ CoopNetCallbacks gCoopNetCallbacks = { 0 };
+ CoopNetSettings gCoopNetSettings = { 0 };
+@@ -8,6 +9,10 @@ bool coopnet_is_connected(void) {
+     return (gClient && gClient->mConnection && gClient->mConnection->mActive);
+ }
+ 
++uint64_t coopnet_get_client_hash(void) {
++    return static_cast<uint64_t>(hashFile());
++}
++
+ CoopNetRc coopnet_begin(const char* aHost, uint32_t aPort, const char* aName, uint64_t aDestId) {
+     if (gClient) { return COOPNET_OK; }
+ 
+diff --git a/common/libcoopnet.h b/common/libcoopnet.h
+index 1fd18f5..15bfc8d 100644
+--- a/common/libcoopnet.h
++++ b/common/libcoopnet.h
+@@ -57,6 +57,7 @@ extern CoopNetCallbacks gCoopNetCallbacks;
+ extern CoopNetSettings gCoopNetSettings;
+ 
+ bool coopnet_is_connected(void);
++uint64_t coopnet_get_client_hash(void);
+ CoopNetRc coopnet_begin(const char* aHost, uint32_t aPort, const char* aName, uint64_t aDestId);
+ CoopNetRc coopnet_shutdown(void);
+ CoopNetRc coopnet_update(void);
+diff --git a/common/utils.cpp b/common/utils.cpp
+index f0c05bd..13bbdb1 100644
+--- a/common/utils.cpp
++++ b/common/utils.cpp
+@@ -8,6 +8,11 @@
+ #include <filesystem>
+ #include "socket.hpp"
+ 
++#ifdef __SWITCH__
++#include "coopnet_switch_identity.hpp"
++#include "horizon_diag.hpp"
++#endif
++
+ #if defined(__APPLE__)
+ // for _NSGetExecutablePath
+ #include <mach-o/dyld.h>
+@@ -59,7 +63,9 @@ float clock_elapsed(void) {
+ 
+ std::string getExecutablePath() {
+     char path[0xFF];
+-#if defined(_WIN32)
++#if defined(__SWITCH__)
++    return COOPNET_SWITCH_NRO_PATH;
++#elif defined(_WIN32)
+     if (GetModuleFileNameA(nullptr, path, MAX_PATH) != 0) {
+         return std::string(path);
+     }
+@@ -90,7 +96,23 @@ static std::string readFileData(const std::string &filepath) {
+ }
+ 
+ std::size_t hashFile(const std::string &filepath = getExecutablePath()) {
++#ifdef __SWITCH__
++    horizon_diag("identity.hash_begin", 0, 0, filepath.c_str());
++    const CoopNetSwitchIdentityResult result = coopnet_switch_identity(filepath.c_str());
++    if (result.cached) {
++        horizon_diag("identity.hash_cached", result.bytes, result.hash, filepath.c_str());
++    } else if (result.error == COOPNET_SWITCH_IDENTITY_OK) {
++        horizon_diag("identity.hash_complete", result.bytes, result.hash, filepath.c_str());
++    } else {
++        horizon_diag("identity.hash_failed",
++                     static_cast<uint64_t>(result.error),
++                     result.bytes,
++                     filepath.c_str());
++    }
++    return static_cast<std::size_t>(result.hash);
++#else
+     const std::string data = readFileData(filepath);
+     if (data == "") { return 0; }
+     return std::hash<std::string>{}(data);
++#endif
+ }

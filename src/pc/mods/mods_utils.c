@@ -234,6 +234,9 @@ char* extract_lua_field(char* fieldName, char* buffer) {
 //////////////////////////////////////////////////////////////////////////////////////////
 
 void normalize_path(char* path) {
+    if (path == NULL) {
+        return;
+    }
     // replace slashes
     char* p = path;
     while (*p) {
@@ -245,7 +248,17 @@ void normalize_path(char* path) {
 }
 
 bool concat_path(char* destination, char* path, char* fname) {
-    return (snprintf(destination, SYS_MAX_PATH - 1, "%s/%s", path, fname) >= 0);
+    if (destination == NULL || path == NULL || fname == NULL) {
+        return false;
+    }
+    int written = snprintf(destination, SYS_MAX_PATH, "%s/%s", path, fname);
+    if (written < 0 || written >= SYS_MAX_PATH) {
+        if (SYS_MAX_PATH > 0) {
+            destination[0] = '\0';
+        }
+        return false;
+    }
+    return true;
 }
 
 char* path_basename(char* path) {

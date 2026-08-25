@@ -8,6 +8,7 @@ endif
 VERSION ?= us
 SWITCH_COOPNET ?= 1
 SWITCH_DISABLE_LOGS ?= 0
+SWITCH_ICON ?= res/switch/icon.jpg
 
 ifneq ($(SWITCH_COOPNET),0)
 ifneq ($(SWITCH_COOPNET),1)
@@ -115,6 +116,8 @@ SWITCH_ELF2NRO  := $(DKP_TOOLS)/elf2nro
 SWITCH_NACP     := $(BUILD_DIR)/sm64coopdx.nacp
 SWITCH_NRO      := $(BUILD_DIR)/sm64coopdx.nro
 SWITCH_VERSION  ?= 1.5.1-switch
+SWITCH_COOPNET_COMMIT := 9d9b3dd4e87dba2fa3ca542ae32b73f43df32b0e
+SWITCH_COOPNET_IDENTITY_MANIFEST := build-logs/switch-coopnet-identity.txt
 SWITCH_OVERLAY_DIR := $(BUILD_DIR)/switch-overlay
 
 SWITCH_PC_MAIN_SOURCE := $(SWITCH_OVERLAY_DIR)/src/pc/pc_main.c
@@ -131,7 +134,7 @@ SWITCH_OVERLAY_SOURCES := \
     $(SWITCH_CONTROLS_SOURCE) $(SWITCH_LOADING_SOURCE) $(SWITCH_NETWORK_SOURCE) \
     $(SWITCH_HOST_SOURCE) $(SWITCH_ROM_ASSETS_SOURCE)
 
-.PHONY: switch-toolchain-check switch-deps switch-overlays switch-game switch-nro
+.PHONY: switch-toolchain-check switch-deps switch-overlays switch-game switch-nro switch-coopnet-identity
 
 switch-toolchain-check:
 	@test -x "$(CC)" || (echo "Missing devkitA64 compiler: $(CC)" && exit 1)
@@ -222,8 +225,15 @@ $(SWITCH_NACP):
 	@mkdir -p $(dir $@)
 	$(SWITCH_NACPTOOL) --create "SM64CoopDX" "SM64CoopDX contributors" "$(SWITCH_VERSION)" $@
 
-$(SWITCH_NRO): $(EXE) $(SWITCH_NACP)
-	$(SWITCH_ELF2NRO) $(EXE) $@ --nacp=$(SWITCH_NACP)
+$(SWITCH_NRO): $(EXE) $(SWITCH_NACP) $(SWITCH_ICON)
+	@test -s "$(SWITCH_ICON)" || (echo "Missing Switch icon: $(SWITCH_ICON)" && exit 1)
+	$(SWITCH_ELF2NRO) $(EXE) $@ --nacp=$(SWITCH_NACP) --icon=$(SWITCH_ICON)
 
-switch-nro: $(SWITCH_NRO)
+switch-coopnet-identity: $(SWITCH_NRO) tools/switch/coopnet_identity.py
+	$(PYTHON) tools/switch/coopnet_identity.py --nro $(SWITCH_NRO) \
+		--output $(SWITCH_COOPNET_IDENTITY_MANIFEST) \
+		--root . --coopnet-commit $(SWITCH_COOPNET_COMMIT) --version $(SWITCH_VERSION)
+
+switch-nro: $(SWITCH_NRO) switch-coopnet-identity
 	@echo "Built Switch NRO: $(SWITCH_NRO)"
+	@echo "CoopNet identity manifest: $(SWITCH_COOPNET_IDENTITY_MANIFEST)"

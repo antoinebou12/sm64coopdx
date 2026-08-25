@@ -119,6 +119,7 @@ jobs:
           test -s "${prefix}.elf"
           test -s "${prefix}.map"
           test -s "${prefix}.nacp"
+          test -s build-logs/switch-coopnet-identity.txt
           test "$(dd if="${prefix}.nro" bs=1 skip=16 count=4 2>/dev/null)" = "NRO0"
           aarch64-none-elf-readelf -h "${prefix}.elf" | tee build/switch-coopnet-full/ELF_HEADER.txt
           aarch64-none-elf-size "${prefix}.elf" | tee build/switch-coopnet-full/SIZE.txt
@@ -154,3 +155,4 @@ jobs:
             build/switch-coopnet-full/SHA256SUMS.txt
             build/switch-coopnet-full/LIBJUICE_COMMIT.txt
             build/switch-coopnet-full/COOPNET_COMMIT.txt
+            build-logs/switch-coopnet-identity.txt

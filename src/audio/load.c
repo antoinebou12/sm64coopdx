@@ -1984,12 +1984,12 @@ void audio_init() {
 
     // Load header for TBL (assets/sound_data.tbl.s, i.e. raw data)
     gAlTbl = (ALSeqFile *) buf;
+    data = gSoundDataRaw;
     audio_dma_copy_immediate((uintptr_t) data, gAlTbl, 0x10);
     size = gAlTbl->seqCount * sizeof(ALSeqData) + 4;
     size = ALIGN16(size);
     gAlTbl = soundAlloc(&gAudioInitPool, size);
 
-    data = gSoundDataRaw;
     audio_dma_copy_immediate((uintptr_t) data, gAlTbl, size);
     alSeqFileNew(gAlTbl, data);
 

@@ -3,6 +3,7 @@
 #include "libcoopnet.h"
 #include "coopnet.h"
 #include "coopnet_id.h"
+#include "coopnet_join_recovery.h"
 #include "pc/network/network.h"
 #include "pc/network/version.h"
 #include "pc/djui/djui_language.h"
@@ -36,9 +37,9 @@ static QueryFinishCallbackPtr sQueryFinishCallback = NULL;
 #ifdef __SWITCH__
 static bool sPendingModListRequest = false;
 static uint64_t sConnectedPeerIds[MAX_PLAYERS] = { 0 };
-static uint64_t sCoopNetJoinLobbyId = 0;
 static time_t sCoopNetJoinStartTime = 0;
-static int sCoopNetJoinRetryCount = 0;
+static struct CoopNetJoinRecovery sCoopNetJoinRecovery = { 0 };
+static const char* sCoopNetJoinFailureReason = NULL;
 #endif
 
 static CoopNetRc coopnet_initialize(void);
@@ -46,6 +47,96 @@ static CoopNetRc coopnet_initialize(void);
 #ifdef __SWITCH__
 static void coopnet_switch_clear_connected_peers(void) {
     memset(sConnectedPeerIds, 0, sizeof(sConnectedPeerIds));
+}
+
+static const char* coopnet_switch_join_state_name(enum CoopNetJoinRecoveryState state) {
+    switch (state) {
+        case COOPNET_JOIN_RECOVERY_IDLE:                return "idle";
+        case COOPNET_JOIN_RECOVERY_WAITING_FOR_JOIN:    return "waiting_for_join";
+        case COOPNET_JOIN_RECOVERY_DRAINING_CONNECTION: return "draining_connection";
+        case COOPNET_JOIN_RECOVERY_WAITING_FOR_IDENTITY: return "waiting_for_identity";
+        case COOPNET_JOIN_RECOVERY_RETRY_PENDING:       return "retry_pending";
+        case COOPNET_JOIN_RECOVERY_TERMINAL_FAILURE:    return "terminal_failure";
+    }
+    return "unknown";
+}
+
+static void coopnet_switch_reset_join_recovery(const char* reason) {
+    if (sCoopNetJoinRecovery.state != COOPNET_JOIN_RECOVERY_IDLE) {
+        switch_coopnet_log_printf("join recovery reset state=%s reason=%s",
+                                  coopnet_switch_join_state_name(sCoopNetJoinRecovery.state),
+                                  reason != NULL ? reason : "unspecified");
+    }
+    coopnet_join_recovery_reset(&sCoopNetJoinRecovery);
+    sCoopNetJoinStartTime = 0;
+    sCoopNetJoinFailureReason = NULL;
+}
+
+static void coopnet_switch_mark_join_failure(const char* reason) {
+    sCoopNetJoinFailureReason = reason;
+    coopnet_join_recovery_fail(&sCoopNetJoinRecovery);
+}
+
+static void coopnet_switch_start_join_reconnect(void) {
+    enum CoopNetJoinRecoveryAction action =
+        coopnet_join_recovery_shutdown_complete(&sCoopNetJoinRecovery);
+    if (action != COOPNET_JOIN_RECOVERY_ACTION_START_RECONNECT) { return; }
+
+    switch_coopnet_log_printf("join recovery shutdown complete; starting reconnect lobby_id=%" PRIu64,
+                              sCoopNetJoinRecovery.lobbyId);
+    CoopNetRc initRc = coopnet_initialize();
+    switch_coopnet_log_printf("join recovery reconnect begin rc=%d", (int)initRc);
+    if (coopnet_join_recovery_reconnect_result(&sCoopNetJoinRecovery, initRc == COOPNET_OK)
+        == COOPNET_JOIN_RECOVERY_ACTION_FAIL) {
+        sCoopNetJoinFailureReason = "could not reconnect to CoopNet";
+    }
+    switch_coopnet_log_flush(true);
+}
+
+static void coopnet_switch_return_from_public_join(const char* message, const char* reason) {
+    switch_coopnet_log_printf("public join terminated lobby_id=%" PRIu64 " reason=%s",
+                              sCoopNetJoinRecovery.lobbyId != 0
+                                  ? sCoopNetJoinRecovery.lobbyId
+                                  : gCoopNetDesiredLobby,
+                              reason != NULL ? reason : "unspecified");
+    switch_coopnet_log_flush(true);
+
+    sPendingModListRequest = false;
+    sLocalLobbyId = 0;
+    sLocalLobbyOwnerId = 0;
+    sNetworkType = NT_NONE;
+    coopnet_switch_clear_connected_peers();
+    coopnet_switch_reset_join_recovery(reason);
+
+    /* Leave gameplay mode but retain the healthy signaling client so the
+     * parent public-lobby list can issue a fresh query immediately. */
+    network_shutdown(false, false, false, true);
+    djui_panel_join_message_return_to_lobbies(message);
+}
+
+static void coopnet_switch_finish_join_failure(void) {
+    const char* reason = sCoopNetJoinFailureReason != NULL
+        ? sCoopNetJoinFailureReason
+        : "lobby did not respond after retry";
+    switch_coopnet_log_printf("join recovery terminal failure lobby_id=%" PRIu64 " retry=%u reason=%s",
+                              sCoopNetJoinRecovery.lobbyId,
+                              sCoopNetJoinRecovery.retryCount,
+                              reason);
+    switch_crash_log_checkpoint("network: lobby join failed");
+    switch_coopnet_log_flush(true);
+
+    sPendingModListRequest = false;
+    sLocalLobbyId = 0;
+    sLocalLobbyOwnerId = 0;
+    sNetworkType = NT_NONE;
+    coopnet_switch_clear_connected_peers();
+    coopnet_switch_reset_join_recovery("terminal failure handled");
+
+    /* Clean up gameplay state while retaining a healthy signaling connection
+     * for the lobby-list query that follows. */
+    network_shutdown(false, false, false, true);
+    djui_panel_join_message_return_to_lobbies(
+        "Lobby did not respond; it may be stale or unreachable.");
 }
 
 static bool coopnet_switch_peer_is_connected(uint64_t peerId) {
@@ -156,9 +247,20 @@ static void coopnet_on_connected(uint64_t userId) {
 #ifdef __SWITCH__
     coopnet_switch_clear_connected_peers();
     switch_coopnet_log_printf("signaling connected user_id=%" PRIu64, userId);
-    switch_coopnet_log_flush(true);
 #endif
     coopnet_set_local_user_id(userId);
+#ifdef __SWITCH__
+    enum CoopNetJoinRecoveryAction action = coopnet_join_recovery_connected(&sCoopNetJoinRecovery);
+    if (action == COOPNET_JOIN_RECOVERY_ACTION_SEND_RETRY) {
+        gCoopNetDesiredLobby = sCoopNetJoinRecovery.lobbyId;
+        snprintf(gCoopNetPassword, sizeof(gCoopNetPassword), "%s", sCoopNetJoinRecovery.password);
+        sNetworkType = NT_CLIENT;
+        sReconnecting = false;
+        switch_coopnet_log_printf("join recovery identity received; retry pending lobby_id=%" PRIu64,
+                                  sCoopNetJoinRecovery.lobbyId);
+    }
+    switch_coopnet_log_flush(true);
+#endif
 }
 
 static void coopnet_on_disconnected(bool intentional) {
@@ -166,6 +268,24 @@ static void coopnet_on_disconnected(bool intentional) {
 #ifdef __SWITCH__
     switch_coopnet_log_printf("signaling disconnected intentional=%d", intentional ? 1 : 0);
     switch_coopnet_log_flush(true);
+    const bool recovering = coopnet_join_recovery_should_pump(&sCoopNetJoinRecovery);
+    enum CoopNetJoinRecoveryAction recoveryAction =
+        coopnet_join_recovery_disconnected(&sCoopNetJoinRecovery, intentional);
+    if (recovering) {
+        sPendingModListRequest = false;
+        coopnet_switch_clear_connected_peers();
+        if (recoveryAction == COOPNET_JOIN_RECOVERY_ACTION_FAIL) {
+            sCoopNetJoinFailureReason = "signaling disconnected during join recovery";
+            switch_coopnet_log_printf("join recovery disconnect became terminal state=%s",
+                                      coopnet_switch_join_state_name(sCoopNetJoinRecovery.state));
+            CoopNetRc shutdownRc = coopnet_shutdown();
+            switch_coopnet_log_printf("join recovery disconnected-client shutdown rc=%d", (int)shutdownRc);
+        } else {
+            switch_coopnet_log_printf("join recovery observed expected shutdown disconnect");
+        }
+        switch_coopnet_log_flush(true);
+        return;
+    }
 #endif
     if (!intentional) {
         djui_popup_create(DLANG(NOTIF, COOPNET_DISCONNECTED), 2);
@@ -260,13 +380,11 @@ static void coopnet_on_lobby_joined(uint64_t lobbyId, uint64_t userId, uint64_t 
                               " owner_id=%" PRIu64 " local=%d",
                               lobbyId, userId, ownerId, localJoin ? 1 : 0);
     if (localJoin) {
-        sCoopNetJoinLobbyId = 0;
-        sCoopNetJoinStartTime = 0;
-        sCoopNetJoinRetryCount = 0;
+        coopnet_switch_reset_join_recovery("local lobby joined");
         switch_crash_log_checkpoint("network: local lobby joined");
-    } else if (sCoopNetJoinLobbyId != 0) {
+    } else if (sCoopNetJoinRecovery.lobbyId != 0) {
         switch_coopnet_log_printf("ignoring remote lobby-joined event while waiting for local join lobby_id=%" PRIu64,
-                                  sCoopNetJoinLobbyId);
+                                  sCoopNetJoinRecovery.lobbyId);
     }
     switch_coopnet_log_flush(true);
 #endif
@@ -309,6 +427,7 @@ static void coopnet_on_lobby_left(uint64_t lobbyId, uint64_t userId) {
     switch_coopnet_log_printf("lobby left lobby_id=%" PRIu64 " user_id=%" PRIu64,
                               lobbyId, userId);
     if (userId == coopnet_get_local_user_id()) {
+        coopnet_switch_reset_join_recovery("local lobby left");
         sPendingModListRequest = false;
         coopnet_switch_clear_connected_peers();
     }
@@ -322,8 +441,14 @@ static void coopnet_on_lobby_left(uint64_t lobbyId, uint64_t userId) {
 
 static void coopnet_on_error(enum MPacketErrorNumber error, uint64_t tag) {
 #ifdef __SWITCH__
+    const bool rejectedPublicJoin = error == MERR_LOBBY_JOIN_FAILED
+        && sCoopNetJoinRecovery.state != COOPNET_JOIN_RECOVERY_IDLE
+        && sCoopNetJoinRecovery.password[0] == '\0';
     switch_coopnet_log_printf("coopnet error=%d tag=%" PRIu64, (int)error, tag);
     switch_coopnet_log_flush(true);
+    if (!rejectedPublicJoin) {
+        coopnet_switch_reset_join_recovery("coopnet error callback");
+    }
 #endif
     switch (error) {
         case MERR_COOPNET_VERSION:
@@ -353,6 +478,15 @@ static void coopnet_on_error(enum MPacketErrorNumber error, uint64_t tag) {
             network_shutdown(false, false, false, false);
             break;
         case MERR_LOBBY_JOIN_FAILED:
+#ifdef __SWITCH__
+            if (rejectedPublicJoin) {
+                switch_crash_log_checkpoint("network: public lobby admission denied");
+                coopnet_switch_return_from_public_join(
+                    "This Switch build is not authorized for public CoopNet lobbies.",
+                    "server denied public lobby admission");
+                break;
+            }
+#endif
             djui_popup_create(DLANG(NOTIF, LOBBY_JOIN_FAILED), 2);
             network_shutdown(false, false, false, false);
             break;
@@ -372,12 +506,11 @@ static bool ns_coopnet_initialize(enum NetworkType networkType, bool reconnectin
     switch_coopnet_log_printf("network initialize type=%d reconnecting=%d",
                               (int)networkType, reconnecting ? 1 : 0);
     if (!reconnecting && networkType == NT_CLIENT) {
-        sCoopNetJoinLobbyId = 0;
-        sCoopNetJoinStartTime = 0;
-        sCoopNetJoinRetryCount = 0;
+        coopnet_switch_reset_join_recovery("new client initialization");
         sPendingModListRequest = false;
         coopnet_switch_clear_connected_peers();
     } else if (!reconnecting && networkType != NT_CLIENT) {
+        coopnet_switch_reset_join_recovery("non-client initialization");
         sPendingModListRequest = false;
         coopnet_switch_clear_connected_peers();
     }
@@ -435,7 +568,11 @@ static void coopnet_populate_description(void) {
 }
 
 void ns_coopnet_update(void) {
+#ifdef __SWITCH__
+    if (!coopnet_is_connected() && !coopnet_join_recovery_should_pump(&sCoopNetJoinRecovery)) { return; }
+#else
     if (!coopnet_is_connected()) { return; }
+#endif
 
     CoopNetRc updateRc = coopnet_update();
 #ifdef __SWITCH__
@@ -444,58 +581,61 @@ void ns_coopnet_update(void) {
         switch_coopnet_log_flush(true);
     }
 
-    if (sCoopNetJoinLobbyId != 0 && sCoopNetJoinStartTime != 0) {
+    if (coopnet_join_recovery_is_draining(&sCoopNetJoinRecovery)
+        && updateRc == COOPNET_DISCONNECTED) {
+        coopnet_switch_start_join_reconnect();
+    }
+
+    if (coopnet_join_recovery_failed(&sCoopNetJoinRecovery)) {
+        coopnet_switch_finish_join_failure();
+        return;
+    }
+
+    if (sCoopNetJoinRecovery.state == COOPNET_JOIN_RECOVERY_WAITING_FOR_JOIN
+        && sCoopNetJoinStartTime != 0) {
         time_t now = time(NULL);
-        if (now - sCoopNetJoinStartTime > 15) {
-            const uint64_t retryLobbyId = sCoopNetJoinLobbyId;
+        if (now - sCoopNetJoinStartTime >= 15) {
             switch_coopnet_log_printf("coopnet local lobby join timeout lobby_id=%" PRIu64 " elapsed=%ld retry=%d",
-                                      retryLobbyId, (long)(now - sCoopNetJoinStartTime), sCoopNetJoinRetryCount);
+                                      sCoopNetJoinRecovery.lobbyId,
+                                      (long)(now - sCoopNetJoinStartTime),
+                                      (int)sCoopNetJoinRecovery.retryCount);
             switch_coopnet_log_printf("coopnet join state local_user_id=%" PRIu64 " local_lobby_id=%" PRIu64 " owner_id=%" PRIu64,
                                       coopnet_get_local_user_id(), sLocalLobbyId, sLocalLobbyOwnerId);
             switch_coopnet_log_flush(true);
 
-            sCoopNetJoinLobbyId = 0;
             sCoopNetJoinStartTime = 0;
             sPendingModListRequest = false;
             sLocalLobbyId = 0;
             sLocalLobbyOwnerId = 0;
             coopnet_switch_clear_connected_peers();
 
-            if (sCoopNetJoinRetryCount >= 1) {
-                switch_coopnet_log_printf("coopnet local lobby join failed after fresh-connection retry");
+            enum CoopNetJoinRecoveryAction action =
+                coopnet_join_recovery_timeout(&sCoopNetJoinRecovery);
+            if (action == COOPNET_JOIN_RECOVERY_ACTION_FAIL) {
+                sCoopNetJoinFailureReason = "lobby did not respond after fresh-connection retry";
                 switch_crash_log_checkpoint("network: lobby join timed out");
-                switch_coopnet_log_flush(true);
-                sCoopNetJoinRetryCount = 0;
-                sNetworkType = NT_NONE;
-                djui_panel_join_message_error("\\#ffa0a0\\Error:\\#dcdcdc\\ Lobby join timed out.");
-                network_shutdown(false, false, false, false);
-            } else {
-                sCoopNetJoinRetryCount++;
+            } else if (action == COOPNET_JOIN_RECOVERY_ACTION_REQUEST_SHUTDOWN) {
                 switch_coopnet_log_printf("coopnet join recovery: fresh connection retry lobby=%" PRIu64,
-                                          retryLobbyId);
+                                          sCoopNetJoinRecovery.lobbyId);
                 switch_crash_log_checkpoint("network: lobby join retry");
-                switch_coopnet_log_flush(true);
-
                 CoopNetRc shutdownRc = coopnet_shutdown();
                 switch_coopnet_log_printf("coopnet join recovery shutdown rc=%d", (int)shutdownRc);
-
-                gCoopNetDesiredLobby = retryLobbyId;
-                CoopNetRc initRc = coopnet_initialize();
-                switch_coopnet_log_printf("coopnet join recovery begin rc=%d", (int)initRc);
                 switch_coopnet_log_flush(true);
-                if (initRc == COOPNET_OK) {
-                    sNetworkType = NT_CLIENT;
-                    sReconnecting = false;
-                    return;
-                } else {
-                    sNetworkType = NT_NONE;
-                    sCoopNetJoinRetryCount = 0;
-                    djui_panel_join_message_error("\\#ffa0a0\\Error:\\#dcdcdc\\ Could not reconnect to CoopNet.");
-                    network_shutdown(false, false, false, false);
+                if (shutdownRc == COOPNET_DISCONNECTED) {
+                    coopnet_switch_start_join_reconnect();
+                } else if (shutdownRc != COOPNET_OK) {
+                    coopnet_switch_mark_join_failure("could not shut down stale CoopNet connection");
                 }
             }
         }
     }
+
+    if (coopnet_join_recovery_failed(&sCoopNetJoinRecovery)) {
+        coopnet_switch_finish_join_failure();
+        return;
+    }
+
+    if (!coopnet_is_connected()) { return; }
 #endif
     if (gNetworkType != NT_NONE && sNetworkType != NT_NONE) {
         if (sNetworkType == NT_SERVER) {
@@ -531,24 +671,59 @@ void ns_coopnet_update(void) {
         } else if (sNetworkType == NT_CLIENT) {
             LOG_INFO("Join lobby");
 #ifdef __SWITCH__
+            const bool retry = sCoopNetJoinRecovery.state == COOPNET_JOIN_RECOVERY_RETRY_PENDING;
+            const bool publicJoin = gCoopNetPassword[0] == '\0';
+            if (publicJoin) {
+                const uint64_t clientHash = coopnet_get_client_hash();
+                switch_coopnet_log_printf("public join identity preflight lobby_id=%" PRIu64
+                                          " fingerprint=%" PRIu64 " hex=0x%016" PRIx64,
+                                          gCoopNetDesiredLobby, clientHash, clientHash);
+                if (clientHash == 0) {
+                    switch_crash_log_checkpoint("network: public join identity unavailable");
+                    coopnet_switch_return_from_public_join(
+                        "Switch build identity unavailable; reinstall sm64coopdx.nro at /switch/sm64coopdx/.",
+                        "public join blocked because client fingerprint is zero");
+                    return;
+                }
+            }
+#endif
+#ifdef __SWITCH__
             switch_coopnet_log_checkpoint("LIBCOOPNET", "coopnet_lobby_join", "BEFORE");
             switch_coopnet_log_printf("coopnet join attempt lobby_id=%" PRIu64 " local_user_id=%" PRIu64 " signaling_connected=%d retry=%d",
                                       gCoopNetDesiredLobby, coopnet_get_local_user_id(), coopnet_is_connected() ? 1 : 0,
-                                      sCoopNetJoinRetryCount);
-            sCoopNetJoinLobbyId = gCoopNetDesiredLobby;
-            sCoopNetJoinStartTime = time(NULL);
+                                      retry ? 1 : 0);
             switch_crash_log_checkpoint("network: lobby join attempted");
 #endif
             CoopNetRc rc = coopnet_lobby_join(gCoopNetDesiredLobby, gCoopNetPassword);
 #ifdef __SWITCH__
+            enum CoopNetJoinRecoveryAction joinAction = coopnet_join_recovery_join_result(
+                &sCoopNetJoinRecovery,
+                gCoopNetDesiredLobby,
+                gCoopNetPassword,
+                retry,
+                rc == COOPNET_OK);
+            sCoopNetJoinStartTime = rc == COOPNET_OK ? time(NULL) : 0;
             switch_coopnet_log_printf("lobby join lobby_id=%" PRIu64 " rc=%d",
                                       gCoopNetDesiredLobby, (int)rc);
+            switch_coopnet_log_printf("join recovery send result state=%s retry=%d",
+                                      coopnet_switch_join_state_name(sCoopNetJoinRecovery.state),
+                                      retry ? 1 : 0);
             switch_coopnet_log_checkpoint("LIBCOOPNET", "coopnet_lobby_join", "AFTER");
             switch_crash_log_checkpoint("network: lobby join completed");
+            if (joinAction == COOPNET_JOIN_RECOVERY_ACTION_FAIL) {
+                sCoopNetJoinFailureReason = retry
+                    ? "retry join request could not be sent"
+                    : "join request could not be sent";
+            }
 #endif
         }
         sNetworkType = NT_NONE;
     }
+#ifdef __SWITCH__
+    if (coopnet_join_recovery_failed(&sCoopNetJoinRecovery)) {
+        coopnet_switch_finish_join_failure();
+    }
+#endif
 }
 
 static int ns_coopnet_network_send(u8 localIndex, void* address, u8* data, u16 dataLength) {
@@ -619,9 +794,7 @@ static void ns_coopnet_shutdown(bool reconnecting) {
     sLocalLobbyOwnerId = 0;
 #ifdef __SWITCH__
     sPendingModListRequest = false;
-    sCoopNetJoinLobbyId = 0;
-    sCoopNetJoinStartTime = 0;
-    sCoopNetJoinRetryCount = 0;
+    coopnet_switch_reset_join_recovery("network shutdown");
     coopnet_switch_clear_connected_peers();
     switch_coopnet_log_shutdown_summary();
 #endif

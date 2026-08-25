@@ -11,6 +11,10 @@
 #include "pc/debuglog.h"
 #include "pc/fs/fmem.h"
 
+#ifdef __SWITCH__
+#include "pc/platform/switch/switch_crash_log.h"
+#endif
+
 #define CHUNK_SIZE 800
 #define OFFSET_COUNT 50
 #define GROUP_SIZE (CHUNK_SIZE * OFFSET_COUNT)
@@ -34,6 +38,9 @@ static void network_update_offset_groups(void);
 static void mark_groups_loaded_from_hash(void);
 
 void network_start_download_requests(void) {
+#ifdef __SWITCH__
+    switch_crash_log_checkpoint("download begin");
+#endif
     sTotalDownloadBytes = 0;
     gDownloadProgress = 0;
     gDownloadProgressInf = 0;
@@ -199,8 +206,11 @@ static void network_update_offset_groups(void) {
             }
             mod->enabled = true;
         }
+#ifdef __SWITCH__
+        switch_crash_log_checkpoint("download complete");
+#endif
         LOG_INFO("Download complete!");
-        network_send_join_request();
+        djui_panel_join_message_ready_to_join();
         return;
     }
 

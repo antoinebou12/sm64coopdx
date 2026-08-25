@@ -47,6 +47,8 @@ static SDL_Window *sWindow = NULL;
 static SwitchPlatformState sPlatformState;
 static bool sPlatformReady = false;
 static bool sNativeKeyboardOpen = false;
+static bool sNativeKeyboardPending = false;
+static struct DjuiInputbox *sNativeKeyboardTarget = NULL;
 
 static kb_callback_t sKeyDown = NULL;
 static kb_callback_t sKeyUp = NULL;
@@ -73,16 +75,33 @@ static void switch_handle_key(bool down, SDL_Scancode scancode) {
 }
 
 static void switch_show_native_keyboard(void) {
-    if (sNativeKeyboardOpen || gInteractableFocus == NULL ||
-        gInteractableFocus->interactable == NULL ||
-        gInteractableFocus->interactable->on_text_input != djui_inputbox_on_text_input) {
+    struct DjuiInputbox *inputbox = sNativeKeyboardTarget;
+    sNativeKeyboardPending = false;
+    sNativeKeyboardTarget = NULL;
+
+    if (sNativeKeyboardOpen || inputbox == NULL ||
+        gInteractableFocus != &inputbox->base ||
+        inputbox->base.interactable == NULL ||
+        inputbox->base.interactable->on_text_input != djui_inputbox_on_text_input) {
         return;
     }
 
-    struct DjuiInputbox *inputbox = (struct DjuiInputbox *)gInteractableFocus;
     if (inputbox->buffer == NULL || inputbox->bufferSize <= 1) {
         return;
     }
+
+    const bool password = inputbox->passwordChar[0] != '\0';
+    u32 maxCharacters = (u32)inputbox->bufferSize - 1u;
+    if (password && maxCharacters > 63u) {
+        maxCharacters = 63u;
+    }
+    switch_crash_log_printf(
+        "swkbd launch begin: password=%d buffer_size=%u max_chars=%u applet_type=%d",
+        password ? 1 : 0,
+        (unsigned int)inputbox->bufferSize,
+        (unsigned int)maxCharacters,
+        (int)appletGetAppletType());
+    switch_crash_log_checkpoint("keyboard: create begin");
 
     SwkbdConfig keyboard;
     Result rc = swkbdCreate(&keyboard, 0);
@@ -92,16 +111,17 @@ static void switch_show_native_keyboard(void) {
         switch_crash_log_printf("swkbdCreate failed: 0x%08x", (unsigned int)rc);
         return;
     }
+    switch_crash_log_checkpoint("keyboard: create complete");
 
     sNativeKeyboardOpen = true;
 
-    if (inputbox->passwordChar[0] != '\0') {
+    if (password) {
         swkbdConfigMakePresetPassword(&keyboard);
     } else {
         swkbdConfigMakePresetDefault(&keyboard);
     }
     swkbdConfigSetInitialText(&keyboard, inputbox->buffer);
-    swkbdConfigSetStringLenMax(&keyboard, (u32)inputbox->bufferSize - 1u);
+    swkbdConfigSetStringLenMax(&keyboard, maxCharacters);
 
     /*
      * stringLenMax is measured in characters while DjuiInputbox::bufferSize is
@@ -109,10 +129,12 @@ static void switch_show_native_keyboard(void) {
      * representation, then let the existing DJUI text-input callback perform
      * its normal sanitizing/truncation and Unicode end cleanup.
      */
-    size_t outputSize = ((size_t)inputbox->bufferSize * 4u) + 1u;
+    size_t outputSize = ((size_t)maxCharacters * 4u) + 1u;
     char *output = (char *)calloc(outputSize, 1);
     if (output != NULL) {
+        switch_crash_log_checkpoint("keyboard: show begin");
         rc = swkbdShow(&keyboard, output, outputSize);
+        switch_crash_log_checkpoint("keyboard: show complete");
         if (R_SUCCEEDED(rc)) {
             /*
              * swkbdShow() is synchronous and returns the complete final
@@ -143,8 +165,10 @@ static void switch_show_native_keyboard(void) {
             (unsigned int)outputSize);
     }
 
+    switch_crash_log_checkpoint("keyboard: close begin");
     swkbdClose(&keyboard);
     sNativeKeyboardOpen = false;
+    switch_crash_log_checkpoint("keyboard: close complete");
 }
 
 void gfx_wm_init(const char *window_title) {
@@ -233,6 +257,10 @@ void gfx_wm_handle_events(void) {
         sBackends[sBackend]->handle_events(event);
     }
 
+    if (sNativeKeyboardPending && !sNativeKeyboardOpen) {
+        switch_show_native_keyboard();
+    }
+
     /* Horizon owns the display mode. Do not recreate/resize the GL context. */
     configWindow.fullscreen = true;
     configWindow.settings_changed = false;
@@ -290,11 +318,19 @@ bool gfx_wm_has_focus(void) {
 
 void gfx_wm_start_text_input(void) {
     SDL_StartTextInput();
-    switch_show_native_keyboard();
+    if (gInteractableFocus != NULL && gInteractableFocus->interactable != NULL &&
+        gInteractableFocus->interactable->on_text_input == djui_inputbox_on_text_input) {
+        sNativeKeyboardTarget = (struct DjuiInputbox *)gInteractableFocus;
+        sNativeKeyboardPending = true;
+    }
 }
 
 void gfx_wm_stop_text_input(void) {
     SDL_StopTextInput();
+    if (!sNativeKeyboardOpen) {
+        sNativeKeyboardPending = false;
+        sNativeKeyboardTarget = NULL;
+    }
 }
 
 char *gfx_wm_get_clipboard_text(void) {

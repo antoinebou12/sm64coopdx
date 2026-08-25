@@ -183,6 +183,12 @@ void network_receive_mod_list(struct Packet* p) {
 
     packet_read(p, &gRemoteMods.entryCount, sizeof(u16));
     LOG_INFO("MOD_MANIFEST_BEGIN version=%s mod_count=%u", version, gRemoteMods.entryCount);
+    if (gRemoteMods.entryCount == 0) {
+        gRemoteMods.entries = NULL;
+        gRemoteMods.size = 0;
+        network_start_download_requests();
+        return;
+    }
     gRemoteMods.entries = calloc(gRemoteMods.entryCount, sizeof(struct Mod*));
     if (gRemoteMods.entries == NULL) {
         LOG_ERROR("Failed to allocate remote mod entries");

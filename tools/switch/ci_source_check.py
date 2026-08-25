@@ -67,8 +67,23 @@ def main() -> None:
     ldn_util = text("src/pc/network/socket/socket_ldn_util.c")
     ldn_util_h = text("src/pc/network/socket/socket_ldn_util.h")
     ldn_util_test = text("tools/switch/tests/test_socket_ldn_util.c")
+    coopnet = text("src/pc/network/coopnet/coopnet.c")
+    coopnet_recovery = text("src/pc/network/coopnet/coopnet_join_recovery.c")
+    coopnet_recovery_h = text("src/pc/network/coopnet/coopnet_join_recovery.h")
+    coopnet_recovery_test = text("tools/switch/tests/test_coopnet_join_recovery.c")
+    coopnet_identity = text("tools/switch/coopnet_switch_identity.cpp")
+    coopnet_identity_h = text("tools/switch/coopnet_switch_identity.hpp")
+    coopnet_identity_manifest = text("tools/switch/coopnet_identity.py")
+    coopnet_identity_test = text("tools/switch/tests/test_coopnet_switch_identity.cpp")
+    coopnet_client_patch = text("tools/switch/patches/coopnet/0009-horizon-client-identity.patch")
+    coopnet_build = text("tools/switch/build-coopnet.sh")
+    join_message = text("src/pc/djui/djui_panel_join_message.c")
+    join_character_test = text("tools/switch/tests/test_switch_join_character_prompt.py")
+    config = text("src/pc/configfile.c")
+    join_lobbies = text("src/pc/djui/djui_panel_join_lobbies.c")
     ldn_transport_code = strip_comments(ldn_transport)
     join_panel = text("src/pc/djui/djui_panel_join.c")
+    private_join_panel = text("src/pc/djui/djui_panel_join_private.c")
     ldn_browser = text("src/pc/djui/djui_panel_ldn_browser.c")
 
     pc_main_overlay = text(OVERLAYS / "pc_main.c")
@@ -284,6 +299,71 @@ def main() -> None:
         and "ldn_util_send_length_valid" in ldn_util_test,
     )
     require(
+        "Switch CoopNet join recovery waits for asynchronous shutdown and identity",
+        "COOPNET_JOIN_RECOVERY_DRAINING_CONNECTION" in coopnet_recovery_h
+        and "COOPNET_JOIN_RECOVERY_WAITING_FOR_IDENTITY" in coopnet_recovery_h
+        and "COOPNET_JOIN_RECOVERY_RETRY_PENDING" in coopnet_recovery_h
+        and "coopnet_join_recovery_shutdown_complete" in coopnet
+        and "coopnet_join_recovery_connected" in coopnet,
+    )
+    require(
+        "Switch CoopNet recovery keeps pumping while signaling is disconnected",
+        "coopnet_join_recovery_should_pump" in coopnet_recovery
+        and "!coopnet_is_connected() && !coopnet_join_recovery_should_pump" in coopnet,
+    )
+    require(
+        "Switch CoopNet public join retries only once",
+        "retryCount == 0" in coopnet_recovery
+        and "retryCount = 1" in coopnet_recovery
+        and "test_one_retry_limit" in coopnet_recovery_test,
+    )
+    require(
+        "failed CoopNet joins return to a refreshable lobby list",
+        "djui_panel_join_message_return_to_lobbies" in join_message
+        and "djui_panel_join_lobbies_refresh(NULL)" in join_message
+        and "if (!ns_coopnet_query" in join_lobbies,
+    )
+    require(
+        "Switch CoopNet identity hashes the installed NRO in bounded chunks",
+        "COOPNET_SWITCH_NRO_PATH" in coopnet_identity_h
+        and "64U * 1024U" in coopnet_identity
+        and "Murmur64AStream" in coopnet_identity
+        and "sIdentityCached" in coopnet_identity,
+    )
+    require(
+        "Switch CoopNet build compiles the host-tested identity source",
+        'cp "${IDENTITY_SOURCE}"' in coopnet_build
+        and 'cp "${IDENTITY_HEADER}"' in coopnet_build
+        and "coopnet_switch_identity(filepath.c_str())" in coopnet_client_patch,
+    )
+    require(
+        "zero identity blocks only public CoopNet joins",
+        "const bool publicJoin = gCoopNetPassword[0] == '\\0';" in coopnet
+        and "coopnet_get_client_hash()" in coopnet
+        and "if (clientHash == 0)" in coopnet
+        and "public join blocked because client fingerprint is zero" in coopnet,
+    )
+    require(
+        "Switch identity has host-runnable boundary and cache tests",
+        "64U * 1024U + 1U" in coopnet_identity_test
+        and "reconnect identity uses the successful cached fingerprint" in coopnet_identity_test,
+    )
+    require(
+        "Switch CoopNet asks once for an unselected character before gameplay join",
+        '"coop_player_model_selected"' in config
+        and "gNetworkSystem == &gNetworkSystemCoopNet" in join_message
+        and "!configPlayerModelSelected" in join_message
+        and "gNetworkSentJoin" in join_message
+        and "test_confirm_is_single_shot_and_late_callbacks_are_ignored" in join_character_test,
+    )
+    require(
+        "NRO build emits a verified CoopNet identity manifest",
+        "SWITCH_COOPNET_IDENTITY_MANIFEST" in makefile
+        and "tools/switch/coopnet_identity.py" in makefile
+        and "Embedded icon present: yes" in coopnet_identity_manifest
+        and "UINT64_C(" in coopnet_identity_manifest,
+    )
+    require(
         "authoritative Switch CI runs the Switch unit tests",
         "Run Switch unit tests" in workflow
         and "tools/switch/tests/run_tests.py" in workflow,
@@ -309,6 +389,18 @@ def main() -> None:
     require(
         "native input supports multiple Horizon pad slots",
         "SWITCH_INPUT_MAX_PLAYERS" in input_c,
+    )
+    require(
+        "private CoopNet password entry avoids the system keyboard applet",
+        "djui_panel_join_private_key_row" in private_join_panel
+        and "sPrivatePassword" in private_join_panel
+        and "PRIVATE_PASSWORD_CAPACITY 64" in private_join_panel,
+    )
+    require(
+        "remaining native keyboard launches have durable stage checkpoints",
+        'switch_crash_log_checkpoint("keyboard: create begin")' in window_c
+        and 'switch_crash_log_checkpoint("keyboard: show begin")' in window_c
+        and 'switch_crash_log_checkpoint("keyboard: close complete")' in window_c,
     )
     require(
         "Switch audio queue is explicitly bounded",

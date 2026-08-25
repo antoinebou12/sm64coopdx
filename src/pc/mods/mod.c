@@ -11,6 +11,9 @@
 #include "pc/manifest.h"
 #include "pc/lua/smlua_cobject.h"
 #include <stdint.h>
+#ifdef __SWITCH__
+#include "pc/platform/switch/switch_crash_log.h"
+#endif
 
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
@@ -31,7 +34,6 @@ size_t mod_get_lua_size(struct Mod* mod) {
 
     return size;
 }
-
 static void mod_activate_bin(struct Mod* mod, struct ModFile* file) {
     // copy geo name
     char geoName[64] = { 0 };
@@ -155,9 +157,37 @@ void mod_activate(struct Mod* mod) {
     // activate dynos models
     for (int i = 0; i < mod->fileCount; i++) {
         struct ModFile* file = &mod->files[i];
-        file->modifiedTimestamp = fs_sys_get_modified_time(file->cachedPath);
+#ifdef __SWITCH__
+        char checkpoint[128];
+        snprintf(checkpoint, sizeof(checkpoint), "remote file cache path begin mod=%d file=%d path=%s", mod->index, i, file->relativePath);
+        switch_crash_log_checkpoint(checkpoint);
+#endif
+        /*
+         * Remote/downloaded files do not necessarily have cachedPath populated
+         * yet. Build/resolve it before passing the path to stat/fsdev.
+         */
         mod_cache_add(mod, file, false);
-
+#ifdef __SWITCH__
+        // char checkpoint[128]; // redeclaration removed, reuse previous
+        if (file->cachedPath == NULL || file->cachedPath[0] == '\0') {
+            snprintf(checkpoint, sizeof(checkpoint), "remote file cache path ready mod=%d file=%d status=NULL", mod->index, i);
+        } else {
+            snprintf(checkpoint, sizeof(checkpoint), "remote file cache path ready mod=%d file=%d status=set", mod->index, i);
+        }
+        switch_crash_log_checkpoint(checkpoint);
+#endif
+        if (file->cachedPath == NULL || file->cachedPath[0] == '\0') {
+            LOG_ERROR("Could not activate mod file without a cached path: '%s'",
+                      file->relativePath);
+            continue;
+        }
+        #ifdef __SWITCH__
+        switch_crash_log_checkpoint("remote file timestamp begin");
+#endif
+        file->modifiedTimestamp = fs_sys_get_modified_time(file->cachedPath);
+#ifdef __SWITCH__
+        switch_crash_log_checkpoint("remote file timestamp complete");
+#endif
         // forcefully update md5 hash
         if (gNetworkType == NT_SERVER) {
             mod_cache_update(mod, file);

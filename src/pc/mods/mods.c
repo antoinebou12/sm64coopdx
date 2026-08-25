@@ -9,6 +9,10 @@
 #include "pc/pc_main.h"
 #include "pc/utils/misc.h"
 
+#ifdef __SWITCH__
+#include "pc/platform/switch/switch_crash_log.h"
+#endif
+
 #if defined(_WIN32)
 #include <windows.h>
 #endif
@@ -133,6 +137,9 @@ bool mods_generate_remote_base_path(void) {
 }
 
 void mods_activate(struct Mods* mods) {
+#ifdef __SWITCH__
+    switch_crash_log_checkpoint("remote mods activate begin");
+#endif
     mods_clear(&gActiveMods);
 
     // count enabled
@@ -158,11 +165,19 @@ void mods_activate(struct Mods* mods) {
             mod->index = gActiveMods.entryCount;
             gActiveMods.entries[gActiveMods.entryCount++] = mod;
             gActiveMods.size += mod->size;
-            mod_activate(mod);
+            #ifdef __SWITCH__
+    char checkpoint[64];
+    snprintf(checkpoint, sizeof(checkpoint), "remote mod activate begin mod=%d", mod->index);
+    switch_crash_log_checkpoint(checkpoint);
+#endif
+    mod_activate(mod);
         }
     }
 
     mod_cache_save();
+#ifdef __SWITCH__
+    switch_crash_log_checkpoint("remote mods activate complete");
+#endif
 }
 
 static void mods_sort(struct Mods* mods) {

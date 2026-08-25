@@ -1333,7 +1333,7 @@ $(SOUND_BIN_DIR)/%.m64: $(SOUND_BIN_DIR)/%.o
 # Convert binary file to a comma-separated list of byte values for inclusion in C code
 $(BUILD_DIR)/%.inc.c: $(BUILD_DIR)/%
 	$(call print,Piping:,$<,$@)
-	$(V)hexdump -v -e '1/1 "0x%X,"' $< > $@
+	$(V)od -An -v -t x1 $< | tr -s ' ' '\n' | sed '/^$$/d;s/^/0x/;s/$$/,/' > $@
 	$(V)echo >> $@
 
 # Generate animation data

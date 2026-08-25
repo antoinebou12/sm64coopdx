@@ -134,6 +134,7 @@ extern bool         configCtxProfiler;
 // player settings
 extern char         configPlayerName[MAX_CONFIG_STRING];
 extern unsigned int configPlayerModel;
+extern bool         configPlayerModelSelected;
 extern struct PlayerPalette configPlayerPalette;
 // coop settings
 extern unsigned int configAmountOfPlayers;

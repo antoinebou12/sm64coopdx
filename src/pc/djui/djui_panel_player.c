@@ -451,6 +451,7 @@ static void djui_panel_player_value_changed(UNUSED struct DjuiBase* caller) {
     djui_panel_player_edit_palette_update_palette_display();
 
     if (configPlayerModel >= CT_MAX) { configPlayerModel = CT_MARIO; }
+    configPlayerModelSelected = true;
     if (gNetworkPlayers[0].overrideModelIndex == gNetworkPlayers[0].modelIndex) { gNetworkPlayers[0].overrideModelIndex = configPlayerModel; }
 
     gNetworkPlayers[0].modelIndex = configPlayerModel;

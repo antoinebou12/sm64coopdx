@@ -15,6 +15,8 @@ TARBALL="${DOWNLOAD_DIR}/coopnet-${COOPNET_COMMIT}.tar.gz"
 URL="https://github.com/coop-deluxe/coopnet/archive/${COOPNET_COMMIT}.tar.gz"
 PATCH_DIR="${ROOT_DIR}/tools/switch/patches/coopnet"
 DIAG_PATCHER="${ROOT_DIR}/tools/switch/patch-coopnet-diagnostics.py"
+IDENTITY_SOURCE="${ROOT_DIR}/tools/switch/coopnet_switch_identity.cpp"
+IDENTITY_HEADER="${ROOT_DIR}/tools/switch/coopnet_switch_identity.hpp"
 LIBJUICE_ROOT="${ROOT_DIR}/build/switch-deps/libjuice"
 VENDORED_HEADER="${ROOT_DIR}/lib/coopnet/include/libcoopnet.h"
 BUILT_HEADER="${INCLUDE_DIR}/libcoopnet.h"
@@ -64,6 +66,13 @@ if [[ ! -f "${DIAG_PATCHER}" ]]; then
     exit 1
 fi
 
+for identity_file in "${IDENTITY_SOURCE}" "${IDENTITY_HEADER}"; do
+    if [[ ! -f "${identity_file}" ]]; then
+        echo "Missing Switch CoopNet identity source: ${identity_file}" >&2
+        exit 1
+    fi
+done
+
 if [[ ! -f "${LIBJUICE_ROOT}/lib/libjuice.a" ]]; then
     bash "${ROOT_DIR}/tools/switch/build-libjuice.sh"
 fi
@@ -78,12 +87,26 @@ rm -rf "${SOURCE_DIR}" "${OBJECT_DIR}"
 mkdir -p "${OBJECT_DIR}"
 tar -xzf "${TARBALL}" -C "${BUILD_ROOT}"
 
-for patch_file in "${PATCH_DIR}"/*.patch; do
-    [[ -e "${patch_file}" ]] || continue
-    patch --directory="${SOURCE_DIR}" -p1 --forward < "${patch_file}"
-done
+# Keep the implementation in the game repository while compiling it as part
+# of the pinned CoopNet library. This also makes the exact host-tested source
+# the source that runs on Horizon.
+cp "${IDENTITY_SOURCE}" "${SOURCE_DIR}/common/coopnet_switch_identity.cpp"
+cp "${IDENTITY_HEADER}" "${SOURCE_DIR}/common/coopnet_switch_identity.hpp"
+
+while IFS= read -r patch_file; do
+    patch --directory="${SOURCE_DIR}" -p1 --forward --ignore-whitespace < "${patch_file}"
+done < <(find "${PATCH_DIR}" -maxdepth 1 -type f -name '*.patch' | sort -V)
 
 "${PYTHON}" "${DIAG_PATCHER}" "${SOURCE_DIR}"
+
+for marker in \
+    'uint64_t coopnet_get_client_hash(void)' \
+    'coopnet_switch_identity(filepath.c_str())'; do
+    if ! grep -R -F -q "${marker}" "${SOURCE_DIR}/common"; then
+        echo "ERROR: required CoopNet identity patch marker missing: ${marker}" >&2
+        exit 1
+    fi
+done
 
 COMMON_FLAGS=(
     -O2
@@ -119,7 +142,15 @@ if [[ ! -f "${VENDORED_HEADER}" ]]; then
     exit 1
 fi
 
-if ! cmp -s "${VENDORED_HEADER}" "${BUILT_HEADER}"; then
+if ! "${PYTHON}" - "${VENDORED_HEADER}" "${BUILT_HEADER}" <<'PY'
+from pathlib import Path
+import sys
+
+vendored = Path(sys.argv[1]).read_text(encoding="utf-8").splitlines()
+built = Path(sys.argv[2]).read_text(encoding="utf-8").splitlines()
+raise SystemExit(0 if vendored == built else 1)
+PY
+then
     echo "ERROR: CoopNet header drift detected." >&2
     echo "Vendored: ${VENDORED_HEADER}" >&2
     echo "Pinned:   ${BUILT_HEADER}" >&2

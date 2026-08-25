@@ -27,6 +27,10 @@
 #include "pc/configfile.h"
 #include "pc/lua/utils/smlua_misc_utils.h"
 
+#ifdef __SWITCH__
+#include "pc/platform/switch/switch_crash_log.h"
+#endif
+
 extern u8* gOverrideEeprom;
 static u8 eeprom[512] = { 0 };
 
@@ -54,11 +58,17 @@ void network_send_join_request(void) {
 
     network_send_to((gNetworkPlayerServer != NULL) ? gNetworkPlayerServer->localIndex : 0, &p);
     LOG_INFO("sending join request");
+#ifdef __SWITCH__
+    switch_crash_log_checkpoint("game join request sent");
+#endif
 }
 
 void network_receive_join_request(struct Packet* p) {
     SOFT_ASSERT(gNetworkType == NT_SERVER);
     LOG_INFO("received join request");
+#ifdef __SWITCH__
+    switch_crash_log_checkpoint("game join packet received");
+#endif
 
     if (p->dataLength > 5) {
         char version[MAX_VERSION_LENGTH] = { 0 };
