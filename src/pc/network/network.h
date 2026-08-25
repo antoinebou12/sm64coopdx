@@ -15,7 +15,6 @@
 #define SET_BIT(val, num) ((((u8)(val)) & 0x01) << (num));
 #define GET_BIT(val, num) (((val) >> (num)) & 0x01)
 
-// Mario 64 specific externs
 extern struct MarioState gMarioStates[];
 
 #define SYNC_DISTANCE_ONLY_DEATH -1.0f
@@ -108,7 +107,6 @@ struct NametagsSettings {
     bool showSelfTag;
 };
 
-// Networking-specific externs
 extern struct NetworkSystem* gNetworkSystem;
 extern enum NetworkType gNetworkType;
 extern bool gNetworkAreaLoaded;
@@ -126,7 +124,6 @@ extern u8 gDebugPacketSentBuffer[];
 extern u8 gDebugPacketOnBuffer;
 extern u32 gNetworkStartupTimer;
 
-// network.c
 void network_set_system(enum NetworkSystemType nsType);
 bool network_init(enum NetworkType inNetworkType, bool reconnecting);
 void network_on_init_area(void);
@@ -144,5 +141,17 @@ bool network_allow_mod_dev_mode(void);
 void network_mod_dev_mode_reload(void);
 void network_update(void);
 void network_shutdown(bool sendLeaving, bool exiting, bool popup, bool reconnecting);
+
+#ifdef __SWITCH__
+// One authoritative user-requested stop path for Direct, CoopNet, LDN, and
+// local-only Solo sessions. Clear retry/rehost state before shutting down so a
+// stale backend cannot restart on the next frame, then return to the neutral
+// socket selector used by the main menu.
+static inline void network_stop_all(void) {
+    network_reset_reconnect_and_rehost();
+    network_shutdown(true, false, false, false);
+    network_set_system(NS_SOCKET);
+}
+#endif
 
 #endif
