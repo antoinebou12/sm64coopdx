@@ -67,6 +67,27 @@ static void switch_crash_log_debug_string(const char *text) {
     (void)svcOutputDebugString(text, strlen(text));
 }
 
+/*
+ * Mod activation may touch hundreds or thousands of files. Historically each
+ * per-file diagnostic called switch_crash_log_checkpoint(), which opened two
+ * files and forced fsdevCommitDevice("sdmc") multiple times per mod file. On
+ * real Switch SD cards that turns normal Host/Solo startup into a multi-second
+ * or multi-minute synchronous stall.
+ *
+ * Keep the most recent fine-grained checkpoint in RAM so a true exception still
+ * records the exact operation in exception.log, but only persist these very
+ * noisy checkpoints when an explicit deep-debug build asks for them. Coarse
+ * startup/mod/session checkpoints remain durable by default.
+ */
+static bool switch_crash_log_checkpoint_is_noisy(const char *checkpoint) {
+    if (checkpoint == NULL) {
+        return false;
+    }
+
+    return strncmp(checkpoint, "remote file cache path ", 23) == 0
+        || strncmp(checkpoint, "remote file timestamp ", 22) == 0;
+}
+
 const char *switch_crash_log_directory(void) {
     return SWITCH_CRASH_LOG_DIR;
 }
@@ -100,6 +121,13 @@ void switch_crash_log_checkpoint(const char *checkpoint) {
     }
 
     snprintf(sLastCheckpoint, sizeof(sLastCheckpoint), "%s", checkpoint);
+
+#if !defined(SWITCH_VERBOSE_MOD_CHECKPOINTS)
+    if (switch_crash_log_checkpoint_is_noisy(sLastCheckpoint)) {
+        return;
+    }
+#endif
+
     switch_crash_log_printf("checkpoint=%s", sLastCheckpoint);
 
     if (!switch_crash_log_prepare()) {
