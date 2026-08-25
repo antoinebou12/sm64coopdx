@@ -29,20 +29,21 @@ The ROM is copyrighted data and is not included in the distribution. Do not down
 
 ## CoopNet identity
 
-The distribution includes `switch-coopnet-identity.txt` and `SHA256SUMS.txt`. Restricted public CoopNet servers must authorize the exact fingerprint in that identity file. Local/private servers and servers without an executable allowlist do not require that operator entry.
+The distribution includes `switch-coopnet-identity.txt` and `SHA256SUMS.txt`. The Switch port sends its genuine NRO fingerprint but uses the `sm64coop-android` public lobby namespace, as recommended by the official CoopNet maintainers for unofficial ports. That namespace does not require approval in the desktop executable allowlist.
 
-Do not modify the NRO after its fingerprint is authorized. Any byte change creates a different identity. Install the exact NRO supplied with the matching manifest.
+Install the exact NRO supplied with the matching manifest. Any byte change creates a different identity and makes the manifest checksums invalid.
 
 ## Updating
 
-Replace `sm64coopdx.nro`, `icon.jpg`, and `lang/` with the files from the new distribution. Keep your private `baserom.us.z64`, mods, saves, configuration, and logs. A new NRO may require a new CoopNet allowlist fingerprint.
+Replace `sm64coopdx.nro`, `icon.jpg`, and `lang/` with the files from the new distribution. Keep your private `baserom.us.z64`, mods, saves, configuration, and logs.
 
 ## Troubleshooting and logs
 
 - If startup reports a missing or invalid ROM, verify its filename, region, and SHA-1.
 - If the game freezes or runs out of memory, confirm it was launched in full application mode rather than Album/applet mode.
 - Private-lobby passwords use the in-game Switch keypad; that flow should not open the native software keyboard.
-- If public discovery works but admission is rejected, give the server operator the allowlist line from `switch-coopnet-identity.txt`.
+- Switch public discovery uses the Android lobby list. It will not show lobbies published only in the desktop namespace.
+- If a particular server rejects the Switch build, share `switch-coopnet-identity.txt` with that server's operator; do not replace the genuine hash with another executable's identity.
 - Runtime diagnostics are written under `switch/sm64coopdx/logs/`, including `startup.log`, `coopnet.log`, checkpoints, and `exception.log`.
 
 When sharing diagnostics, remove lobby passwords, TURN credentials, and other private information first.

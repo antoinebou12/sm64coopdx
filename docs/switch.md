@@ -80,6 +80,6 @@ After CI is green, validate on real hardware because GitHub Actions cannot exerc
 ## Runtime notes
 
 - Private-lobby passwords use the in-game Switch keypad instead of the unstable native keyboard path.
-- Public CoopNet admission identifies the exact NRO through the fingerprint recorded in the identity manifest. Restricted servers must authorize that fingerprint.
+- The Switch client sends the genuine NRO fingerprint recorded in the identity manifest and uses the `sm64coop-android` public lobby namespace recommended for unofficial ports. Desktop builds keep their existing namespace.
 - Persistent startup, CoopNet, ROM-asset, checkpoint, and exception diagnostics are written under `sdmc:/switch/sm64coopdx/logs/`.
 - Applet mode has less usable memory; use title override/full application mode, especially with mods.

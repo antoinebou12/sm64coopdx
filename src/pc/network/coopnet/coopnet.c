@@ -24,6 +24,12 @@
 
 #define MAX_COOPNET_DESCRIPTION_LENGTH 1024
 
+#ifdef __SWITCH__
+#define COOPNET_GAME_NAME "sm64coop-android"
+#else
+#define COOPNET_GAME_NAME GAME_NAME
+#endif
+
 uint64_t gCoopNetDesiredLobby = 0;
 char gCoopNetPassword[64] = "";
 char sCoopNetDescription[MAX_COOPNET_DESCRIPTION_LENGTH] = "";
@@ -235,9 +241,9 @@ bool ns_coopnet_query(QueryCallbackPtr callback, QueryFinishCallbackPtr finishCa
 #ifdef __SWITCH__
     switch_coopnet_log_checkpoint("LIBCOOPNET", "coopnet_lobby_list_get", "BEFORE");
 #endif
-    CoopNetRc rc = coopnet_lobby_list_get(GAME_NAME, password);
+    CoopNetRc rc = coopnet_lobby_list_get(COOPNET_GAME_NAME, password);
 #ifdef __SWITCH__
-    switch_coopnet_log_printf("lobby list request rc=%d", (int)rc);
+    switch_coopnet_log_printf("lobby list request game=%s rc=%d", COOPNET_GAME_NAME, (int)rc);
     switch_coopnet_log_checkpoint("LIBCOOPNET", "coopnet_lobby_list_get", "AFTER");
 #endif
     return rc == COOPNET_OK;
@@ -647,7 +653,7 @@ void ns_coopnet_update(void) {
 #ifdef __SWITCH__
                 switch_coopnet_log_checkpoint("LIBCOOPNET", "coopnet_lobby_update", "BEFORE");
 #endif
-                CoopNetRc rc = coopnet_lobby_update(sLocalLobbyId, GAME_NAME, get_version(), configPlayerName, mode, sCoopNetDescription);
+                CoopNetRc rc = coopnet_lobby_update(sLocalLobbyId, COOPNET_GAME_NAME, get_version(), configPlayerName, mode, sCoopNetDescription);
 #ifdef __SWITCH__
                 switch_coopnet_log_printf("lobby update lobby_id=%" PRIu64 " rc=%d", sLocalLobbyId, (int)rc);
                 switch_coopnet_log_checkpoint("LIBCOOPNET", "coopnet_lobby_update", "AFTER");
@@ -659,7 +665,7 @@ void ns_coopnet_update(void) {
 #ifdef __SWITCH__
                 switch_coopnet_log_checkpoint("LIBCOOPNET", "coopnet_lobby_create", "BEFORE");
 #endif
-                CoopNetRc rc = coopnet_lobby_create(GAME_NAME, get_version(), configPlayerName, mode,
+                CoopNetRc rc = coopnet_lobby_create(COOPNET_GAME_NAME, get_version(), configPlayerName, mode,
                                                      (uint16_t)configAmountOfPlayers, gCoopNetPassword,
                                                      sCoopNetDescription);
 #ifdef __SWITCH__
@@ -826,8 +832,8 @@ static CoopNetRc coopnet_initialize(void) {
     uint64_t destId = strtoull(configDestId, &endptr, 10);
 
 #ifdef __SWITCH__
-    switch_coopnet_log_printf("signaling target host=%s port=%u",
-                              configCoopNetIp, (unsigned)configCoopNetPort);
+    switch_coopnet_log_printf("signaling target host=%s port=%u game=%s",
+                              configCoopNetIp, (unsigned)configCoopNetPort, COOPNET_GAME_NAME);
     switch_coopnet_log_checkpoint("LIBCOOPNET", "coopnet_begin", "BEFORE");
 #endif
     CoopNetRc rc = coopnet_begin(configCoopNetIp, configCoopNetPort, configPlayerName, destId);

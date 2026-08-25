@@ -307,6 +307,13 @@ def main() -> None:
         and "coopnet_join_recovery_connected" in coopnet,
     )
     require(
+        "Switch CoopNet uses the unrestricted Android public lobby namespace",
+        '#define COOPNET_GAME_NAME "sm64coop-android"' in coopnet
+        and "coopnet_lobby_list_get(COOPNET_GAME_NAME" in coopnet
+        and "coopnet_lobby_create(COOPNET_GAME_NAME" in coopnet
+        and "coopnet_lobby_update(sLocalLobbyId, COOPNET_GAME_NAME" in coopnet,
+    )
+    require(
         "Switch CoopNet recovery keeps pumping while signaling is disconnected",
         "coopnet_join_recovery_should_pump" in coopnet_recovery
         and "!coopnet_is_connected() && !coopnet_join_recovery_should_pump" in coopnet,
