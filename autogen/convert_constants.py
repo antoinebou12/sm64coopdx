@@ -28,6 +28,7 @@ defined_values = {
     'VERSION_EU': False,
     'VERSION_JP': False,
     'VERSION_SH': False,
+    'VERSION_SM64COOP': False,
     'F3DEX_GBI_2': True,
     'DEVELOPMENT': False,
 }

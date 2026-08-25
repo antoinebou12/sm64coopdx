@@ -31,6 +31,8 @@ The ROM is copyrighted data and is not included in the distribution. Do not down
 
 The distribution includes `switch-coopnet-identity.txt` and `SHA256SUMS.txt`. The Switch port sends its genuine NRO fingerprint but uses the `sm64coop-android` public lobby namespace, as recommended by the official CoopNet maintainers for unofficial ports. That namespace does not require approval in the desktop executable allowlist.
 
+**Why the Switch uses sm64coop-android:** The official desktop CoopNet public lobby list requires operator approval of executable fingerprints. Because the Switch port is unofficial, its NRO hash would not be approved, so public lobbies would reject it. Using the Android lobby list (`sm64coop-android`) avoids this restriction while keeping the genuine Switch identity. Desktop and Android builds can optionally compile with `VERSION_SM64COOP` to use the `sm64coop` game name.
+
 Install the exact NRO supplied with the matching manifest. Any byte change creates a different identity and makes the manifest checksums invalid.
 
 ## Updating

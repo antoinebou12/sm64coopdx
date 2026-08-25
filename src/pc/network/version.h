@@ -10,7 +10,9 @@
 
 #define VERSION_OFFSET 37 // difference from old versioning system
 
-#if defined(VERSION_JP)
+#if defined(VERSION_SM64COOP)
+#define VERSION_REGION "CUSTOM"
+#elif defined(VERSION_JP)
 #define VERSION_REGION "JP"
 #elif defined(VERSION_EU)
 #define VERSION_REGION "EU"
@@ -20,7 +22,10 @@
 #define VERSION_REGION "US"
 #endif
 
-#ifdef DEVELOPMENT
+#if defined(VERSION_SM64COOP)
+#define GAME_NAME "sm64coop"
+#define WINDOW_NAME "Super Mario 64 Coop Deluxe"
+#elif defined(DEVELOPMENT)
 #define GAME_NAME "sm64coopdx-dev"
 #define WINDOW_NAME "Super Mario 64 Coop Deluxe (DEV)"
 #elif !defined(VERSION_US)
