@@ -1,0 +1,33 @@
+--- a/common/utils.cpp
++++ b/common/utils.cpp
+@@ -4,6 +4,7 @@
+ #include <stdexcept>
+ #include <string>
+ #include <ctime>
++#include <cstdint>
+ #include <fstream>
+ #include <filesystem>
+ #include "socket.hpp"
+@@ -13,6 +14,10 @@
+ #include <mach-o/dyld.h>
+ #endif
+ 
++#ifdef __SWITCH__
++extern "C" std::size_t switch_coopnet_identity_get(uint64_t* bytes_processed, bool* cache_hit);
++#endif
++
+ // Convert a domain name to an in_addr using gethostbyname
+ in_addr_t GetAddrFromDomain(const std::string& domain) {
+@@ -87,7 +92,13 @@ static std::string readFileData(const std::string &filepath) {
+ }
+ 
+ std::size_t hashFile(const std::string &filepath = getExecutablePath()) {
++#ifdef __SWITCH__
++    (void)filepath;
++    return switch_coopnet_identity_get(nullptr, nullptr);
++#else
+     const std::string data = readFileData(filepath);
+     if (data == "") { return 0; }
+     return std::hash<std::string>{}(data);
++#endif
+ }
