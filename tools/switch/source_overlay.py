@@ -131,7 +131,6 @@ def overlay_controller_bind(text: str) -> str:
         '#include <SDL2/SDL.h>\n',
         "controller bind SDL2 include",
     )
-    # SDL3 renamed SDL2's fixed 512-entry scancode count symbol.
     text = replace_exact_count(
         text,
         'SDL_SCANCODE_COUNT',
@@ -230,63 +229,9 @@ def overlay_network(text: str) -> str:
 
 
 def overlay_djui_host(text: str) -> str:
-    text = replace_once(
-        text,
-        'void djui_panel_host_create(struct DjuiBase* caller) {\n',
-        'void djui_panel_host_create(struct DjuiBase* caller) {\n'
-        '#ifdef __SWITCH__\n'
-        '    /* The normal HOST screen is direct-IP hosting. Local wireless has\n'
-        '     * its own browser/host flow and must not leak into this screen. */\n'
-        '    if (gNetworkType != NT_SERVER && configNetworkSystem == NS_LDN) {\n'
-        '        configNetworkSystem = NS_SOCKET;\n'
-        '    }\n'
-        '#endif\n',
-        "Switch direct host resets LDN selection",
-    )
-
-    text = replace_once(
-        text,
-        'static void djui_panel_host_network_system_change(UNUSED struct DjuiBase* base) {\n'
-        '    djui_base_set_visible(&sRectPort->base, (configNetworkSystem == NS_SOCKET));\n'
-        '    djui_base_set_visible(&sRectPassword->base, (configNetworkSystem == NS_COOPNET));\n'
-        '    djui_base_set_enabled(&sInputboxPort->base, (configNetworkSystem == NS_SOCKET));\n'
-        '    djui_base_set_enabled(&sInputboxPassword->base, (configNetworkSystem == NS_COOPNET));\n'
-        '}\n',
-        'static void djui_panel_host_network_system_change(UNUSED struct DjuiBase* base) {\n'
-        '    /* Horizon users still need an editable host port when CoopNet is selected. */\n'
-        '    djui_base_set_visible(&sRectPort->base, true);\n'
-        '    djui_base_set_visible(&sRectPassword->base, (configNetworkSystem == NS_COOPNET));\n'
-        '    djui_base_set_enabled(&sInputboxPort->base, (gNetworkType != NT_SERVER));\n'
-        '    djui_base_set_enabled(&sInputboxPassword->base, (configNetworkSystem == NS_COOPNET));\n'
-        '}\n',
-        "Switch CoopNet host port stays editable",
-    )
-
-    text = replace_once(
-        text,
-        '        struct DjuiRect* rect1 = djui_rect_container_create(body, 32);\n',
-        '        /* Switch CoopNet shows Port and Password as separate rows. */\n'
-        '        struct DjuiRect* rect1 = djui_rect_container_create(body, 64);\n',
-        "Switch host network fields height",
-    )
-    text = replace_once(
-        text,
-        '            djui_base_set_visible(&sRectPort->base, (configNetworkSystem == NS_SOCKET));\n',
-        '            djui_base_set_visible(&sRectPort->base, true);\n',
-        "Switch host port initially visible",
-    )
-    text = replace_once(
-        text,
-        '                    djui_base_set_enabled(&sInputboxPort->base, (configNetworkSystem == NS_SOCKET));\n',
-        '                    djui_base_set_enabled(&sInputboxPort->base, true);\n',
-        "Switch host port initially enabled",
-    )
-    text = replace_once(
-        text,
-        '            djui_base_set_location(&sRectPassword->base, 0, 0);\n',
-        '            djui_base_set_location(&sRectPassword->base, 0, 32);\n',
-        "Switch host password second row",
-    )
+    # The Switch-specific Host behavior now lives directly in djui_panel_host.c.
+    # Keep the overlay mode as a no-op because CI still materializes this file
+    # and checks the resulting source for the LDN-to-Direct reset invariant.
     return text
 
 
