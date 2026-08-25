@@ -24,11 +24,13 @@ SWITCH_SDMC_APP_DIR := $(SWITCH_SDMC_LAYOUT)/switch/sm64coopdx
 SWITCH_SDMC_DEBUG_DIR := $(SWITCH_SDMC_LAYOUT)/debug
 SWITCH_TRANSFER_ROOT := $(BUILD_DIR)/easy-transfer
 SWITCH_TRANSFER_APP_DIR := $(SWITCH_TRANSFER_ROOT)/switch/sm64coopdx
+SWITCH_DIST_ROOT := dist/sm64coopdx-switch-$(SWITCH_VERSION)
+SWITCH_DIST_ZIP := $(SWITCH_DIST_ROOT).zip
 SWITCH_ICON := res/switch/icon.jpg
 SWITCH_LOCAL_BASEROM := baserom.$(VERSION).z64
 SWITCH_JUICE_PROBE_NRO := build/switch-juice-probe/sm64coopdx-switch-juice-probe.nro
 
-.PHONY: switch-sdmc-layout switch-transfer-folder
+.PHONY: switch-sdmc-layout switch-transfer-folder switch-dist switch-dist-clean
 
 switch-sdmc-layout: switch-nro
 	@rm -rf "$(SWITCH_SDMC_LAYOUT)"
@@ -80,3 +82,22 @@ switch-transfer-folder: switch-sdmc-layout
 		'This installs /switch/sm64coopdx with the NRO, language files, logs directory, and local baserom when present.' \
 		> "$(SWITCH_TRANSFER_ROOT)/README.txt"
 	@echo "Copy-ready Switch folder: $(SWITCH_TRANSFER_ROOT)"
+
+# Public, ROM-free release package. The packager verifies that the identity
+# manifest describes the exact NRO being copied, then creates a folder and ZIP
+# whose contents can be extracted directly to the SD-card root.
+switch-dist: switch-nro docs/SWITCH_INSTALL.md tools/switch/package_dist.py
+	$(PYTHON) tools/switch/package_dist.py \
+		--root . \
+		--nro "$(SWITCH_NRO)" \
+		--icon "$(SWITCH_ICON)" \
+		--lang-dir lang \
+		--identity "$(SWITCH_COOPNET_IDENTITY_MANIFEST)" \
+		--install-guide docs/SWITCH_INSTALL.md \
+		--output-dir "$(SWITCH_DIST_ROOT)" \
+		--output-zip "$(SWITCH_DIST_ZIP)"
+	@echo "Switch distribution folder: $(SWITCH_DIST_ROOT)"
+	@echo "Switch distribution ZIP: $(SWITCH_DIST_ZIP)"
+
+switch-dist-clean:
+	@rm -rf "$(SWITCH_DIST_ROOT)" "$(SWITCH_DIST_ZIP)"

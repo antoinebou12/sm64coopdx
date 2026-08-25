@@ -15,6 +15,15 @@ Interestingly enough though, the goal of the project has slowly evolved over tim
 
 sm64coopdx is moddable via Lua, similar to Roblox and Garry's Mod's Lua APIs. To get started, click [here](docs/lua/lua.md) to see the Lua documentation. If you want to contribute to the repo, you can view the C documentation [here](docs/c/c.md).
 
+## Nintendo Switch
+
+This branch includes an unofficial Nintendo Switch homebrew port with CoopNet, local wireless, an in-game password keypad, crash diagnostics, and an embedded Homebrew Menu icon.
+
+- [Install the Switch release](docs/SWITCH_INSTALL.md)
+- [Build and package the Switch port](docs/switch.md)
+
+You must supply your own legally obtained North American Super Mario 64 ROM. ROM data is never included in source control or release packages.
+
 ## Wiki
 The wiki is made using GitHub's wiki feature, you can go to the wiki tab or click [here](https://github.com/coop-deluxe/sm64coopdx/wiki).
 

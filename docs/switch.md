@@ -1,29 +1,55 @@
-# Nintendo Switch port
+# Nintendo Switch build and packaging
 
-The Switch build targets Horizon OS with devkitA64/libnx, devkitPro SDL2 and GLES2. Desktop builds remain on SDL3.
+The Switch build targets Horizon OS with devkitA64/libnx, devkitPro SDL2 and GLES2. Desktop builds remain on SDL3. For end-user setup, see the [Switch installation guide](SWITCH_INSTALL.md).
 
 ## SD card layout
 
-Use title override/full application mode when possible. The port creates its data directory automatically.
+Use title override/full application mode. The port creates its logs directory automatically.
 
 ```text
 sdmc:/switch/sm64coopdx/
 ├── sm64coopdx.nro
-└── baserom.us.z64
+├── baserom.us.z64
+├── icon.jpg
+├── lang/
+└── logs/
 ```
 
 The ROM must be a legally obtained North American Super Mario 64 ROM matching `sm64.us.sha1`. The ROM is not part of this repository.
 
 ## Local build
 
-With devkitPro and Switch portlibs installed:
+The repository includes Docker-based dependency scripts for Lua, libjuice, and CoopNet. From Linux/macOS with Docker and a private `baserom.us.z64` in the repository root:
 
 ```sh
-export DEVKITPRO=/opt/devkitpro
-make -f Makefile.switch-game switch-nro -j2
+docker run --rm -v "$PWD:/src" -w /src devkitpro/devkita64:latest bash -lc \
+  'source /opt/devkitpro/switchvars.sh && make -f Makefile.switch-sdmc SWITCH_COOPNET=1 switch-nro -j1'
 ```
 
-Output is written below `build/us_switch/`.
+PowerShell:
+
+```powershell
+docker run --rm -v "${PWD}:/src" -w /src devkitpro/devkita64:latest bash -lc 'source /opt/devkitpro/switchvars.sh && make -f Makefile.switch-sdmc SWITCH_COOPNET=1 switch-nro -j1'
+```
+
+The NRO is written to `build/us_switch/sm64coopdx.nro`, and its CoopNet identity is written to `build-logs/switch-coopnet-identity.txt`.
+
+## Create a release distribution
+
+Run the release target after all NRO-affecting changes are final:
+
+```sh
+make -f Makefile.switch-sdmc SWITCH_COOPNET=1 switch-dist -j1
+```
+
+The target validates the NRO0 header, confirms that the identity manifest's size and SHA-256 match the exact NRO, verifies the embedded icon result, and creates:
+
+```text
+dist/sm64coopdx-switch-1.5.1-switch/
+dist/sm64coopdx-switch-1.5.1-switch.zip
+```
+
+The ZIP contains the NRO, icon, language files, logs directory marker, installation guide, identity manifest, and SHA-256 checksums. It deliberately excludes `baserom.us.z64`, debug ELF/map files, caches, and build logs.
 
 ## CI
 
@@ -51,10 +77,9 @@ After CI is green, validate on real hardware because GitHub Actions cannot exerc
 - exit through HOME/application shutdown, then relaunch immediately;
 - run for at least 20–30 minutes and watch for audio queue growth, rendering corruption or network stalls.
 
-## Known areas that still need hardware work
+## Runtime notes
 
-- Direct socket networking currently starts with an IPv6 dual-stack UDP socket. An IPv4 fallback may be needed on networks where IPv6 socket creation is unavailable.
-- Text chat still follows the SDL keyboard/text-input path. A native Horizon software keyboard (`swkbd`) integration would improve controller-only use.
-- Four libnx controller slots are available at the input boundary, but local split-screen/game-state integration is not enabled yet.
-- There is no Switch-native crash/backtrace screen yet. A future debug build should save a compact crash log to the SD card and/or support nxlink logging.
-- Applet mode has less usable memory than full application mode. The port warns about this, but larger mods should be tested with title override.
+- Private-lobby passwords use the in-game Switch keypad instead of the unstable native keyboard path.
+- Public CoopNet admission identifies the exact NRO through the fingerprint recorded in the identity manifest. Restricted servers must authorize that fingerprint.
+- Persistent startup, CoopNet, ROM-asset, checkpoint, and exception diagnostics are written under `sdmc:/switch/sm64coopdx/logs/`.
+- Applet mode has less usable memory; use title override/full application mode, especially with mods.
