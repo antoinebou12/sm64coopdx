@@ -13,10 +13,23 @@
 #include "engine/math_util.h"
 #include "audio/external.h"
 #include "sounds.h"
+#ifdef __SWITCH__
+#include "pc/platform/switch/switch_crash_log.h"
+#endif
 
 static bool hideMessage = false;
 
 void djui_panel_do_host(bool reconnecting, bool playSound) {
+#ifdef __SWITCH__
+    switch_crash_log_printf(
+        "host begin backend=%u players=%u port=%u reconnecting=%d",
+        configNetworkSystem,
+        configAmountOfPlayers,
+        configHostPort,
+        reconnecting ? 1 : 0);
+    switch_crash_log_checkpoint("host: begin");
+#endif
+
     stop_demo(NULL);
     djui_panel_shutdown();
     extern s16 gCurrSaveFileNum;
@@ -32,9 +45,31 @@ void djui_panel_do_host(bool reconnecting, bool playSound) {
     if (configNetworkSystem >= NS_MAX) { configNetworkSystem = NS_SOCKET; }
     network_set_system(configNetworkSystem);
 
-    network_init(NT_SERVER, reconnecting);
+#ifdef __SWITCH__
+    switch_crash_log_checkpoint("host: network init begin");
+#endif
+    if (!network_init(NT_SERVER, reconnecting)) {
+#ifdef __SWITCH__
+        switch_crash_log_checkpoint("host: network init failed");
+#endif
+        // network_init() can fail after the host panel has already been closed.
+        // Use the standard shutdown path to clear any partial backend state and
+        // rebuild the main menu instead of continuing into a half-started game.
+        network_shutdown(false, false, true, false);
+        return;
+    }
+#ifdef __SWITCH__
+    switch_crash_log_checkpoint("host: network init complete");
+#endif
+
     djui_panel_modlist_create(NULL);
+#ifdef __SWITCH__
+    switch_crash_log_checkpoint("host: modlist complete");
+#endif
     fake_lvl_init_from_save_file();
+#ifdef __SWITCH__
+    switch_crash_log_checkpoint("host: level init complete");
+#endif
 
     extern s16 gChangeLevelTransition;
     gChangeLevelTransition = gLevelValues.entryLevel;
@@ -43,6 +78,9 @@ void djui_panel_do_host(bool reconnecting, bool playSound) {
     if (playSound) { gDelayedInitSound = CHAR_SOUND_OKEY_DOKEY; }
 
     play_transition(WARP_TRANSITION_FADE_INTO_STAR, 0x14, 0x00, 0x00, 0x00);
+#ifdef __SWITCH__
+    switch_crash_log_checkpoint("host: transition started");
+#endif
 }
 
 void djui_panel_host_message_do_host(UNUSED struct DjuiBase* caller) {
