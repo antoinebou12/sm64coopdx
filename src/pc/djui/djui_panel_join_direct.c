@@ -12,15 +12,22 @@
 #include "pc/configfile.h"
 #include "pc/debuglog.h"
 #include "macros.h"
+#ifdef __SWITCH__
+#include "djui_panel_switch_text_entry.h"
+#endif
 
+#ifndef __SWITCH__
 static struct DjuiInputbox* sInputboxIp = NULL;
+#else
+static struct DjuiButton* sButtonIp = NULL;
+static char sSwitchDirectAddress[256] = "";
+#endif
 
 static bool djui_panel_join_direct_ip_parse_numbers(char** msg) {
     int num = 0;
     for (int i = 0; i < 3; i++) {
         char c = **msg;
         if (c >= '0' && c <= '9') {
-            // is number
             num *= 10;
             num += (c - '0');
             *msg = *msg + 1;
@@ -53,7 +60,6 @@ static bool djui_panel_join_direct_ip_parse_port(char** msg) {
     for (int i = 0; i < 5; i++) {
         char c = **msg;
         if (c >= '0' && c <= '9') {
-            // is number
             port *= 10;
             port += (c - '0');
             *msg = *msg + 1;
@@ -84,6 +90,7 @@ UNUSED static bool djui_panel_join_direct_ip_valid(char* buffer) {
     return (**msg == '\0');
 }
 
+#ifndef __SWITCH__
 static void djui_panel_join_direct_ip_text_change(struct DjuiBase* caller) {
     struct DjuiInputbox* inputbox1 = (struct DjuiInputbox*)caller;
     struct DjuiTheme* theme = gDjuiThemes[configDjuiTheme];
@@ -94,28 +101,27 @@ static void djui_panel_join_direct_ip_text_change(struct DjuiBase* caller) {
         djui_inputbox_set_text_color(inputbox1, 255, 0, 0, 255);
     }
 }
+#endif
 
-static void djui_panel_join_direct_ip_text_set_new(void) {
+static void djui_panel_join_direct_ip_text_set_new(const char* source) {
     char buffer[256] = { 0 };
     char orig_ip[256] = { 0 };
-    if (snprintf(buffer, 256, "%s", sInputboxIp->buffer) < 0) {
+    if (snprintf(buffer, sizeof(buffer), "%s", source != NULL ? source : "") < 0) {
         LOG_INFO("truncating IP");
     }
 
-    // copy original buffer for storing to gGetHostName
-    memcpy(&orig_ip, &buffer, 256);
+    memcpy(&orig_ip, &buffer, sizeof(orig_ip));
 
     bool afterSpacer = false;
     bool is_ipv6 = false;
     int port = 0;
 
-    // check if address starts with [ (meaning it's a direct IPv6 address.
-    // This is needed because we need to know when to get the port number. Example: [2001:db8::1000]:7777
-    // If this character is not in the first character in the buffer, it will be treated as an IPv4 address or hostname.
+#ifndef __SWITCH__
     if (buffer[0] == '[') {
         memcpy(&buffer, &buffer[1], 255);
         is_ipv6 = true;
     }
+#endif
 
     if (is_ipv6) {
         LOG_INFO("Detected direct IPv6 address");
@@ -123,19 +129,15 @@ static void djui_panel_join_direct_ip_text_set_new(void) {
         LOG_INFO("Detected direct IPv4 address or hostname");
     }
 
-    // this needs cleaning
     for (int i = 0; i < 256; i++) {
-        // Direct IPv6 address
         if (is_ipv6 == true) {
-            // Check if it reached end of address "]:", or a space as a fail safe.
             if ((buffer[i] == ']') || buffer[i] == ' ') {
                 afterSpacer = true;
-                memset(&orig_ip, 0, 256);
-                memcpy(&orig_ip[1], &buffer, i+1);
+                memset(&orig_ip, 0, sizeof(orig_ip));
+                memcpy(&orig_ip[1], &buffer, i + 1);
                 buffer[i] = '\0';
                 orig_ip[0] = '[';
-                // skip over the port separator
-                if (buffer[i+1] == ':') {
+                if (buffer[i + 1] == ':') {
                     i += 1;
                 }
             } else if (buffer[i] == '\0') {
@@ -145,12 +147,10 @@ static void djui_panel_join_direct_ip_text_set_new(void) {
                 port += buffer[i] - '0';
             }
         } else {
-            // Direct IPv4 address or hostname
-            // Check if it reached end of address ":", or a space as a fail safe.
             if (buffer[i] == ' ' || buffer[i] == ':') {
                 afterSpacer = true;
                 buffer[i] = '\0';
-                memcpy(&orig_ip, &buffer, i+1);
+                memcpy(&orig_ip, &buffer, i + 1);
             } else if (buffer[i] == '\0') {
                 break;
             } else if (afterSpacer && buffer[i] >= '0' && buffer[i] <= '9') {
@@ -171,29 +171,70 @@ static void djui_panel_join_direct_ip_text_set_new(void) {
     }
 }
 
-static void djui_panel_join_direct_ip_text_set(struct DjuiInputbox* inputbox1) {
-    char buffer[256] = { 0 };
+static void djui_panel_join_direct_format_address(char* buffer, size_t bufferSize) {
     if (strlen(configJoinIp) > 0 && configJoinPort != DEFAULT_PORT) {
-        if (snprintf(buffer, 256, "%s:%d", configJoinIp, configJoinPort) < 0) { LOG_INFO("truncating IP"); }
+        snprintf(buffer, bufferSize, "%s:%d", configJoinIp, configJoinPort);
     } else if (strlen(configJoinIp) > 0) {
-        if (snprintf(buffer, 256, "%s", configJoinIp) < 0) { LOG_INFO("truncating IP"); }
+        snprintf(buffer, bufferSize, "%s", configJoinIp);
     } else {
-        if (snprintf(buffer, 256, "localhost") < 0) { LOG_INFO("truncating IP"); }
+        snprintf(buffer, bufferSize, "localhost");
     }
-
-    djui_inputbox_set_text(inputbox1, buffer);
 }
 
+#ifndef __SWITCH__
+static void djui_panel_join_direct_ip_text_set(struct DjuiInputbox* inputbox1) {
+    char buffer[256] = { 0 };
+    djui_panel_join_direct_format_address(buffer, sizeof(buffer));
+    djui_inputbox_set_text(inputbox1, buffer);
+}
+#else
+static void djui_panel_join_direct_switch_apply(const char* text) {
+    if (text == NULL || strlen(text) <= 2) { return; }
+    snprintf(sSwitchDirectAddress, sizeof(sSwitchDirectAddress), "%s", text);
+    djui_panel_join_direct_ip_text_set_new(sSwitchDirectAddress);
+    if (sButtonIp != NULL) {
+        djui_text_set_text(sButtonIp->text, sSwitchDirectAddress);
+    }
+}
+
+static void djui_panel_join_direct_switch_edit(struct DjuiBase* caller) {
+    if (sSwitchDirectAddress[0] == '\0') {
+        djui_panel_join_direct_format_address(sSwitchDirectAddress, sizeof(sSwitchDirectAddress));
+    }
+    djui_panel_switch_text_entry_create(
+        caller,
+        "Direct address",
+        sSwitchDirectAddress,
+        sizeof(sSwitchDirectAddress),
+        DJUI_SWITCH_TEXT_ADDRESS,
+        djui_panel_join_direct_switch_apply);
+}
+#endif
+
 void djui_panel_join_direct_do_join(struct DjuiBase* caller) {
+#ifndef __SWITCH__
     if (!(strlen(sInputboxIp->buffer) > 2)) {
         djui_interactable_set_input_focus(&sInputboxIp->base);
         djui_inputbox_select_all(sInputboxIp);
         return;
     }
+    djui_panel_join_direct_ip_text_set_new(sInputboxIp->buffer);
+#else
+    if (sSwitchDirectAddress[0] == '\0') {
+        djui_panel_join_direct_format_address(sSwitchDirectAddress, sizeof(sSwitchDirectAddress));
+        djui_panel_join_direct_ip_text_set_new(sSwitchDirectAddress);
+    }
+    if (strlen(configJoinIp) <= 2) { return; }
+    LOG_INFO("Switch Direct: join begin host=%s port=%u", configJoinIp, configJoinPort);
+#endif
     network_reset_reconnect_and_rehost();
-    djui_panel_join_direct_ip_text_set_new();
     network_set_system(NS_SOCKET);
-    network_init(NT_CLIENT, false);
+    if (!network_init(NT_CLIENT, false)) {
+#ifdef __SWITCH__
+        LOG_ERROR("Switch Direct: network_init failed host=%s port=%u", configJoinIp, configJoinPort);
+#endif
+        return;
+    }
     djui_panel_join_message_create(caller);
 }
 
@@ -211,12 +252,19 @@ void djui_panel_join_direct_create(struct DjuiBase* caller) {
         djui_base_set_size(&text1->base, 1.0f, directTextHeight);
         djui_base_set_color(&text1->base, 220, 220, 220, 255);
 
+#ifndef __SWITCH__
         struct DjuiInputbox* inputbox1 = djui_inputbox_create(body, 256);
         djui_base_set_size_type(&inputbox1->base, DJUI_SVT_RELATIVE, DJUI_SVT_ABSOLUTE);
         djui_base_set_size(&inputbox1->base, 1.0f, 32.0f);
         djui_interactable_hook_value_change(&inputbox1->base, djui_panel_join_direct_ip_text_change);
         sInputboxIp = inputbox1;
         djui_panel_join_direct_ip_text_set(inputbox1);
+#else
+        djui_panel_join_direct_format_address(sSwitchDirectAddress, sizeof(sSwitchDirectAddress));
+        sButtonIp = djui_button_create(body, sSwitchDirectAddress, DJUI_BUTTON_STYLE_NORMAL, djui_panel_join_direct_switch_edit);
+        djui_base_set_size_type(&sButtonIp->base, DJUI_SVT_RELATIVE, DJUI_SVT_ABSOLUTE);
+        djui_base_set_size(&sButtonIp->base, 1.0f, 48.0f);
+#endif
 
         struct DjuiRect* rect2 = djui_rect_container_create(body, 64);
         {
