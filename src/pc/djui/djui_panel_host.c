@@ -319,7 +319,7 @@ void djui_panel_host_create(struct DjuiBase* caller) {
             djui_base_set_size_type(&message->base, DJUI_SVT_RELATIVE, DJUI_SVT_ABSOLUTE);
             djui_base_set_size(&message->base, 1.0f, 1.0f);
             djui_base_set_color(&message->base, 255, 255, 160, 255);
-            djui_text_set_alignment(message, configExCoopTheme ? DJUI_HALIGN_CENTER : DJUI_HALIGN_RIGHT, DJUI_VALIGN_BOTTOM);
+            djui_text_set_alignment(message, DJUI_HALIGN_CENTER, DJUI_VALIGN_BOTTOM);
         }
     }
 
