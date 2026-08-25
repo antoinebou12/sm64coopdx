@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include "djui.h"
 #include "djui_panel.h"
 #include "djui_panel_menu.h"
@@ -12,22 +13,46 @@
 #include "pc/utils/misc.h"
 #include "pc/configfile.h"
 #include "pc/update_checker.h"
+#ifdef __SWITCH__
+#include "djui_panel_switch_text_entry.h"
+#endif
 
 static struct DjuiRect* sRectPort = NULL;
+#ifndef __SWITCH__
 static struct DjuiInputbox* sInputboxPort = NULL;
+#else
+static struct DjuiButton* sButtonPort = NULL;
+static char sSwitchPortText[16] = "";
+#endif
 #ifdef COOPNET
 static struct DjuiRect* sRectPassword = NULL;
+#ifndef __SWITCH__
 static struct DjuiInputbox* sInputboxPassword = NULL;
+#else
+static struct DjuiButton* sButtonPassword = NULL;
+#endif
 
 static void djui_panel_host_network_system_change(UNUSED struct DjuiBase* base) {
     djui_base_set_visible(&sRectPort->base, (configNetworkSystem == NS_SOCKET));
     djui_base_set_visible(&sRectPassword->base, (configNetworkSystem == NS_COOPNET));
+#ifndef __SWITCH__
     djui_base_set_enabled(&sInputboxPort->base, (configNetworkSystem == NS_SOCKET));
     djui_base_set_enabled(&sInputboxPassword->base, (configNetworkSystem == NS_COOPNET));
+#else
+    if (sButtonPort != NULL) {
+        djui_base_set_enabled(&sButtonPort->base, (gNetworkType != NT_SERVER && configNetworkSystem == NS_SOCKET));
+    }
+    if (sButtonPassword != NULL) {
+        djui_base_set_enabled(&sButtonPassword->base, (gNetworkType != NT_SERVER && configNetworkSystem == NS_COOPNET));
+    }
+#endif
 }
 #endif
 
 static bool djui_panel_host_port_valid(void) {
+#ifdef __SWITCH__
+    return configHostPort >= 1 && configHostPort <= 65535;
+#else
     char* buffer = sInputboxPort->buffer;
     int port = 0;
     while (*buffer != '\0') {
@@ -41,8 +66,10 @@ static bool djui_panel_host_port_valid(void) {
 #else
     return port <= 65535;
 #endif
+#endif
 }
 
+#ifndef __SWITCH__
 static void djui_panel_host_port_text_change(struct DjuiBase* caller) {
     struct DjuiInputbox* sInputboxPort = (struct DjuiInputbox*)caller;
     struct DjuiTheme* theme = gDjuiThemes[configDjuiTheme];
@@ -53,30 +80,83 @@ static void djui_panel_host_port_text_change(struct DjuiBase* caller) {
         djui_inputbox_set_text_color(sInputboxPort, 255, 0, 0, 255);
     }
 }
+#else
+static void djui_panel_host_switch_port_apply(const char* text) {
+    if (text == NULL || text[0] == '\0') { return; }
+    char* end = NULL;
+    unsigned long port = strtoul(text, &end, 10);
+    if (end == text || *end != '\0' || port < 1 || port > 65535) { return; }
+    configHostPort = (unsigned int)port;
+    snprintf(sSwitchPortText, sizeof(sSwitchPortText), "%u", configHostPort);
+    if (sButtonPort != NULL) {
+        djui_text_set_text(sButtonPort->text, sSwitchPortText);
+    }
+}
+
+static void djui_panel_host_switch_port_edit(struct DjuiBase* caller) {
+    snprintf(sSwitchPortText, sizeof(sSwitchPortText), "%u", configHostPort);
+    djui_panel_switch_text_entry_create(
+        caller,
+        "Host port",
+        sSwitchPortText,
+        sizeof(sSwitchPortText),
+        DJUI_SWITCH_TEXT_NUMERIC,
+        djui_panel_host_switch_port_apply);
+}
+#endif
 
 #ifdef COOPNET
+#ifndef __SWITCH__
 static void djui_panel_host_password_text_change(UNUSED struct DjuiBase* caller) {
     snprintf(configPassword, 64, "%s", sInputboxPassword->buffer);
     if (strlen(sInputboxPassword->buffer) >= 64) {
         djui_inputbox_set_text(sInputboxPassword, configPassword);
     }
 }
+#else
+static void djui_panel_host_switch_password_update(void) {
+    if (sButtonPassword == NULL) { return; }
+    char masked[64] = "";
+    size_t length = strlen(configPassword);
+    memset(masked, '#', length);
+    masked[length] = '\0';
+    djui_text_set_text(sButtonPassword->text, length > 0 ? masked : "(no password)");
+}
+
+static void djui_panel_host_switch_password_apply(const char* text) {
+    snprintf(configPassword, sizeof(configPassword), "%s", text != NULL ? text : "");
+    djui_panel_host_switch_password_update();
+}
+
+static void djui_panel_host_switch_password_edit(struct DjuiBase* caller) {
+    djui_panel_switch_text_entry_create(
+        caller,
+        "CoopNet password",
+        configPassword,
+        sizeof(configPassword),
+        DJUI_SWITCH_TEXT_PASSWORD,
+        djui_panel_host_switch_password_apply);
+}
+#endif
 #endif
 
 extern void djui_panel_do_host(bool reconnecting, bool playSound);
 static void djui_panel_host_do_host(struct DjuiBase* caller) {
     if (!djui_panel_host_port_valid()) {
+#ifndef __SWITCH__
         djui_interactable_set_input_focus(&sInputboxPort->base);
         djui_inputbox_select_all(sInputboxPort);
+#endif
         return;
     }
 
-    // Doesn't let you host if the player limit is not good
     if (configAmountOfPlayers < 1 || configAmountOfPlayers > MAX_PLAYERS) {
         return;
     }
 
+#ifndef __SWITCH__
     configHostPort = atoi(sInputboxPort->buffer);
+#endif
 
     if (gNetworkType == NT_SERVER) {
         network_rehost_begin();
@@ -88,20 +168,39 @@ static void djui_panel_host_do_host(struct DjuiBase* caller) {
     }
 }
 
+#ifdef __SWITCH__
+static void djui_panel_host_play_solo(UNUSED struct DjuiBase* caller) {
+    configNetworkSystem = NS_SOCKET;
+    configAmountOfPlayers = 1;
+    network_reset_reconnect_and_rehost();
+    djui_panel_do_host(false, true);
+}
+#endif
+
 void djui_panel_host_create(struct DjuiBase* caller) {
+#ifdef __SWITCH__
+    if (gNetworkType != NT_SERVER && configNetworkSystem == NS_LDN) {
+        configNetworkSystem = NS_SOCKET;
+    }
+#endif
     struct DjuiBase* defaultBase = NULL;
     struct DjuiThreePanel* panel = djui_panel_menu_create(
         (gNetworkType == NT_SERVER) ? DLANG(HOST, SERVER_TITLE) : DLANG(HOST, HOST_TITLE),
         false);
     struct DjuiBase* body = djui_three_panel_get_body(panel);
     {
-        #ifdef COOPNET
+#ifdef __SWITCH__
+        if (gNetworkType != NT_SERVER) {
+            djui_button_create(body, "PLAY SOLO (NO NETWORK)", DJUI_BUTTON_STYLE_NORMAL, djui_panel_host_play_solo);
+        }
+#endif
+#ifdef COOPNET
         char* nChoices[] = { DLANG(HOST, DIRECT_CONNECTION), DLANG(HOST, COOPNET) };
         struct DjuiSelectionbox* selectionbox1 = djui_selectionbox_create(body, DLANG(HOST, NETWORK_SYSTEM), nChoices, 2, &configNetworkSystem, djui_panel_host_network_system_change);
         if (gNetworkType == NT_SERVER) {
             djui_base_set_enabled(&selectionbox1->base, false);
         }
-        #endif
+#endif
 
         struct DjuiRect* rect1 = djui_rect_container_create(body, 32);
         {
@@ -119,6 +218,7 @@ void djui_panel_host_create(struct DjuiBase* caller) {
                     djui_base_set_enabled(&text1->base, false);
                 }
 
+#ifndef __SWITCH__
                 sInputboxPort = djui_inputbox_create(&sRectPort->base, 32);
                 djui_base_set_size_type(&sInputboxPort->base, DJUI_SVT_RELATIVE, DJUI_SVT_ABSOLUTE);
                 djui_base_set_size(&sInputboxPort->base, 0.45f, 32);
@@ -132,6 +232,13 @@ void djui_panel_host_create(struct DjuiBase* caller) {
                 } else {
                     djui_base_set_enabled(&sInputboxPort->base, (configNetworkSystem == NS_SOCKET));
                 }
+#else
+                snprintf(sSwitchPortText, sizeof(sSwitchPortText), "%u", configHostPort);
+                sButtonPort = djui_button_create(&sRectPort->base, sSwitchPortText, DJUI_BUTTON_STYLE_NORMAL, djui_panel_host_switch_port_edit);
+                djui_base_set_size(&sButtonPort->base, 0.45f, 32);
+                djui_base_set_alignment(&sButtonPort->base, DJUI_HALIGN_RIGHT, DJUI_VALIGN_TOP);
+                djui_base_set_enabled(&sButtonPort->base, (gNetworkType != NT_SERVER && configNetworkSystem == NS_SOCKET));
+#endif
             }
 #ifdef COOPNET
             sRectPassword = djui_rect_container_create(&rect1->base, 32);
@@ -147,6 +254,7 @@ void djui_panel_host_create(struct DjuiBase* caller) {
                     djui_base_set_enabled(&text1->base, false);
                 }
 
+#ifndef __SWITCH__
                 sInputboxPassword = djui_inputbox_create(&sRectPassword->base, 32);
                 sInputboxPassword->passwordChar[0] = '#';
                 djui_base_set_size_type(&sInputboxPassword->base, DJUI_SVT_RELATIVE, DJUI_SVT_ABSOLUTE);
@@ -161,6 +269,13 @@ void djui_panel_host_create(struct DjuiBase* caller) {
                 } else {
                     djui_base_set_enabled(&sInputboxPassword->base, (configNetworkSystem == NS_COOPNET));
                 }
+#else
+                sButtonPassword = djui_button_create(&sRectPassword->base, "(no password)", DJUI_BUTTON_STYLE_NORMAL, djui_panel_host_switch_password_edit);
+                djui_base_set_size(&sButtonPassword->base, 0.45f, 32);
+                djui_base_set_alignment(&sButtonPassword->base, DJUI_HALIGN_RIGHT, DJUI_VALIGN_TOP);
+                djui_base_set_enabled(&sButtonPassword->base, (gNetworkType != NT_SERVER && configNetworkSystem == NS_COOPNET));
+                djui_panel_host_switch_password_update();
+#endif
             }
 #endif
         }
