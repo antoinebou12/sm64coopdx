@@ -18,9 +18,6 @@ static SOCKET sCurSocket = INVALID_SOCKET;
 static NetworkSocketAddr sAddr[MAX_PLAYERS] = { 0 };
 static struct addrinfo hints;
 static struct addrinfo *result, *i;
-#ifdef __SWITCH__
-static bool sSwitchLocalOnly = false;
-#endif
 
 char gGetHostName[MAX_CONFIG_STRING] = "";
 
@@ -174,13 +171,6 @@ static bool ns_socket_initialize(enum NetworkType networkType, UNUSED bool recon
     if (port == 0) { port = DEFAULT_PORT; }
 
 #ifdef __SWITCH__
-    sSwitchLocalOnly = (networkType == NT_SERVER && configAmountOfPlayers == 1);
-    if (sSwitchLocalOnly) {
-        sCurSocket = INVALID_SOCKET;
-        memset(sAddr, 0, sizeof(sAddr));
-        LOG_INFO("Switch Solo: local-only host initialized without UDP socket");
-        return true;
-    }
     LOG_INFO("Switch Direct: socket initialize type=%d port=%u", (int)networkType, port);
 #endif
 
@@ -299,9 +289,6 @@ static bool ns_socket_match_addr(void* addr1, void* addr2) {
 }
 
 static void ns_socket_update(void) {
-#ifdef __SWITCH__
-    if (sSwitchLocalOnly) { return; }
-#endif
     if (gNetworkType == NT_NONE || sCurSocket == INVALID_SOCKET) { return; }
     do {
         u8 data[PACKET_LENGTH + 1];
@@ -315,9 +302,6 @@ static void ns_socket_update(void) {
 }
 
 static int ns_socket_send(u8 localIndex, void* address, u8* data, u16 dataLength) {
-#ifdef __SWITCH__
-    if (sSwitchLocalOnly) { return NO_ERROR; }
-#endif
     if (sCurSocket == INVALID_SOCKET) { return SOCKET_ERROR; }
     if (localIndex != 0) {
         if (gNetworkType == NT_SERVER && gNetworkPlayers[localIndex].type != NPT_CLIENT) { return SOCKET_ERROR; }
@@ -348,9 +332,6 @@ static void ns_socket_shutdown(UNUSED bool reconnecting) {
     for (u16 i = 0; i < MAX_PLAYERS; i++) {
         memset(&sAddr[i], 0, sizeof(NetworkSocketAddr));
     }
-#ifdef __SWITCH__
-    sSwitchLocalOnly = false;
-#endif
     LOG_INFO("shutdown");
 }
 
