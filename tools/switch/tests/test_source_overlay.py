@@ -30,6 +30,12 @@ OVERLAY_SOURCES = {
     "djui_host": "src/pc/djui/djui_panel_host.c",
 }
 
+# Overlays that are deliberately pass-through. The Switch behavior they used to
+# inject now lives natively in the source file, but they stay wired up because
+# Makefile.switch-game still materializes the file through them and the marker
+# test below still guards the invariant they used to be responsible for.
+PASSTHROUGH_OVERLAYS = {"djui_host"}
+
 # Text each overlay is responsible for introducing.
 OVERLAY_MARKERS = {
     "pc_main": "pc/platform/switch/switch_platform.h",
@@ -53,6 +59,8 @@ class TestOverlayCoverage(unittest.TestCase):
 class TestOverlaysApplyToRealSources(unittest.TestCase):
     def test_each_overlay_changes_its_source(self):
         for mode, relative in OVERLAY_SOURCES.items():
+            if mode in PASSTHROUGH_OVERLAYS:
+                continue
             with self.subTest(overlay=mode):
                 original = (ROOT / relative).read_text(encoding="utf-8")
                 patched = source_overlay.OVERLAYS[mode](original)
@@ -60,6 +68,21 @@ class TestOverlaysApplyToRealSources(unittest.TestCase):
                     original,
                     patched,
                     f"overlay {mode!r} did not modify {relative}: its anchor has drifted",
+                )
+
+    def test_passthrough_overlays_are_exactly_passthrough(self):
+        # The other half of the contract: an overlay is either transforming
+        # (must transform, must fail loud on a missing anchor) or deliberately
+        # pass-through (must be exact identity). Asserting identity here keeps
+        # the exemption above from silently hiding a broken overlay.
+        for mode in PASSTHROUGH_OVERLAYS:
+            with self.subTest(overlay=mode):
+                relative = OVERLAY_SOURCES[mode]
+                original = (ROOT / relative).read_text(encoding="utf-8")
+                self.assertEqual(
+                    source_overlay.OVERLAYS[mode](original),
+                    original,
+                    f"overlay {mode!r} is listed as pass-through but modified {relative}",
                 )
 
     def test_each_overlay_introduces_its_marker(self):
@@ -88,6 +111,8 @@ class TestOverlaysApplyToRealSources(unittest.TestCase):
         # replace_once/replace_exact_count raise RuntimeError; the djui_controls
         # overlay slices on str.index and raises ValueError.
         for mode in OVERLAY_SOURCES:
+            if mode in PASSTHROUGH_OVERLAYS:
+                continue
             with self.subTest(overlay=mode):
                 with self.assertRaises((RuntimeError, ValueError)):
                     source_overlay.OVERLAYS[mode]("int main(void) { return 0; }\n")
