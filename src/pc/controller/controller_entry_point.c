@@ -4,18 +4,25 @@
 
 #include "../configfile.h"
 
+#if defined(__3DS__)
+#include "controller_new3ds.h"
+#elif defined(__SWITCH__)
 #include "controller_keyboard.h"
-#ifdef __SWITCH__
 #include "controller_switch.h"
 #else
+#include "controller_keyboard.h"
 #include "controller_sdl.h"
 #endif
 
 // Analog camera movement by Pathétique (github.com/vrmiguel), y0shin and Mors
 // Contribute or communicate bugs at github.com/vrmiguel/sm64-analog-camera
 
-// Keep Horizon on native libnx HID. Desktop continues to use SDL.
-#ifdef __SWITCH__
+// Console targets stay on their native HID stacks. Desktop uses SDL.
+#if defined(__3DS__)
+static struct ControllerAPI *controller_implementations[] = {
+    &controller_new3ds,
+};
+#elif defined(__SWITCH__)
 static struct ControllerAPI *controller_implementations[] = {
     &controller_switch,
     &controller_keyboard,
@@ -30,7 +37,9 @@ static struct ControllerAPI *controller_implementations[] = {
 s32 osContInit(UNUSED OSMesgQueue *mq, u8 *controllerBits, UNUSED OSContStatus *status) {
     for (size_t i = 0; i < sizeof(controller_implementations) / sizeof(struct ControllerAPI *); i++)
         controller_implementations[i]->init();
-#ifdef __SWITCH__
+#if defined(__3DS__)
+    *controllerBits = new3ds_runtime_active() != NULL ? 1 : 0;
+#elif defined(__SWITCH__)
     *controllerBits = controller_switch_connected_count() > 0 ? 1 : 0;
 #else
     *controllerBits = 1;
