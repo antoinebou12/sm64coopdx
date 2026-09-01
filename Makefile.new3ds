@@ -1,0 +1,81 @@
+# SM64CoopDX New 3DS port foundation.
+#
+# This target is deliberately isolated from the desktop and Switch build graphs.
+# It currently builds the native dual-screen platform shell while the CoopDX
+# renderer/game loop are adapted to Citro3D.
+
+.SUFFIXES:
+
+ifeq ($(strip $(DEVKITARM)),)
+$(error "Please set DEVKITARM in your environment (for example /opt/devkitpro/devkitARM)")
+endif
+
+TOPDIR ?= $(CURDIR)
+include $(DEVKITARM)/3ds_rules
+
+TARGET_NAME := sm64coopdx-new3ds
+BUILD := $(TOPDIR)/build/new3ds-shell
+SOURCES := $(TOPDIR)/src/pc/platform/new3ds
+INCLUDES := $(TOPDIR)/src/pc/platform/new3ds
+
+ARCH := -march=armv6k -mtune=mpcore -mfloat-abi=hard -mtp=soft
+CFLAGS := -g -O2 -Wall -Wextra -Werror -mword-relocations \
+          -ffunction-sections -fdata-sections $(ARCH)
+CFLAGS += $(INCLUDE) -D__3DS__ -DNEW_3DS_PORT=1 -std=gnu11
+ASFLAGS := -g $(ARCH)
+LDFLAGS := -specs=3dsx.specs -g $(ARCH) -Wl,-Map,$(TARGET_NAME).map -Wl,--gc-sections
+
+LIBS := -lcitro2d -lcitro3d -lctru -lm
+LIBDIRS := $(CTRULIB) $(DEVKITPRO)/citro2d $(DEVKITPRO)/citro3d
+
+export APP_TITLE := SM64CoopDX New 3DS
+export APP_DESCRIPTION := Native New 3DS port foundation
+export APP_AUTHOR := SM64CoopDX contributors
+
+ifneq ($(CURDIR),$(BUILD))
+
+export OUTPUT := $(BUILD)/$(TARGET_NAME)
+export TOPDIR
+export VPATH := $(SOURCES)
+export DEPSDIR := $(BUILD)
+
+CFILES := $(notdir $(wildcard $(SOURCES)/*.c))
+SFILES := $(notdir $(wildcard $(SOURCES)/*.s))
+
+export LD := $(CC)
+export OFILES := $(CFILES:.c=.o) $(SFILES:.s=.o)
+export INCLUDE := $(foreach dir,$(INCLUDES),-I$(dir)) \
+                  $(foreach dir,$(LIBDIRS),-I$(dir)/include) \
+                  -I$(BUILD)
+export LIBPATHS := $(foreach dir,$(LIBDIRS),-L$(dir)/lib)
+export _3DSXDEPS := $(OUTPUT).smdh
+export _3DSXFLAGS += --smdh=$(OUTPUT).smdh
+
+.PHONY: all clean print-config
+
+all: $(BUILD)
+	@$(MAKE) --no-print-directory -C $(BUILD) -f $(TOPDIR)/Makefile.new3ds TOPDIR=$(TOPDIR)
+	@echo "Built $(OUTPUT).3dsx"
+
+$(BUILD):
+	@mkdir -p $@
+
+clean:
+	@echo "clean New 3DS build"
+	@rm -rf $(BUILD)
+
+print-config:
+	@echo "DEVKITPRO=$(DEVKITPRO)"
+	@echo "DEVKITARM=$(DEVKITARM)"
+	@echo "OUTPUT=$(OUTPUT).3dsx"
+	@echo "SOURCES=$(SOURCES)"
+
+else
+
+$(OUTPUT).3dsx: $(OUTPUT).elf $(_3DSXDEPS)
+
+$(OUTPUT).elf: $(OFILES)
+
+-include $(DEPSDIR)/*.d
+
+endif
