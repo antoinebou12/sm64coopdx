@@ -6,6 +6,7 @@
 
 #if defined(__3DS__)
 #include "controller_new3ds.h"
+#include "pc/platform/new3ds/new3ds_runtime.h"
 #elif defined(__SWITCH__)
 #include "controller_keyboard.h"
 #include "controller_switch.h"
