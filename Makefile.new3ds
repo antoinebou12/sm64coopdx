@@ -26,7 +26,7 @@ ASFLAGS := -g $(ARCH)
 LDFLAGS := -specs=3dsx.specs -g $(ARCH) -Wl,-Map,$(TARGET_NAME).map -Wl,--gc-sections
 
 LIBS := -lcitro2d -lcitro3d -lctru -lm
-LIBDIRS := $(CTRULIB) $(DEVKITPRO)/citro2d $(DEVKITPRO)/citro3d
+LIBDIRS := $(CTRULIB)
 
 export APP_TITLE := SM64CoopDX New 3DS
 export APP_DESCRIPTION := Native New 3DS port foundation
@@ -67,6 +67,7 @@ clean:
 print-config:
 	@echo "DEVKITPRO=$(DEVKITPRO)"
 	@echo "DEVKITARM=$(DEVKITARM)"
+	@echo "CTRULIB=$(CTRULIB)"
 	@echo "OUTPUT=$(OUTPUT).3dsx"
 	@echo "SOURCES=$(SOURCES)"
 
