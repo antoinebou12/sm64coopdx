@@ -8,11 +8,15 @@
 #include "pc/gfx/gfx_window_manager.h"
 #include "pc/configfile.h"
 #include "pc/pc_main.h"
+#include "pc/controller/controller_keyboard.h"
+#include "pc/djui/djui_inputbox.h"
+#include "pc/djui/djui_interactable.h"
 #include "pc/platform/new3ds/new3ds_runtime.h"
 
 static New3dsRuntimeState sRuntime;
 static bool sRuntimeReady = false;
 static bool sGraphicsReady = false;
+static bool sTextInputActive = false;
 static kb_callback_t sKeyDown = NULL;
 static kb_callback_t sKeyUp = NULL;
 static void (*sAllKeysUp)(void) = NULL;
@@ -133,14 +137,69 @@ void gfx_wm_reset_window_title(void) {
 }
 
 bool gfx_wm_has_focus(void) {
-    return sRuntimeReady && !sRuntime.exit_requested;
+    return sRuntimeReady && !sRuntime.exit_requested && !sTextInputActive;
+}
+
+static void new3ds_send_virtual_key(int scancode) {
+    if (sKeyDown != NULL) {
+        sKeyDown(scancode);
+    }
+    if (sKeyUp != NULL) {
+        sKeyUp(scancode);
+    }
 }
 
 void gfx_wm_start_text_input(void) {
-    /* Native software-keyboard integration is implemented as a later UX step. */
+    if (sTextInputActive || gInteractableFocus == NULL) return;
+
+    /*
+     * This function is entered by DjuiInputbox::on_focus_begin, therefore the
+     * focused base is an input box for the lifetime of the keyboard applet.
+     */
+    struct DjuiInputbox *inputbox = (struct DjuiInputbox *)gInteractableFocus;
+    if (inputbox->buffer == NULL || inputbox->bufferSize <= 1) return;
+
+    enum { NEW3DS_SWKBD_BUFFER_SIZE = 512 };
+    char text[NEW3DS_SWKBD_BUFFER_SIZE];
+    strncpy(text, inputbox->buffer, sizeof(text) - 1);
+    text[sizeof(text) - 1] = '\0';
+
+    int max_text_length = (int)inputbox->bufferSize - 1;
+    if (max_text_length > (int)sizeof(text) - 1) {
+        max_text_length = (int)sizeof(text) - 1;
+    }
+
+    SwkbdState keyboard;
+    swkbdInit(&keyboard, SWKBD_TYPE_NORMAL, 2, max_text_length);
+    swkbdSetValidation(&keyboard, SWKBD_ANYTHING, 0, 0);
+    swkbdSetFeatures(&keyboard, SWKBD_DARKEN_TOP_SCREEN | SWKBD_DEFAULT_QWERTY);
+    swkbdSetHintText(&keyboard, "Enter text");
+    swkbdSetButton(&keyboard, SWKBD_BUTTON_LEFT, "Cancel", false);
+    swkbdSetButton(&keyboard, SWKBD_BUTTON_RIGHT, "OK", true);
+    swkbdSetInitialText(&keyboard, text);
+    if (inputbox->passwordChar[0] != '\0') {
+        swkbdSetPasswordMode(&keyboard, SWKBD_PASSWORD_HIDE_DELAY);
+    }
+
+    sTextInputActive = true;
+    const SwkbdButton button = swkbdInputText(&keyboard, text, sizeof(text));
+    sTextInputActive = false;
+
+    if (button == SWKBD_BUTTON_RIGHT) {
+        /* Replace the whole focused field, including the valid empty-string case. */
+        djui_inputbox_select_all(inputbox);
+        new3ds_send_virtual_key(SCANCODE_BACKSPACE);
+        if (text[0] != '\0' && sTextInput != NULL) {
+            sTextInput(text);
+        }
+        new3ds_send_virtual_key(SCANCODE_ENTER);
+    } else {
+        new3ds_send_virtual_key(SCANCODE_ESCAPE);
+    }
 }
 
 void gfx_wm_stop_text_input(void) {
+    /* swkbdInputText is modal and has already closed when focus ends. */
 }
 
 char *gfx_wm_get_clipboard_text(void) {
@@ -172,6 +231,7 @@ void gfx_wm_shutdown(void) {
     sTextInput = NULL;
     sTextEditing = NULL;
     sScroll = NULL;
+    sTextInputActive = false;
 
     if (sRuntimeReady) {
         new3ds_runtime_shutdown(&sRuntime);
