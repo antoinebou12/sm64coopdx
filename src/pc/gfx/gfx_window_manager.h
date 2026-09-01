@@ -1,6 +1,9 @@
 #pragma once
 
 #include <PR/ultratypes.h>
+#include <stdint.h>
+#include <stdbool.h>
+
 #if defined(__3DS__)
 /*
  * The New 3DS backend is native libctru/Citro3D and must not depend on SDL.
@@ -16,9 +19,6 @@ typedef struct SDL_Event {
 #else
 #include <SDL3/SDL.h>
 #endif
-
-#include <stdint.h>
-#include <stdbool.h>
 
 // special value for window position that signifies centered position
 #define WAPI_WIN_CENTERPOS 0xFFFFFFFF
