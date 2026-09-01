@@ -16,7 +16,7 @@ static void new3ds_platform_shutdown_graphics(New3dsUiState *ui) {
 int main(void) {
     bool is_new_3ds = false;
     u64 frame_index = 0;
-    New3dsUiState ui;
+    New3dsUiState ui = {0};
 
     gfxInit(GSP_RGB565_OES, GSP_RGB565_OES, false);
     gfxSet3D(false);
