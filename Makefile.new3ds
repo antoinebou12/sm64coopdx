@@ -1,8 +1,9 @@
 # SM64CoopDX New 3DS port foundation.
 #
 # This target is deliberately isolated from the desktop and Switch build graphs.
-# It currently builds the native dual-screen platform shell while the CoopDX
-# renderer/game loop are adapted to Citro3D.
+# The default target builds the native dual-screen shell. `port-smoke` also
+# cross-compiles the CoopDX-facing renderer/controller/window layers so platform
+# work cannot silently rot before the full game target is linked.
 
 .SUFFIXES:
 
@@ -18,6 +19,10 @@ BUILD := $(TOPDIR)/build/new3ds-shell
 SOURCES := $(TOPDIR)/src/pc/platform/new3ds
 INCLUDES := $(TOPDIR)/src/pc/platform/new3ds
 
+# Keep the standalone shell intentionally small. Full-game platform source files
+# live in the same directory but are compiled by port-smoke / the future full target.
+SHELL_CFILES := new3ds_main.c new3ds_runtime.c new3ds_ui.c
+
 ARCH := -march=armv6k -mtune=mpcore -mfloat-abi=hard -mtp=soft
 CFLAGS := -g -O2 -Wall -Wextra -Werror -mword-relocations \
           -ffunction-sections -fdata-sections $(ARCH)
@@ -27,6 +32,19 @@ LDFLAGS := -specs=3dsx.specs -g $(ARCH) -Wl,-Map,$(TARGET_NAME).map -Wl,--gc-sec
 
 LIBS := -lcitro2d -lcitro3d -lctru -lm
 LIBDIRS := $(CTRULIB)
+
+SMOKE_INCLUDES := \
+    -I$(TOPDIR) \
+    -I$(TOPDIR)/include \
+    -I$(TOPDIR)/src \
+    -I$(TOPDIR)/src/pc \
+    -I$(TOPDIR)/src/pc/gfx \
+    -I$(TOPDIR)/src/pc/controller \
+    -I$(TOPDIR)/src/pc/platform/new3ds \
+    -I$(CTRULIB)/include
+SMOKE_CFLAGS := -g -O2 -Wall -Wextra -Werror -mword-relocations \
+                -ffunction-sections -fdata-sections $(ARCH) \
+                -D__3DS__ -DNEW_3DS_PORT=1 -std=gnu11 $(SMOKE_INCLUDES)
 
 export APP_TITLE := SM64CoopDX New 3DS
 export APP_DESCRIPTION := Native New 3DS port foundation
@@ -39,8 +57,8 @@ export TOPDIR
 export VPATH := $(SOURCES)
 export DEPSDIR := $(BUILD)
 
-CFILES := $(notdir $(wildcard $(SOURCES)/*.c))
-SFILES := $(notdir $(wildcard $(SOURCES)/*.s))
+CFILES := $(SHELL_CFILES)
+SFILES :=
 
 export LD := $(CC)
 export OFILES := $(CFILES:.c=.o) $(SFILES:.s=.o)
@@ -51,11 +69,39 @@ export LIBPATHS := $(foreach dir,$(LIBDIRS),-L$(dir)/lib)
 export _3DSXDEPS := $(OUTPUT).smdh
 export _3DSXFLAGS += --smdh=$(OUTPUT).smdh
 
-.PHONY: all clean print-config
+.PHONY: all clean print-config port-smoke renderer-smoke controller-smoke window-smoke shader-smoke
 
 all: $(BUILD)
 	@$(MAKE) --no-print-directory -C $(BUILD) -f $(TOPDIR)/Makefile.new3ds TOPDIR=$(TOPDIR)
 	@echo "Built $(OUTPUT).3dsx"
+
+port-smoke: renderer-smoke controller-smoke window-smoke shader-smoke
+	@echo "New 3DS platform smoke compile passed"
+
+renderer-smoke: $(BUILD)
+	@echo "smoke: Citro3D rendering backend"
+	@$(CC) $(SMOKE_CFLAGS) -c \
+		$(TOPDIR)/src/pc/gfx/gfx_citro3d_new3ds.c \
+		-o $(BUILD)/gfx_citro3d_new3ds.smoke.o
+
+controller-smoke: $(BUILD)
+	@echo "smoke: native controller backend"
+	@$(CC) $(SMOKE_CFLAGS) -c \
+		$(TOPDIR)/src/pc/controller/controller_new3ds.c \
+		-o $(BUILD)/controller_new3ds.smoke.o
+
+window-smoke: $(BUILD)
+	@echo "smoke: native window/lifecycle backend"
+	@$(CC) $(SMOKE_CFLAGS) -c \
+		$(TOPDIR)/src/pc/platform/new3ds/new3ds_window_manager.c \
+		-o $(BUILD)/new3ds_window_manager.smoke.o
+
+shader-smoke: $(BUILD)
+	@echo "smoke: PICA200 vertex shader"
+	@$(DEVKITPRO)/tools/bin/picasso \
+		-o $(BUILD)/new3ds_shader.shbin \
+		$(TOPDIR)/src/pc/platform/new3ds/new3ds_shader.v.pica
+	@test -s $(BUILD)/new3ds_shader.shbin
 
 $(BUILD):
 	@mkdir -p $@
@@ -70,6 +116,7 @@ print-config:
 	@echo "CTRULIB=$(CTRULIB)"
 	@echo "OUTPUT=$(OUTPUT).3dsx"
 	@echo "SOURCES=$(SOURCES)"
+	@echo "SHELL_CFILES=$(SHELL_CFILES)"
 
 else
 
