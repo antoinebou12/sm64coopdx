@@ -41,7 +41,7 @@ permissions:
 
 jobs:
   build-new3ds-shell:
-    name: devkitARM / 3DSX + platform smoke
+    name: devkitARM / shell + platform smoke
     runs-on: ubuntu-latest
     container:
       image: devkitpro/devkitarm:latest
@@ -62,7 +62,7 @@ jobs:
       - name: Build New 3DS shell
         run: make -f Makefile.new3ds -j2
 
-      - name: Verify artifacts
+      - name: Verify shell artifacts
         shell: bash
         run: |
           set -euo pipefail
@@ -79,7 +79,7 @@ jobs:
           ls -lh build/new3ds-shell/sm64coopdx-new3ds.{elf,3dsx,smdh}
           ls -lh build/new3ds-shell/*.smoke.o build/new3ds-shell/new3ds_shader.shbin
 
-      - name: Upload New 3DS artifacts
+      - name: Upload New 3DS shell artifacts
         uses: actions/upload-artifact@v4
         with:
           name: sm64coopdx-new3ds-foundation
@@ -94,3 +94,40 @@ jobs:
             build/new3ds-shell/audio_new3ds.smoke.o
             build/new3ds-shell/new3ds_thread.smoke.o
             build/new3ds-shell/new3ds_shader.shbin
+
+  build-new3ds-game:
+    name: devkitARM / full CoopDX integration
+    runs-on: ubuntu-latest
+    container:
+      image: devkitpro/devkitarm:latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install 3DS libraries and build dependencies
+        run: dkp-pacman -Syu --noconfirm 3ds-dev 3ds-zlib
+
+      - name: Build full New 3DS application
+        run: make -f Makefile.new3ds-game new3ds-3dsx -j2
+
+      - name: Verify full-game artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s build/us_new3ds/sm64coopdx.elf
+          test -s build/us_new3ds/sm64coopdx.3dsx
+          test -s build/us_new3ds/sm64coopdx.smdh
+          arm-none-eabi-size build/us_new3ds/sm64coopdx.elf
+          ls -lh build/us_new3ds/sm64coopdx.{elf,3dsx,smdh}
+
+      - name: Upload full-game artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: sm64coopdx-new3ds-game
+          if-no-files-found: error
+          path: |
+            build/us_new3ds/sm64coopdx.elf
+            build/us_new3ds/sm64coopdx.3dsx
+            build/us_new3ds/sm64coopdx.smdh
+            build/us_new3ds/sm64coopdx.map
