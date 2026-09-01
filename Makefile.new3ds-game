@@ -36,6 +36,8 @@ override TARGET_RPI := 0
 override TARGET_RK3588 := 0
 override TARGET_BITS := 0
 override TARGET_ARCH := armv6k
+override TARGET_N64 := 0
+override NON_MATCHING := 1
 override CROSS := $(NEW3DS_CROSS)
 override DISCORD_SDK := 0
 override COOPNET := 0
@@ -92,6 +94,7 @@ override S_FILES := $(foreach dir,$(SRC_DIRS),$(wildcard $(dir)/*.s))
 override OPT_FLAGS := -O2 -g $(NEW3DS_ARCH) -mword-relocations -ffunction-sections -fdata-sections
 override EXTRA_CFLAGS := \
     -D__3DS__ -D__CONSOLE__ -DNEW_3DS_PORT=1 -D_GNU_SOURCE \
+    -DNON_MATCHING=1 -DAVOID_UB=1 \
     -I$(CURDIR)/src/pc/platform/new3ds \
     -I$(CTRULIB)/include -I$(PORTLIBS)/include \
     -Wno-format-security -Wno-trigraphs -Wno-missing-braces -Wno-missing-field-initializers \
@@ -99,7 +102,7 @@ override EXTRA_CFLAGS := \
 override EXTRA_CPP_FLAGS := -std=gnu++17 $(NEW3DS_ARCH) -mword-relocations -fno-rtti -fno-exceptions
 
 # Disable the normal SDL backend discovery inherited from Makefile.sdl3.
-override BACKEND_CFLAGS := -D__3DS__ -DNEW_3DS_PORT=1 -I$(CURDIR)/src/pc/platform/new3ds -I$(CTRULIB)/include -I$(PORTLIBS)/include
+override BACKEND_CFLAGS := -D__3DS__ -DNEW_3DS_PORT=1 -DNON_MATCHING=1 -DAVOID_UB=1 -I$(CURDIR)/src/pc/platform/new3ds -I$(CTRULIB)/include -I$(PORTLIBS)/include
 override BACKEND_LDFLAGS :=
 
 NEW3DS_SHADER_BIN := $(BUILD_DIR)/new3ds_shader.shbin
