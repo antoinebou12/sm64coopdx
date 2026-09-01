@@ -74,6 +74,7 @@ jobs:
           test -s build/new3ds-shell/new3ds_window_manager.smoke.o
           test -s build/new3ds-shell/audio_new3ds.smoke.o
           test -s build/new3ds-shell/new3ds_thread.smoke.o
+          test -s build/new3ds-shell/new3ds_platform.smoke.o
           test -s build/new3ds-shell/new3ds_shader.shbin
           arm-none-eabi-size build/new3ds-shell/sm64coopdx-new3ds.elf
           ls -lh build/new3ds-shell/sm64coopdx-new3ds.{elf,3dsx,smdh}
@@ -93,6 +94,7 @@ jobs:
             build/new3ds-shell/new3ds_window_manager.smoke.o
             build/new3ds-shell/audio_new3ds.smoke.o
             build/new3ds-shell/new3ds_thread.smoke.o
+            build/new3ds-shell/new3ds_platform.smoke.o
             build/new3ds-shell/new3ds_shader.shbin
 
   build-new3ds-game:
