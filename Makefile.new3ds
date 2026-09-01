@@ -2,8 +2,8 @@
 #
 # This target is deliberately isolated from the desktop and Switch build graphs.
 # The default target builds the native dual-screen shell. `port-smoke` also
-# cross-compiles the CoopDX-facing renderer/controller/window/audio/thread layers
-# so platform work cannot silently rot before the full game target is linked.
+# cross-compiles the CoopDX-facing renderer/controller/window/audio/thread/platform
+# layers so platform work cannot silently rot before the full game target is linked.
 
 .SUFFIXES:
 
@@ -70,13 +70,13 @@ export LIBPATHS := $(foreach dir,$(LIBDIRS),-L$(dir)/lib)
 export _3DSXDEPS := $(OUTPUT).smdh
 export _3DSXFLAGS += --smdh=$(OUTPUT).smdh
 
-.PHONY: all clean print-config port-smoke renderer-smoke controller-smoke window-smoke audio-smoke thread-smoke shader-smoke
+.PHONY: all clean print-config port-smoke renderer-smoke controller-smoke window-smoke audio-smoke thread-smoke platform-smoke shader-smoke
 
 all: $(BUILD)
 	@$(MAKE) --no-print-directory -C $(BUILD) -f $(TOPDIR)/Makefile.new3ds TOPDIR=$(TOPDIR)
 	@echo "Built $(OUTPUT).3dsx"
 
-port-smoke: renderer-smoke controller-smoke window-smoke audio-smoke thread-smoke shader-smoke
+port-smoke: renderer-smoke controller-smoke window-smoke audio-smoke thread-smoke platform-smoke shader-smoke
 	@echo "New 3DS platform smoke compile passed"
 
 renderer-smoke: $(BUILD)
@@ -108,6 +108,12 @@ thread-smoke: $(BUILD)
 	@$(CC) $(SMOKE_CFLAGS) -c \
 		$(TOPDIR)/src/pc/platform/new3ds/new3ds_thread.c \
 		-o $(BUILD)/new3ds_thread.smoke.o
+
+platform-smoke: $(BUILD)
+	@echo "smoke: native SD-card platform backend"
+	@$(CC) $(SMOKE_CFLAGS) -c \
+		$(TOPDIR)/src/pc/platform/new3ds/new3ds_platform.c \
+		-o $(BUILD)/new3ds_platform.smoke.o
 
 shader-smoke: $(BUILD)
 	@echo "smoke: PICA200 vertex shader"
