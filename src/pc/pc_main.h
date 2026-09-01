@@ -7,6 +7,22 @@ extern "C" {
 
 #include "gfx/gfx_pc.h"
 
+#if defined(__3DS__)
+#include "gfx/gfx_citro3d_new3ds.h"
+#include "gfx/gfx_dummy.h"
+
+#include "audio/audio_api.h"
+#include "audio/audio_new3ds.h"
+#include "audio/audio_null.h"
+
+/*
+ * Keep pc_main.c's existing backend selection logic intact while the console
+ * target is being integrated. On New 3DS, the "OpenGL" enum slot represents
+ * the native PICA200 backend and SDL audio represents NDSP.
+ */
+#define gfx_opengl_api gfx_citro3d_new3ds_api
+#define audio_sdl audio_new3ds
+#else
 #include "gfx/gfx_opengl.h"
 #include "gfx/gfx_direct3d11.h"
 
@@ -17,6 +33,7 @@ extern "C" {
 #include "audio/audio_api.h"
 #include "audio/audio_sdl.h"
 #include "audio/audio_null.h"
+#endif
 
 #ifdef GIT_HASH
 #define TITLE ({ char title[96] = ""; snprintf(title, 96, "%s %s, [%s]", WINDOW_NAME, get_version(), GIT_HASH); title; })
