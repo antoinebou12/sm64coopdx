@@ -1,0 +1,62 @@
+name: Build New 3DS Port
+
+on:
+  push:
+    branches:
+      - main
+      - new3ds-port
+    paths:
+      - Makefile.new3ds
+      - src/pc/platform/new3ds/**
+      - docs/new3ds-port.md
+      - .github/workflows/build-new3ds.yml
+  pull_request:
+    paths:
+      - Makefile.new3ds
+      - src/pc/platform/new3ds/**
+      - docs/new3ds-port.md
+      - .github/workflows/build-new3ds.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-new3ds-shell:
+    name: devkitARM / 3DSX
+    runs-on: ubuntu-latest
+    container:
+      image: devkitpro/devkitarm:latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install 3DS libraries
+        run: dkp-pacman -Syu --noconfirm 3ds-dev
+
+      - name: Print toolchain configuration
+        run: make -f Makefile.new3ds print-config
+
+      - name: Build New 3DS shell
+        run: make -f Makefile.new3ds -j2
+
+      - name: Verify artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s build/new3ds-shell/sm64coopdx-new3ds.elf
+          test -s build/new3ds-shell/sm64coopdx-new3ds.3dsx
+          test -s build/new3ds-shell/sm64coopdx-new3ds.smdh
+          arm-none-eabi-size build/new3ds-shell/sm64coopdx-new3ds.elf
+          ls -lh build/new3ds-shell/sm64coopdx-new3ds.{elf,3dsx,smdh}
+
+      - name: Upload New 3DS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: sm64coopdx-new3ds-foundation
+          if-no-files-found: error
+          path: |
+            build/new3ds-shell/sm64coopdx-new3ds.elf
+            build/new3ds-shell/sm64coopdx-new3ds.3dsx
+            build/new3ds-shell/sm64coopdx-new3ds.smdh
