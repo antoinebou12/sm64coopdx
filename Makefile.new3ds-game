@@ -1,0 +1,169 @@
+# Full SM64CoopDX New Nintendo 3DS integration target.
+#
+# This wrapper reuses the current CoopDX engine/build graph while replacing
+# desktop-only graphics, input, audio, threading and service code with the
+# native libctru/Citro3D implementations under src/pc/platform/new3ds.
+#
+# The standalone shell remains available through Makefile.new3ds and is the
+# safer hardware bring-up target. This file is the real-game integration path.
+
+ifeq ($(strip $(DEVKITPRO)),)
+$(error "Please set DEVKITPRO, for example /opt/devkitpro")
+endif
+ifeq ($(strip $(DEVKITARM)),)
+$(error "Please set DEVKITARM, for example /opt/devkitpro/devkitARM")
+endif
+
+VERSION ?= us
+NEW3DS_COOPNET ?= 0
+
+ifneq ($(NEW3DS_COOPNET),0)
+$(error "NEW3DS_COOPNET is not enabled yet; bring up local/LAN runtime first")
+endif
+
+CTRULIB      := $(DEVKITPRO)/libctru
+PORTLIBS     := $(DEVKITPRO)/portlibs/3ds
+DKP_TOOLS    := $(DEVKITPRO)/tools/bin
+NEW3DS_CROSS := $(DEVKITARM)/bin/arm-none-eabi-
+NEW3DS_ARCH  := -march=armv6k -mtune=mpcore -mfloat-abi=hard -mtp=soft
+
+# Stop host detection and desktop SDKs from altering the New 3DS graph.
+override HOST_OS := New3DS
+override WINDOWS_BUILD := 0
+override WINDOWS_AUTO_BUILDER := 0
+override OSX_BUILD := 0
+override TARGET_RPI := 0
+override TARGET_RK3588 := 0
+override TARGET_BITS := 0
+override TARGET_ARCH := armv6k
+override CROSS := $(NEW3DS_CROSS)
+override DISCORD_SDK := 0
+override COOPNET := 0
+override UPDATER := 0
+override USE_APP := 0
+override ICON := 0
+override HANDHELD := 1
+override NO_BZERO_BCOPY := 1
+
+override BUILD_DIR_BASE := build
+override BUILD_DIR := build/$(VERSION)_new3ds
+override EXE := $(BUILD_DIR)/sm64coopdx.elf
+override ELF := $(EXE)
+
+# Current upstream engine plus the native New 3DS platform layer.
+override SRC_DIRS := \
+    src src/engine src/game src/audio src/menu src/buffers actors levels bin data assets asm lib sound \
+    src/pc src/pc/gfx src/pc/audio src/pc/controller src/pc/fs src/pc/fs/packtypes src/pc/mods src/pc/dev \
+    src/pc/network src/pc/network/packets src/pc/network/socket \
+    src/pc/utils src/pc/utils/miniz src/pc/djui src/pc/lua src/pc/lua/utils src/pc/os \
+    src/pc/platform/new3ds
+
+NEW3DS_LEVEL_C_FILES := $(wildcard levels/*/leveldata.c) $(wildcard levels/*/script.c) $(wildcard levels/*/geo.c)
+
+NEW3DS_EXCLUDE_C := \
+    src/game/main.c \
+    src/pc/audio/audio_sdl.c \
+    src/pc/controller/controller_sdl.c \
+    src/pc/controller/controller_mouse.c \
+    src/pc/gfx/gfx_opengl.c \
+    src/pc/gfx/gfx_window_manager.c \
+    src/pc/gfx/gfx_window_opengl.c \
+    src/pc/terminal.c \
+    src/pc/thread.c \
+    src/pc/update_checker.c \
+    src/pc/platform/new3ds/new3ds_main.c \
+    src/pc/platform/new3ds/new3ds_ui.c
+
+NEW3DS_EXCLUDE_CPP := \
+    src/pc/gfx/gfx_direct3d11.cpp \
+    src/pc/gfx/gfx_direct3d_common.cpp \
+    src/pc/gfx/gfx_dxgi.cpp \
+    src/pc/gfx/gfx_window_dxgi.cpp
+
+override C_FILES := $(filter-out $(NEW3DS_EXCLUDE_C),$(foreach dir,$(SRC_DIRS),$(wildcard $(dir)/*.c)) $(NEW3DS_LEVEL_C_FILES))
+override CPP_FILES := $(filter-out $(NEW3DS_EXCLUDE_CPP),$(foreach dir,$(SRC_DIRS),$(wildcard $(dir)/*.cpp)))
+override S_FILES := $(foreach dir,$(SRC_DIRS),$(wildcard $(dir)/*.s))
+
+# Keep initial hardware target conservative: stable 30 FPS and size-conscious
+# code generation matter more than desktop-style peak throughput.
+override OPT_FLAGS := -O2 -g $(NEW3DS_ARCH) -mword-relocations -ffunction-sections -fdata-sections
+override EXTRA_CFLAGS := \
+    -D__3DS__ -D__CONSOLE__ -DNEW_3DS_PORT=1 -D_GNU_SOURCE \
+    -I$(CURDIR)/src/pc/platform/new3ds \
+    -I$(CTRULIB)/include -I$(PORTLIBS)/include \
+    -Wno-format-security -Wno-trigraphs -Wno-missing-braces -Wno-missing-field-initializers \
+    -Wno-unused-result -Wno-format-truncation
+override EXTRA_CPP_FLAGS := -std=gnu++17 $(NEW3DS_ARCH) -mword-relocations -fno-rtti -fno-exceptions
+
+# Disable the normal SDL backend discovery inherited from Makefile.sdl3.
+override BACKEND_CFLAGS := -D__3DS__ -DNEW_3DS_PORT=1 -I$(CURDIR)/src/pc/platform/new3ds -I$(CTRULIB)/include -I$(PORTLIBS)/include
+override BACKEND_LDFLAGS :=
+
+NEW3DS_SHADER_BIN := $(BUILD_DIR)/new3ds_shader.shbin
+NEW3DS_SHADER_OBJ := $(BUILD_DIR)/new3ds_shader.shbin.o
+NEW3DS_SHADER_SRC := src/pc/platform/new3ds/new3ds_shader.v.pica
+
+# The shader object is linked explicitly because the upstream source graph only
+# discovers C/C++/assembly source files.
+override LDFLAGS := \
+    -specs=3dsx.specs $(NEW3DS_ARCH) -mword-relocations \
+    -Wl,--gc-sections -Wl,-Map,$(BUILD_DIR)/sm64coopdx.map \
+    -L$(CTRULIB)/lib -L$(PORTLIBS)/lib -Lbuild/new3ds-deps/lua/lib \
+    $(NEW3DS_SHADER_OBJ) \
+    -l:liblua53.a -lcitro2d -lcitro3d -lctru -lz -lm
+
+include Makefile
+
+NEW3DS_3DSXTOOL := $(DKP_TOOLS)/3dsxtool
+NEW3DS_SMDHTOOL := $(DKP_TOOLS)/smdhtool
+NEW3DS_BIN2S    := $(DKP_TOOLS)/bin2s
+NEW3DS_PICASSO  := $(DKP_TOOLS)/picasso
+NEW3DS_SMDH     := $(BUILD_DIR)/sm64coopdx.smdh
+NEW3DS_3DSX     := $(BUILD_DIR)/sm64coopdx.3dsx
+NEW3DS_ICON     ?= $(CTRULIB)/default_icon.png
+
+.PHONY: new3ds-toolchain-check new3ds-deps new3ds-game new3ds-3dsx new3ds-game-clean
+
+new3ds-toolchain-check:
+	@test -x "$(CC)" || (echo "Missing devkitARM compiler: $(CC)" && exit 1)
+	@test -x "$(CXX)" || (echo "Missing devkitARM C++ compiler: $(CXX)" && exit 1)
+	@test -f "$(DEVKITARM)/3ds_rules" || (echo "Missing devkitARM 3DS rules" && exit 1)
+	@test -f "$(CTRULIB)/include/3ds.h" || (echo "Missing libctru headers" && exit 1)
+	@test -f "$(CTRULIB)/include/citro3d.h" || (echo "Missing Citro3D headers" && exit 1)
+	@test -x "$(NEW3DS_PICASSO)" || (echo "Missing picasso" && exit 1)
+	@test -x "$(NEW3DS_BIN2S)" || (echo "Missing bin2s" && exit 1)
+	@test -x "$(NEW3DS_3DSXTOOL)" || (echo "Missing 3dsxtool" && exit 1)
+	@test -x "$(NEW3DS_SMDHTOOL)" || (echo "Missing smdhtool" && exit 1)
+
+new3ds-deps: new3ds-toolchain-check
+	bash tools/new3ds/build-lua53.sh
+
+$(NEW3DS_SHADER_BIN): $(NEW3DS_SHADER_SRC)
+	@mkdir -p $(dir $@)
+	$(NEW3DS_PICASSO) -o $@ $<
+
+$(NEW3DS_SHADER_OBJ): $(NEW3DS_SHADER_BIN)
+	$(NEW3DS_BIN2S) $< | $(AS) $(NEW3DS_ARCH) -o $@
+
+# Ensure the embedded PICA shader exists before the final engine link.
+$(EXE): new3ds-deps $(NEW3DS_SHADER_OBJ)
+
+new3ds-game: $(EXE)
+	@echo "Built New 3DS game ELF: $(EXE)"
+
+$(NEW3DS_SMDH):
+	@mkdir -p $(dir $@)
+	$(NEW3DS_SMDHTOOL) --create \
+		"SM64CoopDX" \
+		"SM64CoopDX New 3DS port" \
+		"SM64CoopDX contributors" \
+		"$(NEW3DS_ICON)" $@
+
+$(NEW3DS_3DSX): $(EXE) $(NEW3DS_SMDH)
+	$(NEW3DS_3DSXTOOL) $(EXE) $@ --smdh=$(NEW3DS_SMDH)
+
+new3ds-3dsx: $(NEW3DS_3DSX)
+	@echo "Built New 3DS application: $(NEW3DS_3DSX)"
+
+new3ds-game-clean:
+	@rm -rf build/$(VERSION)_new3ds build/new3ds-deps
