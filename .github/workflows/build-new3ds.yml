@@ -8,12 +8,20 @@ on:
     paths:
       - Makefile.new3ds
       - src/pc/platform/new3ds/**
+      - src/pc/controller/controller_new3ds.*
+      - src/pc/controller/controller_entry_point.c
+      - src/pc/gfx/gfx_citro3d_new3ds.*
+      - src/pc/gfx/gfx_window_manager.h
       - docs/new3ds-port.md
       - .github/workflows/build-new3ds.yml
   pull_request:
     paths:
       - Makefile.new3ds
       - src/pc/platform/new3ds/**
+      - src/pc/controller/controller_new3ds.*
+      - src/pc/controller/controller_entry_point.c
+      - src/pc/gfx/gfx_citro3d_new3ds.*
+      - src/pc/gfx/gfx_window_manager.h
       - docs/new3ds-port.md
       - .github/workflows/build-new3ds.yml
   workflow_dispatch:
@@ -23,7 +31,7 @@ permissions:
 
 jobs:
   build-new3ds-shell:
-    name: devkitARM / 3DSX
+    name: devkitARM / 3DSX + platform smoke
     runs-on: ubuntu-latest
     container:
       image: devkitpro/devkitarm:latest
@@ -38,6 +46,9 @@ jobs:
       - name: Print toolchain configuration
         run: make -f Makefile.new3ds print-config
 
+      - name: Cross-compile New 3DS platform layers
+        run: make -f Makefile.new3ds port-smoke -j2
+
       - name: Build New 3DS shell
         run: make -f Makefile.new3ds -j2
 
@@ -48,8 +59,13 @@ jobs:
           test -s build/new3ds-shell/sm64coopdx-new3ds.elf
           test -s build/new3ds-shell/sm64coopdx-new3ds.3dsx
           test -s build/new3ds-shell/sm64coopdx-new3ds.smdh
+          test -s build/new3ds-shell/gfx_citro3d_new3ds.smoke.o
+          test -s build/new3ds-shell/controller_new3ds.smoke.o
+          test -s build/new3ds-shell/new3ds_window_manager.smoke.o
+          test -s build/new3ds-shell/new3ds_shader.shbin
           arm-none-eabi-size build/new3ds-shell/sm64coopdx-new3ds.elf
           ls -lh build/new3ds-shell/sm64coopdx-new3ds.{elf,3dsx,smdh}
+          ls -lh build/new3ds-shell/*.smoke.o build/new3ds-shell/new3ds_shader.shbin
 
       - name: Upload New 3DS artifacts
         uses: actions/upload-artifact@v4
@@ -60,3 +76,7 @@ jobs:
             build/new3ds-shell/sm64coopdx-new3ds.elf
             build/new3ds-shell/sm64coopdx-new3ds.3dsx
             build/new3ds-shell/sm64coopdx-new3ds.smdh
+            build/new3ds-shell/gfx_citro3d_new3ds.smoke.o
+            build/new3ds-shell/controller_new3ds.smoke.o
+            build/new3ds-shell/new3ds_window_manager.smoke.o
+            build/new3ds-shell/new3ds_shader.shbin
