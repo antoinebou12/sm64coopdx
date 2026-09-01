@@ -7,21 +7,31 @@ on:
       - new3ds-port
     paths:
       - Makefile.new3ds
+      - Makefile.new3ds-game
+      - tools/new3ds/**
       - src/pc/platform/new3ds/**
+      - src/pc/audio/audio_new3ds.*
       - src/pc/controller/controller_new3ds.*
       - src/pc/controller/controller_entry_point.c
       - src/pc/gfx/gfx_citro3d_new3ds.*
       - src/pc/gfx/gfx_window_manager.h
+      - src/pc/pc_main.h
+      - src/pc/thread.h
       - docs/new3ds-port.md
       - .github/workflows/build-new3ds.yml
   pull_request:
     paths:
       - Makefile.new3ds
+      - Makefile.new3ds-game
+      - tools/new3ds/**
       - src/pc/platform/new3ds/**
+      - src/pc/audio/audio_new3ds.*
       - src/pc/controller/controller_new3ds.*
       - src/pc/controller/controller_entry_point.c
       - src/pc/gfx/gfx_citro3d_new3ds.*
       - src/pc/gfx/gfx_window_manager.h
+      - src/pc/pc_main.h
+      - src/pc/thread.h
       - docs/new3ds-port.md
       - .github/workflows/build-new3ds.yml
   workflow_dispatch:
@@ -62,6 +72,8 @@ jobs:
           test -s build/new3ds-shell/gfx_citro3d_new3ds.smoke.o
           test -s build/new3ds-shell/controller_new3ds.smoke.o
           test -s build/new3ds-shell/new3ds_window_manager.smoke.o
+          test -s build/new3ds-shell/audio_new3ds.smoke.o
+          test -s build/new3ds-shell/new3ds_thread.smoke.o
           test -s build/new3ds-shell/new3ds_shader.shbin
           arm-none-eabi-size build/new3ds-shell/sm64coopdx-new3ds.elf
           ls -lh build/new3ds-shell/sm64coopdx-new3ds.{elf,3dsx,smdh}
@@ -79,4 +91,6 @@ jobs:
             build/new3ds-shell/gfx_citro3d_new3ds.smoke.o
             build/new3ds-shell/controller_new3ds.smoke.o
             build/new3ds-shell/new3ds_window_manager.smoke.o
+            build/new3ds-shell/audio_new3ds.smoke.o
+            build/new3ds-shell/new3ds_thread.smoke.o
             build/new3ds-shell/new3ds_shader.shbin
