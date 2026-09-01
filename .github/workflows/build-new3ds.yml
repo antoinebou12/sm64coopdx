@@ -105,7 +105,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install 3DS libraries and build dependencies
+      - name: Install required 3DS portlibs
         run: dkp-pacman -Syu --noconfirm 3ds-dev 3ds-zlib
 
       - name: Build full New 3DS application
