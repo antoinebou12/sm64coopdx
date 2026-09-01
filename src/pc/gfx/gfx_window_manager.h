@@ -63,10 +63,6 @@ void gfx_wm_swap_buffers_begin(void);
 void gfx_wm_swap_buffers_end(void);
 double gfx_wm_get_time(void); // For debug
 void gfx_wm_shutdown(void);
-#if defined(__3DS__)
-/* Prefill the native software keyboard with the focused DJUI field value. */
-void gfx_wm_set_text_input_initial(const char *text);
-#endif
 void gfx_wm_start_text_input(void);
 void gfx_wm_stop_text_input(void);
 char* gfx_wm_get_clipboard_text(void);
