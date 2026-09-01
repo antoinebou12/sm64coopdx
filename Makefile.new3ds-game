@@ -63,8 +63,10 @@ NEW3DS_LEVEL_C_FILES := $(wildcard levels/*/leveldata.c) $(wildcard levels/*/scr
 NEW3DS_EXCLUDE_C := \
     src/game/main.c \
     src/pc/audio/audio_sdl.c \
+    src/pc/controller/controller_bind_mapping.c \
     src/pc/controller/controller_sdl.c \
     src/pc/controller/controller_mouse.c \
+    src/pc/djui/djui_panel_controls.c \
     src/pc/gfx/gfx_opengl.c \
     src/pc/gfx/gfx_window_manager.c \
     src/pc/gfx/gfx_window_opengl.c \
