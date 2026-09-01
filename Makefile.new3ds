@@ -2,8 +2,8 @@
 #
 # This target is deliberately isolated from the desktop and Switch build graphs.
 # The default target builds the native dual-screen shell. `port-smoke` also
-# cross-compiles the CoopDX-facing renderer/controller/window layers so platform
-# work cannot silently rot before the full game target is linked.
+# cross-compiles the CoopDX-facing renderer/controller/window/audio/thread layers
+# so platform work cannot silently rot before the full game target is linked.
 
 .SUFFIXES:
 
@@ -39,6 +39,7 @@ SMOKE_INCLUDES := \
     -I$(TOPDIR)/src \
     -I$(TOPDIR)/src/pc \
     -I$(TOPDIR)/src/pc/gfx \
+    -I$(TOPDIR)/src/pc/audio \
     -I$(TOPDIR)/src/pc/controller \
     -I$(TOPDIR)/src/pc/platform/new3ds \
     -I$(CTRULIB)/include
@@ -69,13 +70,13 @@ export LIBPATHS := $(foreach dir,$(LIBDIRS),-L$(dir)/lib)
 export _3DSXDEPS := $(OUTPUT).smdh
 export _3DSXFLAGS += --smdh=$(OUTPUT).smdh
 
-.PHONY: all clean print-config port-smoke renderer-smoke controller-smoke window-smoke shader-smoke
+.PHONY: all clean print-config port-smoke renderer-smoke controller-smoke window-smoke audio-smoke thread-smoke shader-smoke
 
 all: $(BUILD)
 	@$(MAKE) --no-print-directory -C $(BUILD) -f $(TOPDIR)/Makefile.new3ds TOPDIR=$(TOPDIR)
 	@echo "Built $(OUTPUT).3dsx"
 
-port-smoke: renderer-smoke controller-smoke window-smoke shader-smoke
+port-smoke: renderer-smoke controller-smoke window-smoke audio-smoke thread-smoke shader-smoke
 	@echo "New 3DS platform smoke compile passed"
 
 renderer-smoke: $(BUILD)
@@ -95,6 +96,18 @@ window-smoke: $(BUILD)
 	@$(CC) $(SMOKE_CFLAGS) -c \
 		$(TOPDIR)/src/pc/platform/new3ds/new3ds_window_manager.c \
 		-o $(BUILD)/new3ds_window_manager.smoke.o
+
+audio-smoke: $(BUILD)
+	@echo "smoke: native NDSP audio backend"
+	@$(CC) $(SMOKE_CFLAGS) -c \
+		$(TOPDIR)/src/pc/audio/audio_new3ds.c \
+		-o $(BUILD)/audio_new3ds.smoke.o
+
+thread-smoke: $(BUILD)
+	@echo "smoke: libctru thread backend"
+	@$(CC) $(SMOKE_CFLAGS) -c \
+		$(TOPDIR)/src/pc/platform/new3ds/new3ds_thread.c \
+		-o $(BUILD)/new3ds_thread.smoke.o
 
 shader-smoke: $(BUILD)
 	@echo "smoke: PICA200 vertex shader"
