@@ -68,6 +68,7 @@ NEW3DS_EXCLUDE_C := \
     src/pc/gfx/gfx_opengl.c \
     src/pc/gfx/gfx_window_manager.c \
     src/pc/gfx/gfx_window_opengl.c \
+    src/pc/platform.c \
     src/pc/terminal.c \
     src/pc/thread.c \
     src/pc/update_checker.c \
