@@ -1,9 +1,9 @@
 #include <3ds.h>
 #include <citro2d.h>
 #include <citro3d.h>
-#include <stdbool.h>
 #include <stdio.h>
 
+#include "new3ds_runtime.h"
 #include "new3ds_ui.h"
 
 static void new3ds_platform_shutdown_graphics(New3dsUiState *ui) {
@@ -14,17 +14,17 @@ static void new3ds_platform_shutdown_graphics(New3dsUiState *ui) {
 }
 
 int main(void) {
-    bool is_new_3ds = false;
-    u64 frame_index = 0;
+    New3dsRuntimeState runtime = {0};
     New3dsUiState ui = {0};
 
     gfxInit(GSP_RGB565_OES, GSP_RGB565_OES, false);
     gfxSet3D(false);
-    aptSetHomeAllowed(true);
-    aptSetSleepAllowed(true);
 
-    if (R_SUCCEEDED(APT_CheckNew3DS(&is_new_3ds)) && is_new_3ds) {
-        osSetSpeedupEnable(true);
+    if (!new3ds_runtime_init(&runtime)) {
+        consoleInit(GFX_BOTTOM, NULL);
+        printf("SM64CoopDX New 3DS\n\nRuntime initialization failed.\n");
+        gfxExit();
+        return 1;
     }
 
     C3D_Init(C3D_DEFAULT_CMDBUF_SIZE);
@@ -33,40 +33,38 @@ int main(void) {
 
     C3D_RenderTarget *top_target = C2D_CreateScreenTarget(GFX_TOP, GFX_LEFT);
     C3D_RenderTarget *bottom_target = C2D_CreateScreenTarget(GFX_BOTTOM, GFX_LEFT);
-    if (!new3ds_ui_init(&ui, top_target, bottom_target, is_new_3ds)) {
+    if (!new3ds_ui_init(&ui, top_target, bottom_target, runtime.is_new_3ds)) {
         consoleInit(GFX_BOTTOM, NULL);
         printf("SM64CoopDX New 3DS\n\nUI initialization failed.\nPress START to exit.\n");
-        while (aptMainLoop()) {
-            hidScanInput();
-            if ((hidKeysDown() & KEY_START) != 0) {
+        while (new3ds_runtime_poll(&runtime)) {
+            if ((runtime.input.down & KEY_START) != 0) {
                 break;
             }
             gspWaitForVBlank();
         }
         new3ds_platform_shutdown_graphics(&ui);
+        new3ds_runtime_shutdown(&runtime);
         return 1;
     }
 
-    while (aptMainLoop()) {
-        touchPosition touch = {0};
-        hidScanInput();
-        const u32 keys_down = hidKeysDown();
-        const u32 keys_held = hidKeysHeld();
-
-        if ((keys_down & KEY_START) != 0) {
+    while (new3ds_runtime_poll(&runtime)) {
+        if ((runtime.input.down & KEY_START) != 0) {
+            new3ds_runtime_request_exit(&runtime);
             break;
         }
-        if ((keys_held & KEY_TOUCH) != 0) {
-            hidTouchRead(&touch);
-        }
 
-        new3ds_ui_handle_input(&ui, keys_down, keys_held, &touch);
+        new3ds_ui_handle_input(
+            &ui,
+            runtime.input.down,
+            runtime.input.held,
+            &runtime.input.touch);
 
         C3D_FrameBegin(C3D_FRAME_SYNCDRAW);
-        new3ds_ui_draw(&ui, keys_held, frame_index++);
+        new3ds_ui_draw(&ui, runtime.input.held, runtime.frame_index);
         C3D_FrameEnd(0);
     }
 
     new3ds_platform_shutdown_graphics(&ui);
+    new3ds_runtime_shutdown(&runtime);
     return 0;
 }
