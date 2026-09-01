@@ -1,7 +1,17 @@
 #pragma once
 
 #include <PR/ultratypes.h>
-#ifdef __SWITCH__
+#if defined(__3DS__)
+/*
+ * The New 3DS backend is native libctru/Citro3D and must not depend on SDL.
+ * Keep lightweight compatibility types here because the shared backend API
+ * still carries SDL-named types for desktop/Switch implementations.
+ */
+typedef struct SDL_Window SDL_Window;
+typedef struct SDL_Event {
+    uint32_t type;
+} SDL_Event;
+#elif defined(__SWITCH__)
 #include <SDL2/SDL.h>
 #else
 #include <SDL3/SDL.h>
