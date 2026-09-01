@@ -2,16 +2,24 @@
 
 #include <3ds.h>
 #include <ctype.h>
+#include <errno.h>
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 
 #include "pc/platform.h"
 
+#define NEW3DS_DATA_PARENT "sdmc:/3ds"
 #define NEW3DS_DATA_ROOT "sdmc:/3ds/sm64coopdx"
 #define NEW3DS_EXECUTABLE NEW3DS_DATA_ROOT "/sm64coopdx.3dsx"
+
+static void new3ds_ensure_data_root(void) {
+    if (mkdir(NEW3DS_DATA_PARENT, 0777) != 0 && errno != EEXIST) return;
+    (void)mkdir(NEW3DS_DATA_ROOT, 0777);
+}
 
 char *sys_strlwr(char *src) {
     if (src == NULL) return NULL;
@@ -76,14 +84,17 @@ void sys_swap_backslashes(char *buffer) {
 }
 
 const char *sys_user_path(void) {
+    new3ds_ensure_data_root();
     return NEW3DS_DATA_ROOT;
 }
 
 const char *sys_resource_path(void) {
+    new3ds_ensure_data_root();
     return NEW3DS_DATA_ROOT;
 }
 
 const char *sys_exe_path_dir(void) {
+    new3ds_ensure_data_root();
     return NEW3DS_DATA_ROOT;
 }
 
