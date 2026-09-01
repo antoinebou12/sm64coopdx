@@ -1,9 +1,44 @@
 #include "new3ds_runtime.h"
 
+#include <malloc.h>
 #include <math.h>
+#include <stdlib.h>
 #include <string.h>
 
+#define NEW3DS_SOC_BUFFER_SIZE 0x100000
+#define NEW3DS_SOC_BUFFER_ALIGN 0x1000
+
 static New3dsRuntimeState *sActiveRuntime = NULL;
+
+static void new3ds_runtime_network_init(New3dsRuntimeState *state) {
+    if (state == NULL || !state->is_new_3ds || state->soc_initialized) return;
+
+    state->soc_buffer = memalign(NEW3DS_SOC_BUFFER_ALIGN, NEW3DS_SOC_BUFFER_SIZE);
+    if (state->soc_buffer == NULL) return;
+
+    const Result rc = socInit((u32 *)state->soc_buffer, NEW3DS_SOC_BUFFER_SIZE);
+    if (R_FAILED(rc)) {
+        free(state->soc_buffer);
+        state->soc_buffer = NULL;
+        return;
+    }
+
+    state->soc_initialized = true;
+}
+
+static void new3ds_runtime_network_shutdown(New3dsRuntimeState *state) {
+    if (state == NULL) return;
+
+    if (state->soc_initialized) {
+        socExit();
+        state->soc_initialized = false;
+    }
+
+    if (state->soc_buffer != NULL) {
+        free(state->soc_buffer);
+        state->soc_buffer = NULL;
+    }
+}
 
 bool new3ds_runtime_init(New3dsRuntimeState *state) {
     if (state == NULL || sActiveRuntime != NULL) {
@@ -22,6 +57,9 @@ bool new3ds_runtime_init(New3dsRuntimeState *state) {
     state->start_ms = osGetTime();
     state->initialized = true;
     sActiveRuntime = state;
+
+    /* Networking is optional: offline gameplay must still boot if SOC fails. */
+    new3ds_runtime_network_init(state);
     return true;
 }
 
@@ -29,6 +67,8 @@ void new3ds_runtime_shutdown(New3dsRuntimeState *state) {
     if (state == NULL || !state->initialized) {
         return;
     }
+
+    new3ds_runtime_network_shutdown(state);
 
     if (state->speedup_enabled) {
         osSetSpeedupEnable(false);
@@ -83,6 +123,10 @@ void new3ds_runtime_request_exit(New3dsRuntimeState *state) {
 
 New3dsRuntimeState *new3ds_runtime_active(void) {
     return sActiveRuntime;
+}
+
+bool new3ds_runtime_network_available(void) {
+    return sActiveRuntime != NULL && sActiveRuntime->initialized && sActiveRuntime->soc_initialized;
 }
 
 uint64_t new3ds_runtime_time_ms(void) {
