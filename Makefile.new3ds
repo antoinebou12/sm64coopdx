@@ -70,13 +70,13 @@ export LIBPATHS := $(foreach dir,$(LIBDIRS),-L$(dir)/lib)
 export _3DSXDEPS := $(OUTPUT).smdh
 export _3DSXFLAGS += --smdh=$(OUTPUT).smdh
 
-.PHONY: all clean print-config port-smoke renderer-smoke controller-smoke window-smoke audio-smoke thread-smoke platform-smoke shader-smoke
+.PHONY: all clean print-config port-smoke renderer-smoke controller-smoke window-smoke audio-smoke thread-smoke platform-smoke bind-smoke controls-smoke terminal-smoke shader-smoke
 
 all: $(BUILD)
 	@$(MAKE) --no-print-directory -C $(BUILD) -f $(TOPDIR)/Makefile.new3ds TOPDIR=$(TOPDIR)
 	@echo "Built $(OUTPUT).3dsx"
 
-port-smoke: renderer-smoke controller-smoke window-smoke audio-smoke thread-smoke platform-smoke shader-smoke
+port-smoke: renderer-smoke controller-smoke window-smoke audio-smoke thread-smoke platform-smoke bind-smoke controls-smoke terminal-smoke shader-smoke
 	@echo "New 3DS platform smoke compile passed"
 
 renderer-smoke: $(BUILD)
@@ -92,7 +92,7 @@ controller-smoke: $(BUILD)
 		-o $(BUILD)/controller_new3ds.smoke.o
 
 window-smoke: $(BUILD)
-	@echo "smoke: native window/lifecycle backend"
+	@echo "smoke: native window/lifecycle + software keyboard backend"
 	@$(CC) $(SMOKE_CFLAGS) -c \
 		$(TOPDIR)/src/pc/platform/new3ds/new3ds_window_manager.c \
 		-o $(BUILD)/new3ds_window_manager.smoke.o
@@ -114,6 +114,24 @@ platform-smoke: $(BUILD)
 	@$(CC) $(SMOKE_CFLAGS) -c \
 		$(TOPDIR)/src/pc/platform/new3ds/new3ds_platform.c \
 		-o $(BUILD)/new3ds_platform.smoke.o
+
+bind-smoke: $(BUILD)
+	@echo "smoke: SDL-free New 3DS bind-name mapping"
+	@$(CC) $(SMOKE_CFLAGS) -c \
+		$(TOPDIR)/src/pc/platform/new3ds/new3ds_bind_mapping.c \
+		-o $(BUILD)/new3ds_bind_mapping.smoke.o
+
+controls-smoke: $(BUILD)
+	@echo "smoke: handheld-first DJUI controls panel"
+	@$(CC) $(SMOKE_CFLAGS) -c \
+		$(TOPDIR)/src/pc/platform/new3ds/new3ds_djui_controls.c \
+		-o $(BUILD)/new3ds_djui_controls.smoke.o
+
+terminal-smoke: $(BUILD)
+	@echo "smoke: New 3DS terminal stub"
+	@$(CC) $(SMOKE_CFLAGS) -c \
+		$(TOPDIR)/src/pc/platform/new3ds/new3ds_terminal_stub.c \
+		-o $(BUILD)/new3ds_terminal_stub.smoke.o
 
 shader-smoke: $(BUILD)
 	@echo "smoke: PICA200 vertex shader"
