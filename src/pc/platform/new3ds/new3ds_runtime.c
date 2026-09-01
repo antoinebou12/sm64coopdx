@@ -3,8 +3,10 @@
 #include <math.h>
 #include <string.h>
 
+static New3dsRuntimeState *sActiveRuntime = NULL;
+
 bool new3ds_runtime_init(New3dsRuntimeState *state) {
-    if (state == NULL) {
+    if (state == NULL || sActiveRuntime != NULL) {
         return false;
     }
 
@@ -19,6 +21,7 @@ bool new3ds_runtime_init(New3dsRuntimeState *state) {
     aptSetSleepAllowed(true);
     state->start_ms = osGetTime();
     state->initialized = true;
+    sActiveRuntime = state;
     return true;
 }
 
@@ -33,6 +36,9 @@ void new3ds_runtime_shutdown(New3dsRuntimeState *state) {
 
     memset(&state->input, 0, sizeof(state->input));
     state->initialized = false;
+    if (sActiveRuntime == state) {
+        sActiveRuntime = NULL;
+    }
 }
 
 bool new3ds_runtime_poll(New3dsRuntimeState *state) {
@@ -73,6 +79,10 @@ void new3ds_runtime_request_exit(New3dsRuntimeState *state) {
     if (state != NULL) {
         state->exit_requested = true;
     }
+}
+
+New3dsRuntimeState *new3ds_runtime_active(void) {
+    return sActiveRuntime;
 }
 
 uint64_t new3ds_runtime_time_ms(void) {
