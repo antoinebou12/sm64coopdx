@@ -27,6 +27,10 @@ static int switch_rom_trace_prepare(void) {
 }
 
 void switch_rom_asset_trace_printf(const char *fmt, ...) {
+#ifdef SWITCH_NO_LOGS
+    (void)fmt;
+    return;
+#endif
     if (fmt == NULL || !switch_rom_trace_prepare()) {
         return;
     }

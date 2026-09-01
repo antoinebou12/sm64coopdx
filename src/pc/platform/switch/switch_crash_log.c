@@ -93,6 +93,10 @@ const char *switch_crash_log_directory(void) {
 }
 
 void switch_crash_log_printf(const char *fmt, ...) {
+#ifdef SWITCH_NO_LOGS
+    (void)fmt;
+    return;
+#endif
     if (fmt == NULL || !switch_crash_log_prepare()) {
         return;
     }
@@ -116,6 +120,10 @@ void switch_crash_log_printf(const char *fmt, ...) {
 }
 
 void switch_crash_log_checkpoint(const char *checkpoint) {
+#ifdef SWITCH_NO_LOGS
+    (void)checkpoint;
+    return;
+#endif
     if (checkpoint == NULL) {
         checkpoint = "(null)";
     }
@@ -159,6 +167,9 @@ static bool switch_crash_log_rom_state(long long *size_out) {
 }
 
 void userAppInit(void) {
+#ifdef SWITCH_NO_LOGS
+    return;
+#endif
     if (!switch_crash_log_prepare()) {
         switch_crash_log_debug_string("SM64CoopDX: could not create sdmc crash log directory\n");
         return;

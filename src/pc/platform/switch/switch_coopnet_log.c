@@ -61,6 +61,10 @@ static bool switch_coopnet_prepare(void) {
 }
 
 void switch_coopnet_log_flush(bool force) {
+#ifdef SWITCH_NO_LOGS
+    (void)force;
+    return;
+#endif
     if (!sReady) {
         return;
     }
@@ -116,6 +120,12 @@ void switch_coopnet_log_init(void) {
 }
 
 void switch_coopnet_log_checkpoint(const char *component, const char *operation, const char *phase) {
+#ifdef SWITCH_NO_LOGS
+    (void)component;
+    (void)operation;
+    (void)phase;
+    return;
+#endif
     if (!switch_coopnet_prepare()) {
         return;
     }
