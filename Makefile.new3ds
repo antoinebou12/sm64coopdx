@@ -18,6 +18,7 @@ TARGET_NAME := sm64coopdx-new3ds
 BUILD := $(TOPDIR)/build/new3ds-shell
 SOURCES := $(TOPDIR)/src/pc/platform/new3ds
 INCLUDES := $(TOPDIR)/src/pc/platform/new3ds
+PICASSO ?= picasso
 
 # Keep the standalone shell intentionally small. Full-game platform source files
 # live in the same directory but are compiled by port-smoke / the future full target.
@@ -139,7 +140,7 @@ terminal-smoke: $(BUILD)
 
 shader-smoke: $(BUILD)
 	@echo "smoke: PICA200 vertex shader"
-	@$(DEVKITPRO)/tools/bin/picasso \
+	@$(PICASSO) \
 		-o $(BUILD)/new3ds_shader.shbin \
 		$(TOPDIR)/src/pc/platform/new3ds/new3ds_shader.v.pica
 	@test -s $(BUILD)/new3ds_shader.shbin
@@ -158,6 +159,7 @@ print-config:
 	@echo "OUTPUT=$(OUTPUT).3dsx"
 	@echo "SOURCES=$(SOURCES)"
 	@echo "SHELL_CFILES=$(SHELL_CFILES)"
+	@echo "PICASSO=$(PICASSO)"
 
 else
 
