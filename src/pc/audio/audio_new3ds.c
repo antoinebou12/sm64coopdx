@@ -19,6 +19,10 @@ static uint8_t *sBufferData = NULL;
 static int sNextBuffer = 0;
 static bool sInitialized = false;
 
+static uint8_t *audio_new3ds_buffer_ptr(int index) {
+    return sBufferData + (index * NEW3DS_DSP_BUFFER_BYTES);
+}
+
 static bool audio_new3ds_init(void) {
     if (sInitialized) return true;
 
@@ -34,8 +38,7 @@ static bool audio_new3ds_init(void) {
 
     memset(sWaveBuffers, 0, sizeof(sWaveBuffers));
     for (int i = 0; i < NEW3DS_DSP_BUFFER_COUNT; ++i) {
-        sWaveBuffers[i].data_vaddr =
-            sBufferData + (i * NEW3DS_DSP_BUFFER_BYTES);
+        sWaveBuffers[i].data_vaddr = audio_new3ds_buffer_ptr(i);
         sWaveBuffers[i].status = NDSP_WBUF_FREE;
     }
 
@@ -83,8 +86,10 @@ static void audio_new3ds_play(const uint8_t *buf, size_t len) {
         return;
     }
 
-    memcpy(wave->data_vaddr, buf, len);
-    DSP_FlushDataCache(wave->data_vaddr, len);
+    /* data_vaddr is intentionally const in libctru: NDSP reads from it. */
+    uint8_t *dst = audio_new3ds_buffer_ptr(sNextBuffer);
+    memcpy(dst, buf, len);
+    DSP_FlushDataCache(dst, len);
     wave->nsamples = (u32)(len / NEW3DS_DSP_BYTES_PER_SAMPLE_FRAME);
     wave->status = NDSP_WBUF_FREE;
     ndspChnWaveBufAdd(0, wave);
