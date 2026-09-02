@@ -1,14 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-: "${DEVKITPRO:=/opt/devkitpro}"
-: "${DEVKITARM:=${DEVKITPRO}/devkitARM}"
-export DEVKITPRO DEVKITARM
-export PATH="${DEVKITPRO}/devkitARM/bin:${DEVKITPRO}/tools/bin:${PATH}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=common.sh
+source "${SCRIPT_DIR}/common.sh"
 
-# Host- or container-generated dependency files can pin absolute /work paths that
-# do not match every local CI runner mount layout (for example act on Windows).
-find build/new3ds-shell -name '*.d' -delete 2>/dev/null || true
+cd "$(ci_root_dir)"
+ci_export_devkitarm
+ci_clean_dep_files build/new3ds-shell
 
 make -f Makefile.new3ds print-config
 make -f Makefile.new3ds port-smoke -j2

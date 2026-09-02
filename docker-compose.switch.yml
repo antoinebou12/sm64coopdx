@@ -32,4 +32,4 @@ services:
     environment:
       DEVKITPRO: /opt/devkitpro
       SM64_BASEROM_US_URL: ${SM64_BASEROM_US_URL:-}
-    command: scripts/ci/switch-full-nro.sh
+    command: scripts/ci/console-baserom-build.sh switch

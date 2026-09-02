@@ -1,14 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-: "${DEVKITPRO:=/opt/devkitpro}"
-: "${DEVKITARM:=${DEVKITPRO}/devkitARM}"
-export DEVKITPRO DEVKITARM
-export PATH="${DEVKITPRO}/devkitARM/bin:${DEVKITPRO}/tools/bin:${PATH}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=common.sh
+source "${SCRIPT_DIR}/common.sh"
 
-# Host-generated dependency files (especially from Windows paths) break GNU make
-# when the same workspace is bind-mounted into a Linux CI container.
-find build/us_new3ds -name '*.d' -delete 2>/dev/null || true
+cd "$(ci_root_dir)"
+ci_export_devkitarm
+ci_clean_dep_files build/us_new3ds
 
 make -f Makefile.new3ds-game new3ds-integration-smoke -j2
 

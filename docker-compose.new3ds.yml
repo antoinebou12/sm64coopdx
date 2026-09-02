@@ -48,4 +48,4 @@ services:
       DEVKITPRO: /opt/devkitpro
       DEVKITARM: /opt/devkitpro/devkitARM
       SM64_BASEROM_US_URL: ${SM64_BASEROM_US_URL:-}
-    command: scripts/ci/new3ds-full-3dsx.sh
+    command: scripts/ci/console-baserom-build.sh new3ds

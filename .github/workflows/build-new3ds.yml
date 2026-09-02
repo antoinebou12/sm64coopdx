@@ -9,7 +9,7 @@ on:
       - Makefile.new3ds
       - Makefile.new3ds-game
       - tools/new3ds/**
-      - scripts/ci/new3ds-*.sh
+      - scripts/ci/**
       - docker/new3ds/**
       - docker-compose.new3ds.yml
       - src/pc/platform/new3ds/**
@@ -32,7 +32,7 @@ on:
       - Makefile.new3ds
       - Makefile.new3ds-game
       - tools/new3ds/**
-      - scripts/ci/new3ds-*.sh
+      - scripts/ci/**
       - docker/new3ds/**
       - docker-compose.new3ds.yml
       - src/pc/platform/new3ds/**

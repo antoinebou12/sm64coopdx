@@ -17,7 +17,7 @@ on:
       - 'src/**'
       - 'lib/lua/include/**'
       - 'tools/switch/**'
-      - 'scripts/ci/switch-portability.sh'
+      - 'scripts/ci/**'
       - 'docker/switch/**'
       - 'docker-compose.switch.yml'
       - 'sm64.us.sha1'
