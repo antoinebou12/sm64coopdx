@@ -23,9 +23,15 @@ endif
 
 CTRULIB      := $(DEVKITPRO)/libctru
 PORTLIBS     := $(DEVKITPRO)/portlibs/3ds
-DKP_TOOLS    := $(DEVKITPRO)/tools/bin
 NEW3DS_CROSS := $(DEVKITARM)/bin/arm-none-eabi-
 NEW3DS_ARCH  := -march=armv6k -mtune=mpcore -mfloat-abi=hard -mtp=soft
+
+# Resolve devkitPro helper tools through PATH rather than constructing paths
+# from DEVKITPRO. This works in both Linux CI and Windows/MSYS devkitPro shells.
+NEW3DS_3DSXTOOL ?= 3dsxtool
+NEW3DS_SMDHTOOL ?= smdhtool
+NEW3DS_BIN2S    ?= bin2s
+NEW3DS_PICASSO  ?= picasso
 
 # Stop host detection and desktop SDKs from altering the New 3DS graph.
 override HOST_OS := New3DS
@@ -120,26 +126,20 @@ override LDFLAGS := \
 
 include Makefile
 
-NEW3DS_3DSXTOOL := $(DKP_TOOLS)/3dsxtool
-NEW3DS_SMDHTOOL := $(DKP_TOOLS)/smdhtool
-NEW3DS_BIN2S    := $(DKP_TOOLS)/bin2s
-NEW3DS_PICASSO  := $(DKP_TOOLS)/picasso
-NEW3DS_SMDH     := $(BUILD_DIR)/sm64coopdx.smdh
-NEW3DS_3DSX     := $(BUILD_DIR)/sm64coopdx.3dsx
-NEW3DS_ICON     ?= $(CTRULIB)/default_icon.png
+NEW3DS_SMDH := $(BUILD_DIR)/sm64coopdx.smdh
+NEW3DS_3DSX := $(BUILD_DIR)/sm64coopdx.3dsx
+NEW3DS_ICON ?= $(CTRULIB)/default_icon.png
 
 .PHONY: new3ds-toolchain-check new3ds-deps new3ds-game new3ds-3dsx new3ds-game-clean
 
 new3ds-toolchain-check:
-	@test -x "$(CC)" || (echo "Missing devkitARM compiler: $(CC)" && exit 1)
-	@test -x "$(CXX)" || (echo "Missing devkitARM C++ compiler: $(CXX)" && exit 1)
+	@command -v $(NEW3DS_PICASSO) >/dev/null || (echo "Missing picasso" && exit 1)
+	@command -v $(NEW3DS_BIN2S) >/dev/null || (echo "Missing bin2s" && exit 1)
+	@command -v $(NEW3DS_3DSXTOOL) >/dev/null || (echo "Missing 3dsxtool" && exit 1)
+	@command -v $(NEW3DS_SMDHTOOL) >/dev/null || (echo "Missing smdhtool" && exit 1)
 	@test -f "$(DEVKITARM)/3ds_rules" || (echo "Missing devkitARM 3DS rules" && exit 1)
 	@test -f "$(CTRULIB)/include/3ds.h" || (echo "Missing libctru headers" && exit 1)
 	@test -f "$(CTRULIB)/include/citro3d.h" || (echo "Missing Citro3D headers" && exit 1)
-	@test -x "$(NEW3DS_PICASSO)" || (echo "Missing picasso" && exit 1)
-	@test -x "$(NEW3DS_BIN2S)" || (echo "Missing bin2s" && exit 1)
-	@test -x "$(NEW3DS_3DSXTOOL)" || (echo "Missing 3dsxtool" && exit 1)
-	@test -x "$(NEW3DS_SMDHTOOL)" || (echo "Missing smdhtool" && exit 1)
 
 new3ds-deps: new3ds-toolchain-check
 	bash tools/new3ds/build-lua53.sh
