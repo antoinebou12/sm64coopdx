@@ -86,8 +86,15 @@ enum GfxWindowBackend configGraphicsBackend       = GFX_WINDOW_BACKEND_OPENGL;
 unsigned int configFiltering                      = 2; // 0 = Nearest, 1 = Bilinear, 2 = Trilinear
 bool         configShowFPS                        = false;
 bool         configShowPing                       = false;
+#if defined(__3DS__)
+enum RefreshRateMode configFramerateMode          = RRM_MANUAL;
+unsigned int configFrameLimit                     = 30;
+unsigned int configAmountOfPlayers                = 4;
+#else
 enum RefreshRateMode configFramerateMode          = RRM_AUTO;
 unsigned int configFrameLimit                     = 60;
+unsigned int configAmountOfPlayers                = MAX_PLAYERS;
+#endif
 unsigned int configInterpolationMode              = 1;
 unsigned int configDrawDistance                   = 6;
 // sound settings
@@ -189,6 +196,12 @@ bool         configLuaProfiler                    = false;
 bool         configDebugPrint                     = false;
 bool         configDebugInfo                      = false;
 bool         configDebugError                     = false;
+#ifdef __3DS__
+bool         configNew3dsLogNet                   = false;
+bool         configNew3dsLogGfx                   = false;
+bool         configNew3dsLogPerf                  = false;
+bool         configNew3dsLogCoopnet               = false;
+#endif
 #ifdef DEVELOPMENT
 bool         configCtxProfiler                    = false;
 #endif
@@ -198,7 +211,6 @@ unsigned int configPlayerModel                    = 0;
 bool         configPlayerModelSelected            = false;
 struct PlayerPalette configPlayerPalette          = { { { 0x00, 0x00, 0xff }, { 0xff, 0x00, 0x00 }, { 0xff, 0xff, 0xff }, { 0x72, 0x1c, 0x0e }, { 0x73, 0x06, 0x00 }, { 0xfe, 0xc1, 0x79 }, { 0xff, 0x00, 0x00 }, { 0xff, 0x00, 0x00 } } };
 // coop settings
-unsigned int configAmountOfPlayers                = MAX_PLAYERS;
 bool         configBubbleDeath                    = true;
 unsigned int configHostPort                       = DEFAULT_PORT;
 unsigned int configHostSaveSlot                   = 1;
@@ -257,11 +269,11 @@ static const struct ConfigOption options[] = {
     {.name = "vsync",                          .type = CONFIG_TYPE_BOOL, .boolValue = &configWindow.vsync},
     {.name = "msaa",                           .type = CONFIG_TYPE_UINT, .uintValue = &configWindow.msaa},
     // display settings
-    {.name = "graphics_backend",               .type = CONFIG_TYPE_UINT, .uintValue = &configGraphicsBackend},
+    {.name = "graphics_backend",               .type = CONFIG_TYPE_UINT, .uintValue = (unsigned int *)&configGraphicsBackend},
     {.name = "texture_filtering",              .type = CONFIG_TYPE_UINT, .uintValue = &configFiltering},
     {.name = "show_fps",                       .type = CONFIG_TYPE_BOOL, .boolValue = &configShowFPS},
     {.name = "show_ping",                      .type = CONFIG_TYPE_BOOL, .boolValue = &configShowPing},
-    {.name = "framerate_mode",                 .type = CONFIG_TYPE_UINT, .uintValue = &configFramerateMode},
+    {.name = "framerate_mode",                 .type = CONFIG_TYPE_UINT, .uintValue = (unsigned int *)&configFramerateMode},
     {.name = "frame_limit",                    .type = CONFIG_TYPE_UINT, .uintValue = &configFrameLimit},
     {.name = "interpolation_mode",             .type = CONFIG_TYPE_UINT, .uintValue = &configInterpolationMode},
     {.name = "coop_draw_distance",             .type = CONFIG_TYPE_UINT, .uintValue = &configDrawDistance},
@@ -346,6 +358,12 @@ static const struct ConfigOption options[] = {
     {.name = "debug_print",                    .type = CONFIG_TYPE_BOOL, .boolValue   = &configDebugPrint},
     {.name = "debug_info",                     .type = CONFIG_TYPE_BOOL, .boolValue   = &configDebugInfo},
     {.name = "debug_error",                    .type = CONFIG_TYPE_BOOL, .boolValue   = &configDebugError},
+#ifdef __3DS__
+    {.name = "new3ds_log_net",                 .type = CONFIG_TYPE_BOOL, .boolValue   = &configNew3dsLogNet},
+    {.name = "new3ds_log_gfx",                 .type = CONFIG_TYPE_BOOL, .boolValue   = &configNew3dsLogGfx},
+    {.name = "new3ds_log_perf",                .type = CONFIG_TYPE_BOOL, .boolValue   = &configNew3dsLogPerf},
+    {.name = "new3ds_log_coopnet",             .type = CONFIG_TYPE_BOOL, .boolValue   = &configNew3dsLogCoopnet},
+#endif
 #ifdef DEVELOPMENT
     {.name = "ctx_profiler",                   .type = CONFIG_TYPE_BOOL, .boolValue   = &configCtxProfiler},
 #endif

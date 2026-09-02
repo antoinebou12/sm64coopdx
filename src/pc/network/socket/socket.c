@@ -4,7 +4,17 @@
 #include "pc/debuglog.h"
 #include "pc/djui/djui.h"
 
-#ifdef __SWITCH__
+#if defined(__SWITCH__) || defined(__3DS__)
+#define NETWORK_USE_IPV4 1
+#endif
+
+#if defined(__3DS__)
+#define NET_PLATFORM_TAG "New 3DS Direct"
+#elif defined(__SWITCH__)
+#define NET_PLATFORM_TAG "NET_PLATFORM_TAG"
+#endif
+
+#ifdef NETWORK_USE_IPV4
 typedef struct sockaddr_in NetworkSocketAddr;
 #define NETWORK_SOCKET_FAMILY AF_INET
 #define NETWORK_SOCKET_ADDR_LEN INET_ADDRSTRLEN
@@ -26,7 +36,7 @@ static bool resolve_domain(NetworkSocketAddr *addr) {
 
     memset(&hints, 0, sizeof(hints));
     hints.ai_socktype = SOCK_DGRAM;
-#ifdef __SWITCH__
+#ifdef NETWORK_USE_IPV4
     // Horizon direct-connect deliberately stays on IPv4. This avoids the
     // IPv4-mapped IPv6/dual-stack path that proved unreliable on Switch.
     hints.ai_family = AF_INET;
@@ -46,27 +56,27 @@ static bool resolve_domain(NetworkSocketAddr *addr) {
     }
 #endif
 
-#ifdef __SWITCH__
-    LOG_INFO("Switch Direct: DNS begin host=%s", configJoinIp);
+#ifdef NETWORK_USE_IPV4
+    LOG_INFO("%s: DNS begin host=%s", NET_PLATFORM_TAG, configJoinIp);
 #endif
     error = getaddrinfo(configJoinIp, NULL, &hints, &result);
     if (error != 0) {
         LOG_ERROR("getaddrinfo() failed with error code %i: %s", error, gai_strerror(error));
-#ifdef __SWITCH__
-        LOG_ERROR("Switch Direct: DNS failed host=%s rc=%d", configJoinIp, error);
+#ifdef NETWORK_USE_IPV4
+        LOG_ERROR("%s: DNS failed host=%s rc=%d", NET_PLATFORM_TAG, configJoinIp, error);
 #endif
         return false;
     }
 
     for (i = result; i != NULL; i = i->ai_next) {
         char str[NETWORK_SOCKET_ADDR_LEN];
-#ifdef __SWITCH__
+#ifdef NETWORK_USE_IPV4
         if (i->ai_addr->sa_family != AF_INET) { continue; }
         struct sockaddr_in *p = (struct sockaddr_in *)i->ai_addr;
         addr->sin_family = AF_INET;
         memcpy(&addr->sin_addr, &p->sin_addr, sizeof(struct in_addr));
         snprintf(configJoinIp, MAX_CONFIG_STRING, "%s", inet_ntop(AF_INET, &p->sin_addr, str, sizeof(str)));
-        LOG_INFO("Switch Direct: DNS resolved ipv4=%s", configJoinIp);
+        LOG_INFO("%s: DNS resolved ipv4=%s", NET_PLATFORM_TAG, configJoinIp);
         freeaddrinfo(result);
         result = NULL;
         return true;
@@ -103,7 +113,7 @@ static bool resolve_domain(NetworkSocketAddr *addr) {
 static int socket_bind(SOCKET socket, unsigned int port) {
     NetworkSocketAddr rxAddr;
     memset(&rxAddr, 0, sizeof(rxAddr));
-#ifdef __SWITCH__
+#ifdef NETWORK_USE_IPV4
     rxAddr.sin_family = AF_INET;
     rxAddr.sin_port = htons(port);
     rxAddr.sin_addr.s_addr = htonl(INADDR_ANY);
@@ -116,8 +126,8 @@ static int socket_bind(SOCKET socket, unsigned int port) {
     int rc = bind(socket, (SOCKADDR *)&rxAddr, sizeof(rxAddr));
     if (rc != 0) {
         LOG_ERROR("bind failed with error %d", SOCKET_LAST_ERROR);
-#ifdef __SWITCH__
-        LOG_ERROR("Switch Direct: bind failed port=%u error=%d", port, SOCKET_LAST_ERROR);
+#ifdef NETWORK_USE_IPV4
+        LOG_ERROR("%s: bind failed port=%u error=%d", NET_PLATFORM_TAG, port, SOCKET_LAST_ERROR);
 #endif
     }
     return rc;
@@ -132,8 +142,8 @@ static int socket_send(SOCKET socket, NetworkSocketAddr* addr, u8* buffer, u16 b
     if (error == SOCKET_EWOULDBLOCK) { return NO_ERROR; }
 
     LOG_ERROR("sendto failed with error: %d", error);
-#ifdef __SWITCH__
-    LOG_ERROR("Switch Direct: sendto failed bytes=%u error=%d", bufferLength, error);
+#ifdef NETWORK_USE_IPV4
+    LOG_ERROR("%s: sendto failed bytes=%u error=%d", NET_PLATFORM_TAG, bufferLength, error);
 #endif
     return rc;
 }
@@ -155,8 +165,8 @@ static int socket_receive(SOCKET socket, NetworkSocketAddr* rxAddr, u8* buffer, 
         int error = SOCKET_LAST_ERROR;
         if (error != SOCKET_EWOULDBLOCK && error != SOCKET_ECONNRESET) {
             LOG_ERROR("recvfrom failed with error %d", SOCKET_LAST_ERROR);
-#ifdef __SWITCH__
-            LOG_ERROR("Switch Direct: recvfrom failed error=%d", SOCKET_LAST_ERROR);
+#ifdef NETWORK_USE_IPV4
+            LOG_ERROR("%s: recvfrom failed error=%d", NET_PLATFORM_TAG, SOCKET_LAST_ERROR);
 #endif
         }
         return SOCKET_ERROR;
@@ -170,14 +180,14 @@ static bool ns_socket_initialize(enum NetworkType networkType, UNUSED bool recon
     unsigned int port = (networkType == NT_CLIENT) ? configJoinPort : configHostPort;
     if (port == 0) { port = DEFAULT_PORT; }
 
-#ifdef __SWITCH__
-    LOG_INFO("Switch Direct: socket initialize type=%d port=%u", (int)networkType, port);
+#ifdef NETWORK_USE_IPV4
+    LOG_INFO("%s: socket initialize type=%d port=%u", NET_PLATFORM_TAG, (int)networkType, port);
 #endif
 
     sCurSocket = socket_initialize();
     if (sCurSocket == INVALID_SOCKET) {
-#ifdef __SWITCH__
-        LOG_ERROR("Switch Direct: socket_initialize failed");
+#ifdef NETWORK_USE_IPV4
+        LOG_ERROR("%s: socket_initialize failed", NET_PLATFORM_TAG);
 #endif
         return false;
     }
@@ -201,13 +211,13 @@ static bool ns_socket_initialize(enum NetworkType networkType, UNUSED bool recon
             return false;
         }
         LOG_INFO("bound to port %u", port);
-#ifdef __SWITCH__
-        LOG_INFO("Switch Direct: host listening ipv4 port=%u", port);
+#ifdef NETWORK_USE_IPV4
+        LOG_INFO("%s: host listening ipv4 port=%u", NET_PLATFORM_TAG, port);
 #endif
     } else if (networkType == NT_CLIENT) {
         NetworkSocketAddr addr;
         memset(&addr, 0, sizeof(addr));
-#ifdef __SWITCH__
+#ifdef NETWORK_USE_IPV4
         sAddr[0].sin_family = AF_INET;
         sAddr[0].sin_port = htons(port);
 #else
@@ -219,14 +229,14 @@ static bool ns_socket_initialize(enum NetworkType networkType, UNUSED bool recon
             sCurSocket = INVALID_SOCKET;
             return false;
         }
-#ifdef __SWITCH__
+#ifdef NETWORK_USE_IPV4
         sAddr[0].sin_addr = addr.sin_addr;
 #else
         sAddr[0].sin6_addr = addr.sin6_addr;
 #endif
         LOG_INFO("connecting to %s, port %u", configJoinIp, port);
-#ifdef __SWITCH__
-        LOG_INFO("Switch Direct: client target ipv4=%s port=%u", configJoinIp, port);
+#ifdef NETWORK_USE_IPV4
+        LOG_INFO("%s: client target ipv4=%s port=%u", NET_PLATFORM_TAG, configJoinIp, port);
 #endif
         snprintf(configJoinIp, MAX_CONFIG_STRING, "%s", gGetHostName);
 
@@ -240,8 +250,8 @@ static bool ns_socket_initialize(enum NetworkType networkType, UNUSED bool recon
     LOG_INFO("initialized");
 
     if (networkType == NT_CLIENT) {
-#ifdef __SWITCH__
-        LOG_INFO("Switch Direct: sending initial mod-list request");
+#ifdef NETWORK_USE_IPV4
+        LOG_INFO("%s: sending initial mod-list request", NET_PLATFORM_TAG);
 #endif
         network_send_mod_list_request();
     }
@@ -256,7 +266,7 @@ static s64 ns_socket_get_id(UNUSED u8 localId) {
 static char* ns_socket_get_id_str(u8 localId) {
     if (localId == UNKNOWN_LOCAL_INDEX) { localId = 0; }
     static char id_str[NETWORK_SOCKET_ADDR_LEN] = { 0 };
-#ifdef __SWITCH__
+#ifdef NETWORK_USE_IPV4
     inet_ntop(AF_INET, &sAddr[localId].sin_addr, id_str, sizeof(id_str));
 #else
     inet_ntop(AF_INET6, &sAddr[localId].sin6_addr, id_str, sizeof(id_str));

@@ -9,14 +9,22 @@ on:
       - Makefile.new3ds
       - Makefile.new3ds-game
       - tools/new3ds/**
+      - scripts/ci/new3ds-*.sh
+      - docker/new3ds/**
+      - docker-compose.new3ds.yml
       - src/pc/platform/new3ds/**
       - src/pc/audio/audio_new3ds.*
       - src/pc/controller/controller_new3ds.*
       - src/pc/controller/controller_entry_point.c
       - src/pc/gfx/gfx_citro3d_new3ds.*
       - src/pc/gfx/gfx_window_manager.h
-      - src/pc/pc_main.h
+      - src/pc/pc_main.*
       - src/pc/thread.h
+      - src/pc/mods/mod_fs.cpp
+      - src/pc/lua/smlua.h
+      - src/engine/lighting_engine.cpp
+      - data/dynos*
+      - include/PR/ultratypes.h
       - docs/new3ds-port.md
       - .github/workflows/build-new3ds.yml
   pull_request:
@@ -24,14 +32,22 @@ on:
       - Makefile.new3ds
       - Makefile.new3ds-game
       - tools/new3ds/**
+      - scripts/ci/new3ds-*.sh
+      - docker/new3ds/**
+      - docker-compose.new3ds.yml
       - src/pc/platform/new3ds/**
       - src/pc/audio/audio_new3ds.*
       - src/pc/controller/controller_new3ds.*
       - src/pc/controller/controller_entry_point.c
       - src/pc/gfx/gfx_citro3d_new3ds.*
       - src/pc/gfx/gfx_window_manager.h
-      - src/pc/pc_main.h
+      - src/pc/pc_main.*
       - src/pc/thread.h
+      - src/pc/mods/mod_fs.cpp
+      - src/pc/lua/smlua.h
+      - src/engine/lighting_engine.cpp
+      - data/dynos*
+      - include/PR/ultratypes.h
       - docs/new3ds-port.md
       - .github/workflows/build-new3ds.yml
   workflow_dispatch:
@@ -39,10 +55,19 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: new3ds-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DEVKITPRO: /opt/devkitpro
+  DEVKITARM: /opt/devkitpro/devkitARM
+
 jobs:
   build-new3ds-shell:
     name: devkitARM / shell + platform smoke
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     container:
       image: devkitpro/devkitarm:latest
 
@@ -51,36 +76,24 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install 3DS libraries
-        run: dkp-pacman -Syu --noconfirm 3ds-dev
+        run: |
+          dkp-pacman -Syu --noconfirm 3ds-dev 3ds-zlib
+          apt-get update -qq
+          apt-get install -y -qq git python3 curl bsdextrautils
 
-      - name: Print toolchain configuration
-        run: make -f Makefile.new3ds print-config
-
-      - name: Cross-compile New 3DS platform layers
-        run: make -f Makefile.new3ds port-smoke -j2
-
-      - name: Build New 3DS shell
-        run: make -f Makefile.new3ds -j2
-
-      - name: Verify shell artifacts
+      - name: Add devkitARM to PATH
         shell: bash
         run: |
           set -euo pipefail
-          test -s build/new3ds-shell/sm64coopdx-new3ds.elf
-          test -s build/new3ds-shell/sm64coopdx-new3ds.3dsx
-          test -s build/new3ds-shell/sm64coopdx-new3ds.smdh
-          test -s build/new3ds-shell/gfx_citro3d_new3ds.smoke.o
-          test -s build/new3ds-shell/controller_new3ds.smoke.o
-          test -s build/new3ds-shell/new3ds_window_manager.smoke.o
-          test -s build/new3ds-shell/audio_new3ds.smoke.o
-          test -s build/new3ds-shell/new3ds_thread.smoke.o
-          test -s build/new3ds-shell/new3ds_platform.smoke.o
-          test -s build/new3ds-shell/new3ds_shader.shbin
-          arm-none-eabi-size build/new3ds-shell/sm64coopdx-new3ds.elf
-          ls -lh build/new3ds-shell/sm64coopdx-new3ds.{elf,3dsx,smdh}
-          ls -lh build/new3ds-shell/*.smoke.o build/new3ds-shell/new3ds_shader.shbin
+          echo "${DEVKITPRO}/devkitARM/bin" >> "$GITHUB_PATH"
+          echo "${DEVKITPRO}/tools/bin" >> "$GITHUB_PATH"
+
+      - name: Cross-compile New 3DS shell and platform smoke
+        shell: bash
+        run: scripts/ci/new3ds-shell.sh
 
       - name: Upload New 3DS shell artifacts
+        if: ${{ !env.ACT }}
         uses: actions/upload-artifact@v4
         with:
           name: sm64coopdx-new3ds-foundation
@@ -89,17 +102,14 @@ jobs:
             build/new3ds-shell/sm64coopdx-new3ds.elf
             build/new3ds-shell/sm64coopdx-new3ds.3dsx
             build/new3ds-shell/sm64coopdx-new3ds.smdh
-            build/new3ds-shell/gfx_citro3d_new3ds.smoke.o
-            build/new3ds-shell/controller_new3ds.smoke.o
-            build/new3ds-shell/new3ds_window_manager.smoke.o
-            build/new3ds-shell/audio_new3ds.smoke.o
-            build/new3ds-shell/new3ds_thread.smoke.o
-            build/new3ds-shell/new3ds_platform.smoke.o
+            build/new3ds-shell/*.smoke.o
             build/new3ds-shell/new3ds_shader.shbin
 
-  build-new3ds-game:
-    name: devkitARM / full CoopDX integration
+  build-new3ds-integration:
+    name: devkitARM / shared integration compile
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: build-new3ds-shell
     container:
       image: devkitpro/devkitarm:latest
 
@@ -107,13 +117,88 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Install 3DS libraries
+        run: |
+          dkp-pacman -Syu --noconfirm 3ds-dev 3ds-zlib
+          apt-get update -qq
+          apt-get install -y -qq git python3 curl bsdextrautils
+
+      - name: Add devkitARM to PATH
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "${DEVKITPRO}/devkitARM/bin" >> "$GITHUB_PATH"
+          echo "${DEVKITPRO}/tools/bin" >> "$GITHUB_PATH"
+
+      - name: Compile shared engine + DynOS integration objects
+        shell: bash
+        run: scripts/ci/new3ds-integration.sh
+
+  build-new3ds-game:
+    name: devkitARM / full CoopDX .3dsx
+    if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    needs: build-new3ds-integration
+    container:
+      image: devkitpro/devkitarm:latest
+    env:
+      SM64_BASEROM_US_URL: ${{ secrets.SM64_BASEROM_US_URL }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Install required 3DS portlibs
-        run: dkp-pacman -Syu --noconfirm 3ds-dev 3ds-zlib
+        run: |
+          dkp-pacman -Syu --noconfirm 3ds-dev 3ds-zlib
+          apt-get update -qq
+          apt-get install -y -qq git python3 curl bsdextrautils
+
+      - name: Add devkitARM to PATH
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "${DEVKITPRO}/devkitARM/bin" >> "$GITHUB_PATH"
+          echo "${DEVKITPRO}/tools/bin" >> "$GITHUB_PATH"
+
+      - name: Detect private baserom source
+        id: baserom
+        shell: bash
+        run: |
+          if [[ -n "${SM64_BASEROM_US_URL}" ]]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "### Full New 3DS .3dsx skipped"
+              echo "Set repository secret \`SM64_BASEROM_US_URL\` to enable the baserom-backed full build."
+              echo "Shell and integration compile jobs still ran and must pass."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Fetch and verify private US baserom
+        if: steps.baserom.outputs.available == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 --proto '=https' --tlsv1.2 \
+            "${SM64_BASEROM_US_URL}" -o baserom.us.z64
+          expected="$(awk 'NR==1 {print $1}' sm64.us.sha1)"
+          actual="$(sha1sum baserom.us.z64 | awk '{print $1}')"
+          test -n "$expected"
+          if [[ "$actual" != "$expected" ]]; then
+            echo "baserom.us.z64 SHA-1 mismatch" >&2
+            exit 1
+          fi
 
       - name: Build full New 3DS application
+        if: steps.baserom.outputs.available == 'true'
+        shell: bash
         run: make -f Makefile.new3ds-game new3ds-3dsx -j2
 
       - name: Verify full-game artifacts
+        if: steps.baserom.outputs.available == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -121,9 +206,14 @@ jobs:
           test -s build/us_new3ds/sm64coopdx.3dsx
           test -s build/us_new3ds/sm64coopdx.smdh
           arm-none-eabi-size build/us_new3ds/sm64coopdx.elf
-          ls -lh build/us_new3ds/sm64coopdx.{elf,3dsx,smdh}
+
+      - name: Remove private baserom
+        if: always() && steps.baserom.outputs.available == 'true'
+        shell: bash
+        run: rm -f baserom.us.z64
 
       - name: Upload full-game artifacts
+        if: ${{ steps.baserom.outputs.available == 'true' && !env.ACT }}
         uses: actions/upload-artifact@v4
         with:
           name: sm64coopdx-new3ds-game

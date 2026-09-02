@@ -478,7 +478,11 @@ bool DynOS_Tex_Get(const char* aTexName, struct TextureInfo* aOutTexInfo) {
 
             // load the texture if it hasn't been yet
             if (_Data->mRawData.begin() == NULL) {
-                u8 *_RawData = stbi_load_from_memory(_Data->mPngData.begin(), _Data->mPngData.Count(), &_Data->mRawWidth, &_Data->mRawHeight, NULL, 4);
+                int _RawWidth = 0;
+                int _RawHeight = 0;
+                u8 *_RawData = stbi_load_from_memory(_Data->mPngData.begin(), _Data->mPngData.Count(), &_RawWidth, &_RawHeight, NULL, 4);
+                _Data->mRawWidth = _RawWidth;
+                _Data->mRawHeight = _RawHeight;
                 // texture data is corrupted
                 if (_RawData == NULL) {
                     PrintError("Attempted to load corrupted tex file: %s", aTexName);

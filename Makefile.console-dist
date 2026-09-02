@@ -1,0 +1,40 @@
+# Combined Nintendo Switch + New Nintendo 3DS release packaging.
+#
+# Builds ROM-free distribution folders under dist/:
+#   dist/sm64coopdx-switch-<version>/
+#   dist/sm64coopdx-new3ds-<version>/
+#   dist/sm64coopdx-console-<version>/   (NRO + 3DSX + CIA)
+#
+# Examples:
+#   make -f Makefile.console-dist console-dist -j2
+#   make -f Makefile.console-dist console-dist-clean
+
+PYTHON ?= python3
+CONSOLE_VERSION ?= 1.5.1-console
+SWITCH_VERSION ?= 1.5.1-switch
+NEW3DS_VERSION ?= 1.5.1-new3ds
+SWITCH_DIST_ROOT := dist/sm64coopdx-switch-$(SWITCH_VERSION)
+NEW3DS_DIST_ROOT := dist/sm64coopdx-new3ds-$(NEW3DS_VERSION)
+CONSOLE_DIST_ROOT := dist/sm64coopdx-console-$(CONSOLE_VERSION)
+
+.PHONY: console-dist console-dist-clean switch-dist new3ds-dist
+
+console-dist: switch-dist new3ds-dist
+	$(PYTHON) tools/console/stage_console_dist.py \
+		--root . \
+		--version "$(CONSOLE_VERSION)" \
+		--switch-dist "$(SWITCH_DIST_ROOT)" \
+		--new3ds-dist "$(NEW3DS_DIST_ROOT)"
+	@echo "Combined console distribution: $(CONSOLE_DIST_ROOT)"
+	@echo "Combined console ZIP: $(CONSOLE_DIST_ROOT).zip"
+
+switch-dist:
+	$(MAKE) -f Makefile.switch-sdmc SWITCH_COOPNET=1 SWITCH_VERSION="$(SWITCH_VERSION)" switch-dist
+
+new3ds-dist:
+	$(MAKE) -f Makefile.new3ds-game NEW3DS_VERSION="$(NEW3DS_VERSION)" new3ds-dist
+
+console-dist-clean:
+	$(MAKE) -f Makefile.switch-sdmc SWITCH_VERSION="$(SWITCH_VERSION)" switch-dist-clean
+	$(MAKE) -f Makefile.new3ds-game NEW3DS_VERSION="$(NEW3DS_VERSION)" new3ds-dist-clean
+	@rm -rf "$(CONSOLE_DIST_ROOT)" "$(CONSOLE_DIST_ROOT).zip" build/new3ds-tools

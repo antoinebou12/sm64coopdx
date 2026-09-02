@@ -1,0 +1,51 @@
+# New Nintendo 3DS CI and local builds.
+#
+# Examples:
+#   docker compose -f docker-compose.new3ds.yml build
+#   docker compose -f docker-compose.new3ds.yml run --rm new3ds-shell
+#   docker compose -f docker-compose.new3ds.yml run --rm new3ds-integration
+#   docker compose -f docker-compose.new3ds.yml run --rm new3ds-full-3dsx
+#
+# This compose file is isolated from docker-compose.switch.yml. Both can run at
+# the same time because they write to different build/ subtrees.
+
+services:
+  new3ds-shell:
+    build:
+      context: .
+      dockerfile: docker/new3ds/Dockerfile
+    image: sm64coopdx-new3ds:dev
+    working_dir: /work
+    volumes:
+      - .:/work
+    environment:
+      DEVKITPRO: /opt/devkitpro
+      DEVKITARM: /opt/devkitpro/devkitARM
+    command: scripts/ci/new3ds-shell.sh
+
+  new3ds-integration:
+    build:
+      context: .
+      dockerfile: docker/new3ds/Dockerfile
+    image: sm64coopdx-new3ds:dev
+    working_dir: /work
+    volumes:
+      - .:/work
+    environment:
+      DEVKITPRO: /opt/devkitpro
+      DEVKITARM: /opt/devkitpro/devkitARM
+    command: scripts/ci/new3ds-integration.sh
+
+  new3ds-full-3dsx:
+    build:
+      context: .
+      dockerfile: docker/new3ds/Dockerfile
+    image: sm64coopdx-new3ds:dev
+    working_dir: /work
+    volumes:
+      - .:/work
+    environment:
+      DEVKITPRO: /opt/devkitpro
+      DEVKITARM: /opt/devkitpro/devkitARM
+      SM64_BASEROM_US_URL: ${SM64_BASEROM_US_URL:-}
+    command: scripts/ci/new3ds-full-3dsx.sh

@@ -77,9 +77,11 @@ void osViSetSpecialFeatures(UNUSED u32 func) {
 void osViSwapBuffer(UNUSED void *vaddr) {
 }
 
+#if !defined(__3DS__)
 OSTime osGetTime(void) {
     return 0;
 }
+#endif
 
 void osWritebackDCacheAll(void) {
 }

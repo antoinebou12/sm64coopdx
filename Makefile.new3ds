@@ -22,12 +22,12 @@ PICASSO ?= picasso
 
 # Keep the standalone shell intentionally small. Full-game platform source files
 # live in the same directory but are compiled by port-smoke / the future full target.
-SHELL_CFILES := new3ds_main.c new3ds_runtime.c new3ds_ui.c
+SHELL_CFILES := new3ds_main.c new3ds_runtime.c new3ds_log.c new3ds_ui.c
 
 ARCH := -march=armv6k -mtune=mpcore -mfloat-abi=hard -mtp=soft
 CFLAGS := -g -O2 -Wall -Wextra -Werror -mword-relocations \
           -ffunction-sections -fdata-sections $(ARCH)
-CFLAGS += $(INCLUDE) -D__3DS__ -DNEW_3DS_PORT=1 -std=gnu11
+CFLAGS += $(INCLUDE) -D__3DS__ -DNEW_3DS_PORT=1 -DNEW3DS_SHELL_BUILD=1 -std=gnu11
 ASFLAGS := -g $(ARCH)
 LDFLAGS := -specs=3dsx.specs -g $(ARCH) -Wl,-Map,$(TARGET_NAME).map -Wl,--gc-sections
 
@@ -35,6 +35,7 @@ LIBS := -lcitro2d -lcitro3d -lctru -lm
 LIBDIRS := $(CTRULIB)
 
 SMOKE_INCLUDES := \
+    -I$(TOPDIR)/src/pc/platform/new3ds \
     -I$(TOPDIR) \
     -I$(TOPDIR)/include \
     -I$(TOPDIR)/src \
@@ -42,15 +43,15 @@ SMOKE_INCLUDES := \
     -I$(TOPDIR)/src/pc/gfx \
     -I$(TOPDIR)/src/pc/audio \
     -I$(TOPDIR)/src/pc/controller \
-    -I$(TOPDIR)/src/pc/platform/new3ds \
+    -I$(TOPDIR)/lib/lua/include \
     -I$(CTRULIB)/include
 # Match the normal non-N64 port preprocessor contract. The upstream build sets
 # these automatically when TARGET_N64=0; smoke files are compiled directly and
 # therefore need the same definitions explicitly.
 SMOKE_CFLAGS := -g -O2 -Wall -Wextra -Werror -mword-relocations \
                 -ffunction-sections -fdata-sections $(ARCH) \
-                -D__3DS__ -DNEW_3DS_PORT=1 -DNON_MATCHING=1 -DAVOID_UB=1 \
-                -std=gnu11 $(SMOKE_INCLUDES)
+                -D__3DS__ -DNEW_3DS_PORT=1 -DNEW3DS_SHELL_BUILD=1 -DNON_MATCHING=1 -DAVOID_UB=1 \
+                -D_LANGUAGE_C -std=gnu11 $(SMOKE_INCLUDES)
 
 export APP_TITLE := SM64CoopDX New 3DS
 export APP_DESCRIPTION := Native New 3DS port foundation
@@ -75,13 +76,13 @@ export LIBPATHS := $(foreach dir,$(LIBDIRS),-L$(dir)/lib)
 export _3DSXDEPS := $(OUTPUT).smdh
 export _3DSXFLAGS += --smdh=$(OUTPUT).smdh
 
-.PHONY: all clean print-config port-smoke renderer-smoke controller-smoke window-smoke audio-smoke thread-smoke platform-smoke bind-smoke controls-smoke terminal-smoke shader-smoke
+.PHONY: all clean print-config port-smoke renderer-smoke controller-smoke window-smoke audio-smoke thread-smoke platform-smoke bind-smoke controls-smoke terminal-smoke shader-smoke log-smoke
 
 all: $(BUILD)
 	@$(MAKE) --no-print-directory -C $(BUILD) -f $(TOPDIR)/Makefile.new3ds TOPDIR=$(TOPDIR)
 	@echo "Built $(OUTPUT).3dsx"
 
-port-smoke: renderer-smoke controller-smoke window-smoke audio-smoke thread-smoke platform-smoke bind-smoke controls-smoke terminal-smoke shader-smoke
+port-smoke: renderer-smoke controller-smoke window-smoke audio-smoke thread-smoke platform-smoke bind-smoke controls-smoke terminal-smoke shader-smoke log-smoke
 	@echo "New 3DS platform smoke compile passed"
 
 renderer-smoke: $(BUILD)
@@ -144,6 +145,12 @@ shader-smoke: $(BUILD)
 		-o $(BUILD)/new3ds_shader.shbin \
 		$(TOPDIR)/src/pc/platform/new3ds/new3ds_shader.v.pica
 	@test -s $(BUILD)/new3ds_shader.shbin
+
+log-smoke: $(BUILD)
+	@echo "smoke: New 3DS ring-buffer logging"
+	@$(CC) $(SMOKE_CFLAGS) -c \
+		$(TOPDIR)/src/pc/platform/new3ds/new3ds_log.c \
+		-o $(BUILD)/new3ds_log.smoke.o
 
 $(BUILD):
 	@mkdir -p $@

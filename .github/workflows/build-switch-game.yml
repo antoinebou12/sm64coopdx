@@ -17,6 +17,9 @@ on:
       - 'src/**'
       - 'lib/lua/include/**'
       - 'tools/switch/**'
+      - 'scripts/ci/switch-portability.sh'
+      - 'docker/switch/**'
+      - 'docker-compose.switch.yml'
       - 'sm64.us.sha1'
       - '.github/workflows/build-switch-game.yml'
   workflow_dispatch:
@@ -52,100 +55,9 @@ jobs:
           echo "${DEVKITPRO}/devkitA64/bin" >> "$GITHUB_PATH"
           echo "${DEVKITPRO}/tools/bin" >> "$GITHUB_PATH"
 
-      - name: Run Switch unit tests
+      - name: Run Switch portability gates
         shell: bash
-        run: |
-          set -euo pipefail
-          python3 tools/switch/tests/run_tests.py
-
-      - name: Report toolchain
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p build/switch-ci
-          {
-            echo "git_sha=${GITHUB_SHA}"
-            aarch64-none-elf-gcc --version | head -n 1
-            dkp-pacman -Q libnx
-            dkp-pacman -Q devkitA64
-            dkp-pacman -Q switch-sdl2
-            dkp-pacman -Q switch-mesa
-            dkp-pacman -Q switch-curl
-            dkp-pacman -Q switch-zlib
-          } | tee build/switch-ci/TOOLCHAIN.txt
-
-      - name: Build SDL2/GLES2/curl/zlib probe NRO
-        shell: bash
-        run: |
-          set -euo pipefail
-          make -f Makefile.switch-portlibs clean
-          make -f Makefile.switch-portlibs -j2 probe
-
-      - name: Build lifecycle/native-input probe NRO
-        shell: bash
-        run: |
-          set -euo pipefail
-          make -f Makefile.switch-platform clean
-          make -f Makefile.switch-platform -j2 probe
-
-      - name: Validate full-game toolchain and source overlays
-        shell: bash
-        run: |
-          set -euo pipefail
-          make -f Makefile.switch-game switch-toolchain-check
-          mkdir -p build/switch-ci/overlays
-          python3 tools/switch/source_overlay.py pc_main src/pc/pc_main.c build/switch-ci/overlays/pc_main.c
-          python3 tools/switch/source_overlay.py platform src/pc/platform.c build/switch-ci/overlays/platform.c
-          python3 tools/switch/source_overlay.py controller_bind src/pc/controller/controller_bind_mapping.c build/switch-ci/overlays/controller_bind_mapping.c
-          python3 tools/switch/source_overlay.py djui_controls src/pc/djui/djui_panel_controls.c build/switch-ci/overlays/djui_panel_controls.c
-          python3 tools/switch/source_overlay.py loading src/pc/loading.c build/switch-ci/overlays/loading.c
-          python3 tools/switch/source_overlay.py network src/pc/network/network.c build/switch-ci/overlays/network.c
-          python3 tools/switch/source_overlay.py djui_host src/pc/djui/djui_panel_host.c build/switch-ci/overlays/djui_panel_host.c
-          python3 tools/switch/ci_source_check.py
-
-      - name: Compile Switch overlays and critical networking paths
-        shell: bash
-        run: |
-          set -euo pipefail
-          make -f Makefile.switch-game -j2 \
-            build/us_switch/src/pc/pc_main.o \
-            build/us_switch/src/pc/platform.o \
-            build/us_switch/src/pc/loading.o \
-            build/us_switch/src/pc/controller/controller_bind_mapping.o \
-            build/us_switch/src/pc/djui/djui_panel_controls.o \
-            build/us_switch/src/pc/network/network.o \
-            build/us_switch/src/pc/network/socket/socket.o \
-            build/us_switch/src/pc/network/socket/socket_ldn.o \
-            build/us_switch/src/pc/network/socket/socket_ldn_util.o \
-            build/us_switch/src/pc/network/socket/socket_ldn_glue.o \
-            build/us_switch/src/pc/djui/djui_panel_host.o \
-            build/us_switch/src/pc/djui/djui_panel_host_message.o \
-            build/us_switch/src/pc/djui/djui_panel_ldn_browser.o \
-            build/us_switch/src/pc/djui/djui_panel_join.o \
-            build/us_switch/src/pc/platform/switch/switch_crash_log.o \
-            build/us_switch/src/pc/platform/switch/switch_packet_safety.o
-          for obj in \
-            build/us_switch/src/pc/pc_main.o \
-            build/us_switch/src/pc/platform.o \
-            build/us_switch/src/pc/loading.o \
-            build/us_switch/src/pc/controller/controller_bind_mapping.o \
-            build/us_switch/src/pc/djui/djui_panel_controls.o \
-            build/us_switch/src/pc/network/network.o \
-            build/us_switch/src/pc/network/socket/socket.o \
-            build/us_switch/src/pc/network/socket/socket_ldn.o \
-            build/us_switch/src/pc/network/socket/socket_ldn_util.o \
-            build/us_switch/src/pc/network/socket/socket_ldn_glue.o \
-            build/us_switch/src/pc/djui/djui_panel_host.o \
-            build/us_switch/src/pc/djui/djui_panel_host_message.o \
-            build/us_switch/src/pc/djui/djui_panel_ldn_browser.o \
-            build/us_switch/src/pc/djui/djui_panel_join.o \
-            build/us_switch/src/pc/platform/switch/switch_crash_log.o \
-            build/us_switch/src/pc/platform/switch/switch_packet_safety.o; do
-            test -s "$obj"
-            aarch64-none-elf-readelf -h "$obj" >/dev/null
-          done
-          aarch64-none-elf-nm build/us_switch/src/pc/platform/switch/switch_packet_safety.o | \
-            grep -E '__wrap_(network_receive|network_send|network_send_to|packet_compress|packet_decompress)'
+        run: scripts/ci/switch-portability.sh
 
       - name: Validate probe outputs
         shell: bash
@@ -161,6 +73,7 @@ jobs:
           done
 
       - name: Upload portability diagnostics
+        if: ${{ !env.ACT }}
         uses: actions/upload-artifact@v7
         with:
           name: switch-portability-${{ github.sha }}
@@ -277,7 +190,7 @@ jobs:
         run: rm -f baserom.us.z64
 
       - name: Upload full-build diagnostics
-        if: steps.baserom.outputs.available == 'true'
+        if: ${{ steps.baserom.outputs.available == 'true' && !env.ACT }}
         uses: actions/upload-artifact@v7
         with:
           name: sm64coopdx-switch-build-diagnostics-${{ github.sha }}

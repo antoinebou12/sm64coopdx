@@ -19,7 +19,7 @@ extern void djui_panel_ldn_browser_create(struct DjuiBase* caller);
 #endif
 
 void djui_panel_join_create(struct DjuiBase* caller) {
-#ifdef __SWITCH__
+#if defined(__SWITCH__)
     // Keep every Switch transport available from one screen: local LDN,
     // CoopNet internet lobbies (when compiled in), and direct IP.
     struct DjuiThreePanel* panel = djui_panel_menu_create(DLANG(JOIN, JOIN_TITLE), false);

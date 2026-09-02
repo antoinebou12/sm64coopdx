@@ -1,0 +1,8 @@
+# Local GitHub Actions runner defaults for console CI workflows.
+# Usage:
+#   act -W .github/workflows/build-new3ds.yml -j build-new3ds-shell
+#   act -W .github/workflows/build-switch-game.yml -j portability
+-P ubuntu-latest=catthehacker/ubuntu:act-22.04
+--container-architecture linux/amd64
+--bind
+--artifact-server-path .artifacts

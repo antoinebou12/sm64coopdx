@@ -16,6 +16,11 @@
 #ifdef __SWITCH__
 #include "pc/platform/switch/switch_coopnet_log.h"
 #endif
+#if defined(__3DS__) && defined(COOPNET)
+#include "pc/platform/new3ds/new3ds_coopnet_log.h"
+#define switch_coopnet_log_printf new3ds_coopnet_log_printf
+#define switch_coopnet_log_flush new3ds_coopnet_log_flush
+#endif
 
 #ifdef COOPNET
 
@@ -71,7 +76,7 @@ static void djui_lobby_on_hover_end(UNUSED struct DjuiBase* base) {
 
 void djui_panel_join_lobby(struct DjuiBase* caller) {
     gCoopNetDesiredLobby = (uint64_t)caller->tag;
-#ifdef __SWITCH__
+#if defined(__SWITCH__) || (defined(__3DS__) && defined(COOPNET))
     switch_coopnet_log_printf("lobby ui select lobby_id=%" PRIu64, gCoopNetDesiredLobby);
     switch_coopnet_log_flush(true);
 #endif
@@ -97,7 +102,7 @@ void djui_panel_join_query(uint64_t aLobbyId, UNUSED uint64_t aOwnerId, uint16_t
     char version[MAX_VERSION_LENGTH] = { 0 };
     snprintf(version, MAX_VERSION_LENGTH, "%s", get_version());
     bool disabled = strcmp(version, aVersion) != 0;
-#ifdef __SWITCH__
+#if defined(__SWITCH__) || (defined(__3DS__) && defined(COOPNET))
     switch_coopnet_log_printf(
         "lobby ui entry lobby_id=%" PRIu64 " local_version=%s remote_version=%s disabled=%d",
         aLobbyId,

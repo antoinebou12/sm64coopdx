@@ -723,8 +723,8 @@ void update_game(void) {
         CloseHandle(pi.hThread);
     }
     exit(0);
-#elif defined(__SWITCH__)
-    // Horizon has no process to exec into and ships no coopdx_updater
+#elif defined(__SWITCH__) || defined(__3DS__)
+    // Console targets have no process to exec into and ship no coopdx_updater
     // binary; can_update_game() never returns true here, so this is
     // unreachable in practice, but the symbol still needs a body.
     (void)updateExecFilePath;

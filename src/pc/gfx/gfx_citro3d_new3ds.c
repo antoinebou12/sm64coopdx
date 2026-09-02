@@ -12,10 +12,19 @@
 #ifndef _LANGUAGE_C
 #define _LANGUAGE_C
 #endif
-#include <PR/gbi.h>
+/*
+ * Only the G_TX wrap/clamp/mirror bits from gbi.h are needed here. Avoid
+ * <PR/gbi.h> because it pulls in ultratypes.h, whose s32/u32 typedefs clash
+ * with libctru on devkitARM.
+ */
+#define NEW3DS_G_TX_WRAP 0
+#define NEW3DS_G_TX_MIRROR 0x1
+#define NEW3DS_G_TX_CLAMP 0x2
 
 #include "gfx_citro3d_new3ds.h"
 #include "gfx_cc.h"
+#include "pc/configfile.h"
+#include "pc/platform/new3ds/new3ds_log.h"
 
 /*
  * Citro3D backend for the New Nintendo 3DS port.
@@ -31,11 +40,25 @@
  * per combiner instead of silently pretending to support them.
  */
 
+static inline void new3ds_texenv_src(C3D_TexEnv *env, C3D_TexEnvMode mode, GPU_TEVSRC s1) {
+    C3D_TexEnvSrc(env, mode, s1, GPU_PRIMARY_COLOR, GPU_PRIMARY_COLOR);
+}
+
+static inline void new3ds_texenv_op_rgb(C3D_TexEnv *env, GPU_TEVOP_RGB o1) {
+    C3D_TexEnvOpRgb(env, o1, GPU_TEVOP_RGB_SRC_COLOR, GPU_TEVOP_RGB_SRC_COLOR);
+}
+
+static inline void new3ds_texenv_op_alpha(C3D_TexEnv *env, GPU_TEVOP_A o1) {
+    C3D_TexEnvOpAlpha(env, o1, GPU_TEVOP_A_SRC_ALPHA, GPU_TEVOP_A_SRC_ALPHA);
+}
+
 #define NEW3DS_SHADER_POOL_SIZE CC_MAX_SHADERS
-#define NEW3DS_TEXTURE_POOL_SIZE 2048
+#define NEW3DS_TEXTURE_POOL_SIZE 768
 #define NEW3DS_GPU_VERTEX_FLOATS 12
 #define NEW3DS_VBO_BYTES (2 * 1024 * 1024)
 #define NEW3DS_MAX_INPUTS 8
+#define NEW3DS_GFX_STATS_FRAMES 60
+#define NEW3DS_PERF_LOG_INTERVAL_MS 5000
 
 extern const u8 new3ds_shader_shbin[];
 extern const u32 new3ds_shader_shbin_size;
@@ -108,14 +131,28 @@ static struct ShaderProgram *sCurrentProgram = NULL;
 static New3dsTexture sTextures[NEW3DS_TEXTURE_POOL_SIZE];
 static uint32_t sTextureCount = 0;
 static uint32_t sBoundTexture[2] = { UINT32_MAX, UINT32_MAX };
+static uint32_t sBoundTextureApplied[2] = { UINT32_MAX, UINT32_MAX };
 static uint32_t sCurrentTexture = UINT32_MAX;
 
 static bool sDepthTest = false;
 static bool sDepthWrite = true;
 static bool sDepthDecal = false;
 static bool sUseAlpha = false;
+static bool sDepthTestApplied = false;
+static bool sDepthWriteApplied = true;
+static bool sDepthDecalApplied = false;
+static bool sUseAlphaApplied = false;
 static uint32_t sDegradedDrawCount = 0;
 static uint32_t sDroppedDrawCount = 0;
+
+static uint32_t sFrameTriangles = 0;
+static uint32_t sFrameVertices = 0;
+static uint64_t sFrameStartMs = 0;
+static float sFrameMsHistory[NEW3DS_GFX_STATS_FRAMES];
+static uint32_t sFrameHistoryIndex = 0;
+static uint32_t sFrameHistoryCount = 0;
+static uint64_t sLastPerfLogMs = 0;
+static New3dsGfxStats sGfxStats;
 
 static const uint8_t sTileOrder[16] = {
     0, 1, 4, 5,
@@ -155,11 +192,22 @@ static uint32_t new3ds_next_pow2(uint32_t value) {
 }
 
 static void new3ds_apply_depth(void) {
+    if (sDepthTest == sDepthTestApplied &&
+        sDepthWrite == sDepthWriteApplied &&
+        sDepthDecal == sDepthDecalApplied) {
+        return;
+    }
     C3D_DepthTest(sDepthTest, GPU_LEQUAL, sDepthWrite ? GPU_WRITE_ALL : GPU_WRITE_COLOR);
     C3D_DepthMap(true, -1.0f, sDepthDecal ? -0.001f : 0.0f);
+    sDepthTestApplied = sDepthTest;
+    sDepthWriteApplied = sDepthWrite;
+    sDepthDecalApplied = sDepthDecal;
 }
 
 static void new3ds_apply_blend(void) {
+    if (sUseAlpha == sUseAlphaApplied) {
+        return;
+    }
     if (sUseAlpha) {
         C3D_AlphaBlend(
             GPU_BLEND_ADD, GPU_BLEND_ADD,
@@ -171,6 +219,7 @@ static void new3ds_apply_blend(void) {
             GPU_ONE, GPU_ZERO,
             GPU_ONE, GPU_ZERO);
     }
+    sUseAlphaApplied = sUseAlpha;
 }
 
 static void new3ds_unload_shader(struct ShaderProgram *old_program) {
@@ -277,6 +326,11 @@ static void new3ds_shader_get_info(struct ShaderProgram *program, uint8_t *num_i
 static uint32_t new3ds_new_texture(void) {
     if (sTextureCount >= NEW3DS_TEXTURE_POOL_SIZE) {
         sDroppedDrawCount++;
+        NEW3DS_LOG_WARN_CAT(
+            NEW3DS_LOG_CAT_GFX,
+            "gfx",
+            "texture pool exhausted (%u)",
+            NEW3DS_TEXTURE_POOL_SIZE);
         return 0;
     }
 
@@ -284,8 +338,8 @@ static uint32_t new3ds_new_texture(void) {
     memset(texture, 0, sizeof(*texture));
     texture->scale_s = 1.0f;
     texture->scale_t = 1.0f;
-    texture->cms = G_TX_WRAP;
-    texture->cmt = G_TX_WRAP;
+    texture->cms = NEW3DS_G_TX_WRAP;
+    texture->cmt = NEW3DS_G_TX_WRAP;
     return sTextureCount++;
 }
 
@@ -293,8 +347,12 @@ static void new3ds_select_texture(int tile, uint32_t texture_id) {
     if (tile < 0 || tile > 1 || texture_id >= sTextureCount) return;
     sBoundTexture[tile] = texture_id;
     sCurrentTexture = texture_id;
+    if (sBoundTextureApplied[tile] == texture_id) {
+        return;
+    }
     if (sTextures[texture_id].initialized) {
         C3D_TexBind(tile, &sTextures[texture_id].texture);
+        sBoundTextureApplied[tile] = texture_id;
     }
 }
 
@@ -328,8 +386,8 @@ static void new3ds_swizzle_rgba8(
 }
 
 static GPU_TEXTURE_WRAP_PARAM new3ds_wrap_mode(uint32_t value) {
-    if (value & G_TX_CLAMP) return GPU_CLAMP_TO_EDGE;
-    return (value & G_TX_MIRROR) ? GPU_MIRRORED_REPEAT : GPU_REPEAT;
+    if (value & NEW3DS_G_TX_CLAMP) return GPU_CLAMP_TO_EDGE;
+    return (value & NEW3DS_G_TX_MIRROR) ? GPU_MIRRORED_REPEAT : GPU_REPEAT;
 }
 
 static void new3ds_apply_texture_parameters(uint32_t texture_id) {
@@ -397,6 +455,7 @@ static void new3ds_upload_texture(const uint8_t *rgba32, int width, int height) 
     for (int tile = 0; tile < 2; ++tile) {
         if (sBoundTexture[tile] == sCurrentTexture) {
             C3D_TexBind(tile, &texture->texture);
+            sBoundTextureApplied[tile] = sCurrentTexture;
         }
     }
 }
@@ -637,14 +696,14 @@ static void new3ds_set_rgb_formula(
 
     if (single || multiply || mix) {
         C3D_TexEnvFunc(stage_a, C3D_RGB, GPU_REPLACE);
-        C3D_TexEnvSrc(stage_a, C3D_RGB, cycle == 0 ? GPU_PREVIOUS_BUFFER : GPU_PREVIOUS);
-        C3D_TexEnvOpRgb(stage_a, GPU_TEVOP_RGB_SRC_COLOR);
+        new3ds_texenv_src(stage_a, C3D_RGB, cycle == 0 ? GPU_PREVIOUS_BUFFER : GPU_PREVIOUS);
+        new3ds_texenv_op_rgb(stage_a, GPU_TEVOP_RGB_SRC_COLOR);
 
         if (single) {
             New3dsSourceSpec d = new3ds_resolve_source(program, draw, cmd[3], cycle, false, constant_b);
             C3D_TexEnvFunc(stage_b, C3D_RGB, GPU_REPLACE);
-            C3D_TexEnvSrc(stage_b, C3D_RGB, d.src);
-            C3D_TexEnvOpRgb(stage_b, d.rgb_op);
+            new3ds_texenv_src(stage_b, C3D_RGB, d.src);
+            new3ds_texenv_op_rgb(stage_b, d.rgb_op);
         } else if (multiply) {
             New3dsSourceSpec a = new3ds_resolve_source(program, draw, cmd[0], cycle, false, constant_b);
             New3dsSourceSpec c = new3ds_resolve_source(program, draw, cmd[2], cycle, false, constant_b);
@@ -691,11 +750,11 @@ static void new3ds_set_alpha_formula(
     int cycle) {
     if (!program->use_alpha) {
         C3D_TexEnvFunc(stage_a, C3D_Alpha, GPU_REPLACE);
-        C3D_TexEnvSrc(stage_a, C3D_Alpha, cycle == 0 ? GPU_PREVIOUS_BUFFER : GPU_PREVIOUS);
-        C3D_TexEnvOpAlpha(stage_a, GPU_TEVOP_A_SRC_ALPHA);
+        new3ds_texenv_src(stage_a, C3D_Alpha, cycle == 0 ? GPU_PREVIOUS_BUFFER : GPU_PREVIOUS);
+        new3ds_texenv_op_alpha(stage_a, GPU_TEVOP_A_SRC_ALPHA);
         C3D_TexEnvFunc(stage_b, C3D_Alpha, GPU_REPLACE);
-        C3D_TexEnvSrc(stage_b, C3D_Alpha, GPU_PREVIOUS_BUFFER);
-        C3D_TexEnvOpAlpha(stage_b, GPU_TEVOP_A_ONE_MINUS_SRC_ALPHA);
+        new3ds_texenv_src(stage_b, C3D_Alpha, GPU_PREVIOUS_BUFFER);
+        new3ds_texenv_op_alpha(stage_b, GPU_TEVOP_A_ONE_MINUS_SRC_ALPHA);
         return;
     }
 
@@ -705,14 +764,14 @@ static void new3ds_set_alpha_formula(
 
     if (single || multiply || mix) {
         C3D_TexEnvFunc(stage_a, C3D_Alpha, GPU_REPLACE);
-        C3D_TexEnvSrc(stage_a, C3D_Alpha, cycle == 0 ? GPU_PREVIOUS_BUFFER : GPU_PREVIOUS);
-        C3D_TexEnvOpAlpha(stage_a, GPU_TEVOP_A_SRC_ALPHA);
+        new3ds_texenv_src(stage_a, C3D_Alpha, cycle == 0 ? GPU_PREVIOUS_BUFFER : GPU_PREVIOUS);
+        new3ds_texenv_op_alpha(stage_a, GPU_TEVOP_A_SRC_ALPHA);
 
         if (single) {
             New3dsSourceSpec d = new3ds_resolve_source(program, draw, cmd[3], cycle, true, constant_b);
             C3D_TexEnvFunc(stage_b, C3D_Alpha, GPU_REPLACE);
-            C3D_TexEnvSrc(stage_b, C3D_Alpha, d.src);
-            C3D_TexEnvOpAlpha(stage_b, d.alpha_op);
+            new3ds_texenv_src(stage_b, C3D_Alpha, d.src);
+            new3ds_texenv_op_alpha(stage_b, d.alpha_op);
         } else if (multiply) {
             New3dsSourceSpec a = new3ds_resolve_source(program, draw, cmd[0], cycle, true, constant_b);
             New3dsSourceSpec c = new3ds_resolve_source(program, draw, cmd[2], cycle, true, constant_b);
@@ -773,7 +832,7 @@ static void new3ds_configure_program(struct ShaderProgram *program, New3dsDrawIn
         C3D_TexEnv *env = C3D_GetTexEnv(stage);
         C3D_TexEnvInit(env);
         C3D_TexEnvFunc(env, C3D_Both, GPU_REPLACE);
-        C3D_TexEnvSrc(env, C3D_Both, GPU_PREVIOUS);
+        new3ds_texenv_src(env, C3D_Both, GPU_PREVIOUS);
     }
 
     C3D_AlphaTest(true, GPU_GREATER, program->texture_edge && program->use_alpha ? 77 : 0);
@@ -850,7 +909,7 @@ static void new3ds_render_fog(
     for (int stage = 0; stage < 6; ++stage) C3D_TexEnvInit(C3D_GetTexEnv(stage));
     C3D_TexEnv *env = C3D_GetTexEnv(0);
     C3D_TexEnvFunc(env, C3D_Both, GPU_REPLACE);
-    C3D_TexEnvSrc(env, C3D_Both, GPU_PRIMARY_COLOR);
+    new3ds_texenv_src(env, C3D_Both, GPU_PRIMARY_COLOR);
     C3D_AlphaTest(true, GPU_GREATER, 0);
     C3D_AlphaBlend(
         GPU_BLEND_ADD, GPU_BLEND_ADD,
@@ -892,8 +951,10 @@ static void new3ds_draw_triangles(float buf_vbo[], size_t buf_vbo_len, size_t tr
     if (draw.degraded) {
         sDegradedDrawCount++;
         if (!sCurrentProgram->warned_degraded) {
-            printf(
-                "[new3ds] degraded combiner %016llx inputs=%u 2cycle=%u noise=%u lightmap=%u post=%u\n",
+            NEW3DS_LOG_WARN_CAT(
+                NEW3DS_LOG_CAT_GFX,
+                "gfx",
+                "degraded combiner %016llx inputs=%u 2cycle=%u noise=%u lightmap=%u post=%u",
                 (unsigned long long)sCurrentProgram->hash,
                 (unsigned int)sCurrentProgram->num_inputs,
                 sCurrentProgram->use_2cycle ? 1u : 0u,
@@ -913,14 +974,70 @@ static void new3ds_draw_triangles(float buf_vbo[], size_t buf_vbo_len, size_t tr
     }
 
     C3D_DrawArrays(GPU_TRIANGLES, (int)start, (int)vertices);
+    sFrameTriangles += (uint32_t)triangle_count;
+    sFrameVertices += (uint32_t)vertices;
     new3ds_render_fog(sCurrentProgram, buf_vbo, vertices);
+}
+
+static void new3ds_update_gfx_stats(float frame_ms) {
+    const size_t capacity = NEW3DS_VBO_BYTES / (NEW3DS_GPU_VERTEX_FLOATS * sizeof(float));
+    const uint32_t vbo_fill = capacity > 0
+        ? (uint32_t)((sGpuVertexIndex * 100ULL) / capacity)
+        : 0;
+
+    sFrameMsHistory[sFrameHistoryIndex] = frame_ms;
+    sFrameHistoryIndex = (sFrameHistoryIndex + 1) % NEW3DS_GFX_STATS_FRAMES;
+    if (sFrameHistoryCount < NEW3DS_GFX_STATS_FRAMES) {
+        sFrameHistoryCount++;
+    }
+
+    float avg_ms = 0.0f;
+    for (uint32_t i = 0; i < sFrameHistoryCount; ++i) {
+        avg_ms += sFrameMsHistory[i];
+    }
+    if (sFrameHistoryCount > 0) {
+        avg_ms /= (float)sFrameHistoryCount;
+    }
+
+    sGfxStats.frame_ms = frame_ms;
+    sGfxStats.avg_frame_ms = avg_ms;
+    sGfxStats.triangle_count = sFrameTriangles;
+    sGfxStats.vertex_count = sFrameVertices;
+    sGfxStats.texture_count = sTextureCount;
+    sGfxStats.vbo_fill_percent = vbo_fill;
+    sGfxStats.degraded_draws = sDegradedDrawCount;
+    sGfxStats.dropped_draws = sDroppedDrawCount;
+
+    const uint64_t now_ms = osGetTime();
+    if ((now_ms - sLastPerfLogMs) >= NEW3DS_PERF_LOG_INTERVAL_MS &&
+        (configNew3dsLogPerf || configShowFPS)) {
+        NEW3DS_LOG_INFO_CAT(
+            NEW3DS_LOG_CAT_PERF,
+            "gfx",
+            "frame_ms=%.2f avg_ms=%.2f tris=%u verts=%u tex=%u vbo=%u%% degraded=%u dropped=%u",
+            sGfxStats.frame_ms,
+            sGfxStats.avg_frame_ms,
+            sGfxStats.triangle_count,
+            sGfxStats.vertex_count,
+            sGfxStats.texture_count,
+            sGfxStats.vbo_fill_percent,
+            sGfxStats.degraded_draws,
+            sGfxStats.dropped_draws);
+        sLastPerfLogMs = now_ms;
+    }
+}
+
+void new3ds_gfx_get_stats(New3dsGfxStats *out) {
+    if (out != NULL) {
+        *out = sGfxStats;
+    }
 }
 
 static void new3ds_init(void) {
     if (sInitialized) return;
 
     if (!C3D_Init(C3D_DEFAULT_CMDBUF_SIZE)) {
-        printf("[new3ds] C3D_Init failed\n");
+        NEW3DS_LOG_ERROR_CAT(NEW3DS_LOG_CAT_GFX, "gfx", "C3D_Init failed");
         svcBreak(USERBREAK_PANIC);
         return;
     }
@@ -935,7 +1052,7 @@ static void new3ds_init(void) {
 
     sTopTarget = C3D_RenderTargetCreate(240, 400, GPU_RB_RGBA8, GPU_RB_DEPTH24_STENCIL8);
     if (sTopTarget == NULL) {
-        printf("[new3ds] top render target allocation failed\n");
+        NEW3DS_LOG_ERROR_CAT(NEW3DS_LOG_CAT_GFX, "gfx", "top render target allocation failed");
         svcBreak(USERBREAK_PANIC);
         return;
     }
@@ -943,7 +1060,7 @@ static void new3ds_init(void) {
 
     sVertexShaderDvlb = DVLB_ParseFile((u32 *)new3ds_shader_shbin, new3ds_shader_shbin_size);
     if (sVertexShaderDvlb == NULL) {
-        printf("[new3ds] vertex shader parse failed\n");
+        NEW3DS_LOG_ERROR_CAT(NEW3DS_LOG_CAT_GFX, "gfx", "vertex shader parse failed");
         svcBreak(USERBREAK_PANIC);
         return;
     }
@@ -961,7 +1078,7 @@ static void new3ds_init(void) {
 
     sGpuVbo = (float *)linearAlloc(NEW3DS_VBO_BYTES);
     if (sGpuVbo == NULL) {
-        printf("[new3ds] VBO allocation failed\n");
+        NEW3DS_LOG_ERROR_CAT(NEW3DS_LOG_CAT_GFX, "gfx", "VBO allocation failed");
         svcBreak(USERBREAK_PANIC);
         return;
     }
@@ -983,6 +1100,12 @@ static void new3ds_init(void) {
     C3D_AlphaTest(true, GPU_GREATER, 0);
 
     sInitialized = true;
+    NEW3DS_LOG_INFO_CAT(
+        NEW3DS_LOG_CAT_GFX,
+        "gfx",
+        "initialized tex_pool=%u vbo_bytes=%u",
+        NEW3DS_TEXTURE_POOL_SIZE,
+        (unsigned)NEW3DS_VBO_BYTES);
 }
 
 static void new3ds_on_resize(void) {
@@ -991,6 +1114,9 @@ static void new3ds_on_resize(void) {
 static void new3ds_start_frame(void) {
     if (!sInitialized || sFrameOpen) return;
     sGpuVertexIndex = 0;
+    sFrameTriangles = 0;
+    sFrameVertices = 0;
+    sFrameStartMs = osGetTime();
     C3D_FrameBegin(C3D_FRAME_SYNCDRAW);
     C3D_RenderTargetClear(sTopTarget, C3D_CLEAR_ALL, 0x000000FF, 0xFFFFFFFF);
     C3D_FrameDrawOn(sTopTarget);
@@ -1002,6 +1128,8 @@ static void new3ds_end_frame(void) {
 
 static void new3ds_finish_render(void) {
     if (!sFrameOpen) return;
+    const float frame_ms = (float)(osGetTime() - sFrameStartMs);
+    new3ds_update_gfx_stats(frame_ms);
     C3D_FrameEnd(0);
     sFrameOpen = false;
 }
@@ -1027,6 +1155,8 @@ static void new3ds_shutdown(void) {
     sTextureCount = 0;
     sBoundTexture[0] = UINT32_MAX;
     sBoundTexture[1] = UINT32_MAX;
+    sBoundTextureApplied[0] = UINT32_MAX;
+    sBoundTextureApplied[1] = UINT32_MAX;
     sCurrentTexture = UINT32_MAX;
 
     if (sGpuVbo != NULL) {
@@ -1044,8 +1174,10 @@ static void new3ds_shutdown(void) {
         sVertexShaderDvlb = NULL;
     }
 
-    printf(
-        "[new3ds] renderer shutdown: degraded_draws=%lu dropped_draws=%lu\n",
+    NEW3DS_LOG_INFO_CAT(
+        NEW3DS_LOG_CAT_GFX,
+        "gfx",
+        "shutdown degraded_draws=%lu dropped_draws=%lu",
         (unsigned long)sDegradedDrawCount,
         (unsigned long)sDroppedDrawCount);
 

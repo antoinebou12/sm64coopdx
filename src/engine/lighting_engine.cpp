@@ -1,13 +1,13 @@
 #include "lighting_engine.h"
 extern "C" {
 #include "math_util.h"
-#include "pc/lua/smlua.h"
 }
 #undef clamp
 #undef min
 #undef max
 #include <vector>
 #include <algorithm>
+#include <cstdio>
 #ifdef __SSE__
 #include <xmmintrin.h>
 #endif
@@ -271,7 +271,7 @@ C_FIELD void le_calculate_lighting_dir(Vec3f pos, VEC_OUT Vec3f out) {
 
 C_FIELD s16 le_add_light(f32 x, f32 y, f32 z, u8 r, u8 g, u8 b, f32 radius, f32 intensity) {
     if (sLightPool.size() >= LE_MAX_LIGHTS) {
-        LOG_LUA_LINE("LE light count cannot exceed %d lights!", LE_MAX_LIGHTS);
+        fprintf(stderr, "LE light count cannot exceed %d lights!\n", LE_MAX_LIGHTS);
         return -1;
     }
 

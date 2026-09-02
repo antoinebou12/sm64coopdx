@@ -128,6 +128,12 @@ extern bool         configLuaProfiler;
 extern bool         configDebugPrint;
 extern bool         configDebugInfo;
 extern bool         configDebugError;
+#ifdef __3DS__
+extern bool         configNew3dsLogNet;
+extern bool         configNew3dsLogGfx;
+extern bool         configNew3dsLogPerf;
+extern bool         configNew3dsLogCoopnet;
+#endif
 #ifdef DEVELOPMENT
 extern bool         configCtxProfiler;
 #endif

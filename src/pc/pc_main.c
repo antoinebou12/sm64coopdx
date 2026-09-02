@@ -70,7 +70,9 @@
 #include <windows.h>
 #endif
 
+#if !defined(__3DS__)
 #include <SDL2/SDL.h>
+#endif
 
 extern Vp gViewportFullscreen;
 
@@ -205,12 +207,16 @@ static s32 get_num_frames_to_draw(f64 t, u32 frameLimit) {
 static u32 get_display_refresh_rate(void) {
     static u32 refreshRate = 0;
     if (!refreshRate) {
+#if defined(__3DS__)
+        refreshRate = 60;
+#else
         SDL_DisplayMode mode;
         if (SDL_GetCurrentDisplayMode(0, &mode) == 0) {
             if (mode.refresh_rate > 0) { refreshRate = (u32) mode.refresh_rate; }
         } else {
             refreshRate = 60;
         }
+#endif
     }
     return refreshRate;
 }
@@ -218,7 +224,14 @@ static u32 get_display_refresh_rate(void) {
 static u32 get_target_refresh_rate(void) {
     if (configFramerateMode == RRM_MANUAL) { return configFrameLimit; }
     if (configFramerateMode == RRM_UNLIMITED) { return 3000; } // Has no effect
+#if defined(__3DS__)
+    {
+        u32 rate = get_display_refresh_rate();
+        return rate > 30 ? 30 : rate;
+    }
+#else
     return get_display_refresh_rate();
+#endif
 }
 
 static void select_graphics_backend(void) {

@@ -11,7 +11,7 @@
 
 #define PRIVATE_PASSWORD_CAPACITY 64
 
-#ifdef __SWITCH__
+#if defined(__SWITCH__) || defined(__3DS__)
 #define PRIVATE_KEY_COUNT 26
 
 static char sPrivatePassword[PRIVATE_PASSWORD_CAPACITY] = "";
@@ -101,7 +101,7 @@ static struct DjuiInputbox* sInputboxPassword = NULL;
 #endif
 
 static void djui_panel_join_private_lobbies(struct DjuiBase* caller) {
-#ifdef __SWITCH__
+#if defined(__SWITCH__) || defined(__3DS__)
     djui_panel_join_lobbies_create(caller, sPrivatePassword);
 #else
     djui_panel_join_lobbies_create(caller, sInputboxPassword->buffer);
@@ -122,7 +122,7 @@ void djui_panel_join_private_create(struct DjuiBase* caller) {
         djui_base_set_size(&text1->base, 1.0f, directTextHeight);
         djui_base_set_color(&text1->base, 220, 220, 220, 255);
 
-#ifdef __SWITCH__
+#if defined(__SWITCH__) || defined(__3DS__)
         struct DjuiText* passwordText = djui_text_create(body, "(empty)");
         djui_base_set_size_type(&passwordText->base, DJUI_SVT_RELATIVE, DJUI_SVT_ABSOLUTE);
         djui_base_set_size(&passwordText->base, 1.0f, 42);
@@ -170,14 +170,14 @@ void djui_panel_join_private_create(struct DjuiBase* caller) {
             struct DjuiButton* button2 = djui_button_create(&rect2->base, DLANG(LOBBIES, SEARCH), DJUI_BUTTON_STYLE_NORMAL, djui_panel_join_private_lobbies);
             djui_base_set_size(&button2->base, 0.485f, 64);
             djui_base_set_alignment(&button2->base, DJUI_HALIGN_RIGHT, DJUI_VALIGN_TOP);
-#ifndef __SWITCH__
+#if !defined(__SWITCH__) && !defined(__3DS__)
             defaultBase = &button2->base;
 #endif
         }
     }
 
     struct DjuiPanel* added = djui_panel_add(caller, panel, defaultBase);
-#ifdef __SWITCH__
+#if defined(__SWITCH__) || defined(__3DS__)
     if (added) {
         added->on_panel_destroy = djui_panel_join_private_on_destroy;
     }

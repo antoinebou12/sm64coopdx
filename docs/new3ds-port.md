@@ -34,14 +34,28 @@ Implemented code currently includes:
 
 **Do not call the port playable yet.**
 
-The source and build integration are committed, but GitHub currently reports no Actions workflow runs for this repository/branch, and the active development environment does not have a local devkitARM toolchain available. Therefore:
+The platform shell, integration compile smoke, and Citro3D renderer now compile under devkitARM. The full `.3dsx` link is in progress locally and in CI; gameplay on hardware is still unverified.
 
-- the platform shell/build graph is implemented but not currently CI-verified in this session;
-- the Citro3D renderer has not yet been compiler-verified by devkitARM;
-- the full CoopDX New 3DS ELF has not yet completed a verified link;
-- no current claim is made that gameplay renders correctly on hardware.
+### Docker and local CI
 
-The next hard gate is **a green devkitARM compile/link followed by a first hardware game frame**.
+Switch and New 3DS builds are isolated on purpose. They write to different `build/` subtrees and use separate compose files, so both can run in parallel:
+
+```sh
+docker compose -f docker-compose.switch.yml run --rm switch-portability
+docker compose -f docker-compose.new3ds.yml run --rm new3ds-shell
+docker compose -f docker-compose.new3ds.yml run --rm new3ds-integration
+```
+
+Full baserom-backed console artifacts require a private `SM64_BASEROM_US_URL` environment variable or repository secret, matching the Switch workflow.
+
+To exercise the GitHub workflows locally with [act](https://github.com/nektos/act):
+
+```sh
+act -W .github/workflows/build-new3ds.yml -j build-new3ds-shell
+act -W .github/workflows/build-switch-game.yml -j portability
+```
+
+The repository ships a root `.actrc` with container defaults for act.
 
 ## Build targets
 
@@ -67,8 +81,11 @@ build/new3ds-shell/sm64coopdx-new3ds.elf
 ### Full CoopDX target
 
 ```sh
+make -f Makefile.new3ds-game new3ds-integration-smoke -j2
 make -f Makefile.new3ds-game new3ds-3dsx -j2
 ```
+
+`new3ds-integration-smoke` compiles shared engine/DynOS/platform objects without requiring a baserom-backed link. Use it for fast CI and local portability checks.
 
 Expected outputs:
 
@@ -78,9 +95,92 @@ build/us_new3ds/sm64coopdx.smdh
 build/us_new3ds/sm64coopdx.3dsx
 ```
 
-The full-game target currently forces `NEW3DS_COOPNET=0`. CoopNet should not be enabled until the base engine, renderer, audio, SD paths, and local socket transport are stable.
+### Console distribution (Switch NRO + New 3DS 3DSX/CIA)
+
+ROM-free release folders and ZIPs are written under `dist/`:
+
+```sh
+make -f Makefile.console-dist console-dist -j2
+```
+
+This produces:
+
+```text
+dist/sm64coopdx-switch-1.5.1-switch/
+dist/sm64coopdx-new3ds-1.5.1-new3ds/3ds/sm64coopdx/sm64coopdx.{3dsx,cia}
+dist/sm64coopdx-console-1.5.1-console/   # combined NRO + 3DSX + CIA
+```
+
+`new3ds-cia` downloads `makerom` on first use into `build/new3ds-tools/bin/`.
+
+The full-game target defaults to `NEW3DS_COOPNET=0`. LAN direct hosting is the first multiplayer milestone; opt into CoopNet only after local socket transport is validated on hardware.
+
+```sh
+make -f Makefile.new3ds-game NEW3DS_COOPNET=1 new3ds-integration-smoke -j2
+make -f Makefile.new3ds-game NEW3DS_COOPNET=1 new3ds-3dsx -j2
+```
 
 The repository's existing legal asset requirements still apply. No Nintendo ROM or extracted proprietary assets are added to CI/release artifacts by this port.
+
+## Logging and diagnostics
+
+### Build-time log floor
+
+`Makefile.new3ds-game` accepts `NEW3DS_LOG_LEVEL` (`0`–`3`):
+
+| Level | Meaning |
+|-------|---------|
+| `0` | Off |
+| `1` | Errors |
+| `2` | Info (default) |
+| `3` | Verbose |
+
+### Runtime category flags (`sm64config.txt`)
+
+| Key | Default | Purpose |
+|-----|---------|---------|
+| `new3ds_log_net` | `false` (also follows `debug_info`) | Socket/DNS/host checkpoints |
+| `new3ds_log_gfx` | `false` | Citro3D init/degraded combiner messages |
+| `new3ds_log_perf` | `false` (also follows `show_fps`) | Rolling gfx stats every ~5 s |
+| `new3ds_log_coopnet` | `false` | CoopNet console ring-buffer mirror |
+
+Logs go to Citra stdout, `svcOutputDebugString`, and a 32-line in-memory ring buffer surfaced on the shell **MULTIPLAYER** and **DIAGNOSTICS** pages.
+
+### CoopNet SD logs
+
+When `NEW3DS_COOPNET=1`, CoopNet always appends to:
+
+```text
+sdmc:/3ds/sm64coopdx/logs/coopnet.log
+sdmc:/3ds/sm64coopdx/logs/coopnet_checkpoint.txt
+```
+
+## Performance defaults
+
+On `__3DS__` the game defaults to:
+
+- `configFrameLimit = 30`
+- `configFramerateMode = manual`
+- `configAmountOfPlayers = 4`
+
+The Citro3D backend exposes `new3ds_gfx_get_stats()` with per-frame triangle/vertex counts, texture pool use, VBO fill %, degraded/dropped draw totals, and a 60-frame rolling average frame time. Texture pool size is capped at **768** entries for RAM headroom.
+
+## LAN hosting
+
+The host panel shows `Clients join at <ip>:<port>` when SOC is ready. Hosting is blocked with an explicit message when `socInit` failed. Socket creation is guarded so networking code never calls `socket()` before SOC is available.
+
+PC clients should use **Direct Join** with the IPv4 shown on the 3DS host screen.
+
+## CoopNet (opt-in)
+
+Build with `NEW3DS_COOPNET=1` to link the ARM11 libjuice + CoopNet static libraries built by:
+
+```sh
+bash tools/new3ds/build-libjuice.sh
+bash tools/new3ds/build-coopnet.sh
+```
+
+CoopNet uses game name `sm64coop-android` for lobby/server compatibility (same as Switch). The 3DS build is **client-only** (`NO_SERVER` libjuice). CI exposes a manual `build-new3ds-coopnet` workflow for compile-only validation.
 
 ## UX direction
 

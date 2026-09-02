@@ -8,6 +8,9 @@ Website:       https://miniaud.io
 Documentation: https://miniaud.io/docs
 GitHub:        https://github.com/mackron/miniaudio
 */
+#if defined(__3DS__)
+#define MA_NO_RUNTIME_LINKING
+#endif
 #include "miniaudio.h"
 
 #ifndef miniaudio_c

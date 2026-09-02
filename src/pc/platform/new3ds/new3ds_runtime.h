@@ -32,6 +32,7 @@ bool new3ds_runtime_poll(New3dsRuntimeState *state);
 void new3ds_runtime_request_exit(New3dsRuntimeState *state);
 New3dsRuntimeState *new3ds_runtime_active(void);
 bool new3ds_runtime_network_available(void);
+bool new3ds_runtime_get_ipv4_string(char *buf, size_t len);
 uint64_t new3ds_runtime_time_ms(void);
 double new3ds_runtime_time_seconds(void);
 void new3ds_runtime_sleep_ms(uint32_t ms);

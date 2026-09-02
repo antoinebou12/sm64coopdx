@@ -457,10 +457,9 @@ static bool mod_fs_read_properties(mz_zip_archive *zip, json &properties, std::s
     mz_free(fileBuf);
 
     // parse json
-    try {
-        properties = json::parse(textBuf);
-    } catch (const json::parse_error& e) {
-        error = "Cannot read file \"" MOD_FS_PROPERTIES "\": " + std::string(e.what());
+    properties = json::parse(textBuf, nullptr, false);
+    if (properties.is_discarded()) {
+        error = "Cannot read file \"" MOD_FS_PROPERTIES "\": invalid JSON";
         return false;
     }
 

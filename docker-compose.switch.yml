@@ -1,0 +1,35 @@
+# Nintendo Switch / Horizon CI and local builds.
+#
+# Examples:
+#   docker compose -f docker-compose.switch.yml build
+#   docker compose -f docker-compose.switch.yml run --rm switch-portability
+#   docker compose -f docker-compose.switch.yml run --rm switch-full-nro
+#
+# Switch and New 3DS builds use separate compose files and output trees so they
+# can run in parallel without sharing build artifacts.
+
+services:
+  switch-portability:
+    build:
+      context: .
+      dockerfile: docker/switch/Dockerfile
+    image: sm64coopdx-switch:dev
+    working_dir: /work
+    volumes:
+      - .:/work
+    environment:
+      DEVKITPRO: /opt/devkitpro
+    command: scripts/ci/switch-portability.sh
+
+  switch-full-nro:
+    build:
+      context: .
+      dockerfile: docker/switch/Dockerfile
+    image: sm64coopdx-switch:dev
+    working_dir: /work
+    volumes:
+      - .:/work
+    environment:
+      DEVKITPRO: /opt/devkitpro
+      SM64_BASEROM_US_URL: ${SM64_BASEROM_US_URL:-}
+    command: scripts/ci/switch-full-nro.sh

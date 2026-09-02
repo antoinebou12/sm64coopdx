@@ -18,6 +18,10 @@
 #define closesocket(fd) close(fd)
 #define SOCKET_EWOULDBLOCK EWOULDBLOCK
 #define SOCKET_ECONNRESET ECONNRESET
+#if defined(__3DS__)
+#define RX_ADDR_SIZE_TYPE socklen_t
+#else
 #define RX_ADDR_SIZE_TYPE unsigned int
+#endif
 
 #endif

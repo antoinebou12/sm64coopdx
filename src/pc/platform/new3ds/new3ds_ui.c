@@ -1,7 +1,16 @@
 #include "new3ds_ui.h"
 
+#include "new3ds_log.h"
+#include "new3ds_runtime.h"
+
 #include <stdio.h>
 #include <string.h>
+
+#ifdef COOPNET
+#define NEW3DS_UI_COOPNET_ENABLED 1
+#else
+#define NEW3DS_UI_COOPNET_ENABLED 0
+#endif
 
 #define NEW3DS_TOP_WIDTH 400.0f
 #define NEW3DS_BOTTOM_WIDTH 320.0f
@@ -149,7 +158,6 @@ static void draw_page(New3dsUiState *state, u32 keys_held) {
     const u32 accent = C2D_Color32(239, 70, 73, 255);
     const u32 panel = C2D_Color32(22, 29, 44, 255);
     const u32 green = C2D_Color32(75, 205, 142, 255);
-    char line[128];
 
     draw_text(state->static_text_buf, new3ds_ui_page_title(state->active_page), 16.0f, 14.0f, 0.50f, white, false);
     C2D_DrawRectSolid(16.0f, 40.0f, 0.0f, 288.0f, 2.0f, accent);
@@ -164,11 +172,39 @@ static void draw_page(New3dsUiState *state, u32 keys_held) {
             draw_text(state->dynamic_text_buf, "This avoids a fake 'working port'.", 27.0f, 151.0f, 0.27f, muted, false);
             break;
         case 2:
-            draw_text(state->dynamic_text_buf, "3DS-first multiplayer UX", 27.0f, 68.0f, 0.36f, green, false);
-            draw_text(state->dynamic_text_buf, "Host / Join stays on bottom screen.", 27.0f, 94.0f, 0.29f, white, false);
-            draw_text(state->dynamic_text_buf, "Touch targets replace desktop dialogs.", 27.0f, 113.0f, 0.29f, white, false);
-            draw_text(state->dynamic_text_buf, "Network work follows game integration.", 27.0f, 132.0f, 0.29f, white, false);
-            draw_text(state->dynamic_text_buf, "Errors will be explicit, never silent.", 27.0f, 156.0f, 0.27f, muted, false);
+            {
+                const bool socReady = new3ds_runtime_network_available();
+                char ip[32];
+                char logLine[96];
+                (void)new3ds_runtime_get_ipv4_string(ip, sizeof(ip));
+                draw_text(
+                    state->dynamic_text_buf,
+                    socReady ? "SOC: READY" : "SOC: OFFLINE",
+                    27.0f,
+                    68.0f,
+                    0.34f,
+                    socReady ? green : accent,
+                    false);
+                snprintf(logLine, sizeof(logLine), "Local IP: %s", ip);
+                draw_text(state->dynamic_text_buf, logLine, 27.0f, 90.0f, 0.29f, white, false);
+                snprintf(logLine, sizeof(logLine), "Host port: %u", 7777u);
+                draw_text(state->dynamic_text_buf, logLine, 27.0f, 112.0f, 0.29f, white, false);
+#if NEW3DS_UI_COOPNET_ENABLED
+                draw_text(state->dynamic_text_buf, "CoopNet: build enabled", 27.0f, 134.0f, 0.29f, green, false);
+#else
+                draw_text(state->dynamic_text_buf, "CoopNet: LAN direct only", 27.0f, 134.0f, 0.29f, muted, false);
+#endif
+                {
+                    const uint32_t logCount = new3ds_log_line_count();
+                    const uint32_t start = logCount > 3 ? logCount - 3 : 0;
+                    float y = 156.0f;
+                    for (uint32_t i = start; i < logCount; ++i) {
+                        snprintf(logLine, sizeof(logLine), "%s", new3ds_log_line(i));
+                        draw_text(state->dynamic_text_buf, logLine, 27.0f, y, 0.22f, muted, false);
+                        y += 14.0f;
+                    }
+                }
+            }
             break;
         case 3:
             draw_text(state->dynamic_text_buf, "Handheld defaults", 27.0f, 68.0f, 0.36f, green, false);
@@ -178,12 +214,36 @@ static void draw_page(New3dsUiState *state, u32 keys_held) {
             draw_text(state->dynamic_text_buf, "Performance target: stable 30 FPS", 27.0f, 151.0f, 0.29f, white, false);
             break;
         case 4:
-            draw_text(state->dynamic_text_buf, state->is_new_3ds ? "Hardware: New 3DS detected" : "Hardware: unsupported model", 27.0f, 68.0f, 0.34f, state->is_new_3ds ? green : accent, false);
-            snprintf(line, sizeof(line), "Held keys: 0x%08lX", (unsigned long)keys_held);
-            draw_text(state->dynamic_text_buf, line, 27.0f, 96.0f, 0.29f, white, false);
-            draw_text(state->dynamic_text_buf, "Citro2D: initialized", 27.0f, 118.0f, 0.29f, white, false);
-            draw_text(state->dynamic_text_buf, "Touch + D-pad navigation: active", 27.0f, 140.0f, 0.29f, white, false);
-            draw_text(state->dynamic_text_buf, "START exits cleanly to Homebrew Menu.", 27.0f, 160.0f, 0.25f, muted, false);
+            {
+                char line[128];
+                char logSnapshot[256];
+                draw_text(
+                    state->dynamic_text_buf,
+                    state->is_new_3ds ? "Hardware: New 3DS detected" : "Hardware: unsupported model",
+                    27.0f,
+                    68.0f,
+                    0.34f,
+                    state->is_new_3ds ? green : accent,
+                    false);
+                snprintf(line, sizeof(line), "Held keys: 0x%08lX", (unsigned long)keys_held);
+                draw_text(state->dynamic_text_buf, line, 27.0f, 90.0f, 0.27f, white, false);
+                draw_text(
+                    state->dynamic_text_buf,
+                    new3ds_runtime_network_available() ? "Network: SOC ready" : "Network: SOC offline",
+                    27.0f,
+                    108.0f,
+                    0.27f,
+                    white,
+                    false);
+                draw_text(state->dynamic_text_buf, "Gfx stats: shell build (N/A)", 27.0f, 126.0f, 0.27f, muted, false);
+                logSnapshot[0] = '\0';
+                new3ds_log_snapshot(logSnapshot, sizeof(logSnapshot));
+                if (logSnapshot[0] != '\0') {
+                    draw_text(state->dynamic_text_buf, logSnapshot, 27.0f, 144.0f, 0.20f, muted, false);
+                } else {
+                    draw_text(state->dynamic_text_buf, "Log buffer empty", 27.0f, 144.0f, 0.24f, muted, false);
+                }
+            }
             break;
         default:
             break;

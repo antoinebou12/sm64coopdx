@@ -6,6 +6,20 @@
 #include "pc/mods/mods.h"
 #include "pc/cliopts.h"
 
+#if defined(__3DS__)
+#include <3ds.h>
+
+static f64 djui_lua_profiler_now(void) {
+    return (f64)osGetTime() / 1000000000.0;
+}
+#else
+#include <SDL2/SDL.h>
+
+static f64 djui_lua_profiler_now(void) {
+    return (f64)SDL_GetPerformanceCounter() / (f64)SDL_GetPerformanceFrequency();
+}
+#endif
+
 #define MAX_PROFILED_MODS 16
 #define REFRESH_RATE 30
 
@@ -35,9 +49,7 @@ void lua_profiler_start_counter(UNUSED struct Mod *mod) {
 
     for (s32 i = 0; i != MIN(MAX_PROFILED_MODS, gActiveMods.entryCount); ++i) {
         if (gActiveMods.entries[i] == mod) {
-            f64 freq = SDL_GetPerformanceFrequency();
-            f64 curr = SDL_GetPerformanceCounter();
-            sPrfDisplay->entries[i].counter.start = curr / freq;
+            sPrfDisplay->entries[i].counter.start = djui_lua_profiler_now();
             return;
         }
     }
@@ -48,11 +60,8 @@ void lua_profiler_stop_counter(UNUSED struct Mod *mod) {
 
     for (s32 i = 0; i != MIN(MAX_PROFILED_MODS, gActiveMods.entryCount); ++i) {
         if (gActiveMods.entries[i] == mod) {
-            f64 freq = SDL_GetPerformanceFrequency();
-            f64 curr = SDL_GetPerformanceCounter();
-
             struct DjuiPrfCounter *counter = &sPrfDisplay->entries[i].counter;
-            counter->end = curr / freq;
+            counter->end = djui_lua_profiler_now();
             counter->sum += counter->end - counter->start;
             return;
         }
