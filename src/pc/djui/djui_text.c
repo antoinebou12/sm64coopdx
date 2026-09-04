@@ -549,12 +549,15 @@ struct DjuiText* djui_text_create(struct DjuiBase* parent, const char* message) 
     djui_base_init(parent, base, djui_text_render, djui_text_destroy);
 
     text->message = NULL;
-#if defined(__3DS__)
-    /* Prefer aliased atlas (16x32) — sharper on 400x240 than 8x16 normal. */
-    djui_text_set_font(text, gDjuiFonts[FONT_ALIASED]);
-#else
+    /*
+     * 3DS note: DJUI runs at a fixed 0.5x device scale on the 400x240 top
+     * screen, so a glyph quad of N units covers N/2 pixels. The normal atlas
+     * (8x16 cells, defaultFontScale 32) therefore lands exactly 1:1 on texels
+     * and stays crisp under GPU_NEAREST; the aliased atlas (16x32) needs
+     * fontScale 64 for the same fit and only ever minified into mush here.
+     * Keep every 3DS text at its font's defaultFontScale for that reason.
+     */
     djui_text_set_font(text, gDjuiFonts[configDjuiThemeFont == 0 ? FONT_NORMAL : FONT_ALIASED]);
-#endif
     djui_text_set_font_scale(text, text->font->defaultFontScale);
     djui_text_set_text(text, message);
     djui_text_set_alignment(text, DJUI_HALIGN_LEFT, DJUI_VALIGN_TOP);

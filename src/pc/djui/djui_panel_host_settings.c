@@ -115,10 +115,9 @@ void djui_panel_host_settings_create(struct DjuiBase* caller) {
         {
             struct DjuiText* tip = djui_text_create(body, "Mod Dev Mode is LAN-only (not CoopNet)");
             djui_base_set_size_type(&tip->base, DJUI_SVT_RELATIVE, DJUI_SVT_ABSOLUTE);
-            djui_base_set_size(&tip->base, 1.0f, 20);
+            djui_base_set_size(&tip->base, 1.0f, 36);
             djui_base_set_color(&tip->base, 180, 180, 180, 255);
             djui_text_set_alignment(tip, DJUI_HALIGN_CENTER, DJUI_VALIGN_CENTER);
-            djui_text_set_font_scale(tip, tip->font->defaultFontScale * 0.42f);
         }
 #endif
 

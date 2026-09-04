@@ -216,17 +216,15 @@ void djui_panel_host_create(struct DjuiBase* caller) {
 
             struct DjuiText* ipText = djui_text_create(body, line);
             djui_base_set_size_type(&ipText->base, DJUI_SVT_RELATIVE, DJUI_SVT_ABSOLUTE);
-            djui_base_set_size(&ipText->base, 1.0f, 28);
+            djui_base_set_size(&ipText->base, 1.0f, 36);
             djui_base_set_color(&ipText->base, 120, 255, 160, 255);
             djui_text_set_alignment(ipText, DJUI_HALIGN_CENTER, DJUI_VALIGN_CENTER);
-            djui_text_set_font_scale(ipText, ipText->font->defaultFontScale * 0.55f);
         } else {
             struct DjuiText* mode = djui_text_create(body, "Mode: CoopNet");
             djui_base_set_size_type(&mode->base, DJUI_SVT_RELATIVE, DJUI_SVT_ABSOLUTE);
-            djui_base_set_size(&mode->base, 1.0f, 22);
+            djui_base_set_size(&mode->base, 1.0f, 36);
             djui_base_set_color(&mode->base, 200, 200, 200, 255);
             djui_text_set_alignment(mode, DJUI_HALIGN_CENTER, DJUI_VALIGN_CENTER);
-            djui_text_set_font_scale(mode, mode->font->defaultFontScale * 0.5f);
         }
 #elif defined(COOPNET)
         char* nChoices[] = { DLANG(HOST, DIRECT_CONNECTION), DLANG(HOST, COOPNET) };

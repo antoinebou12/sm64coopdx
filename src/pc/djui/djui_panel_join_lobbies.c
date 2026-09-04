@@ -217,9 +217,8 @@ void djui_panel_join_lobbies_create(struct DjuiBase* caller, const char* passwor
         {
             struct DjuiText* tip = djui_text_create(body, "Highlight a lobby for details");
             djui_base_set_size_type(&tip->base, DJUI_SVT_RELATIVE, DJUI_SVT_ABSOLUTE);
-            djui_base_set_size(&tip->base, 1.0f, 28);
+            djui_base_set_size(&tip->base, 1.0f, 36);
             djui_base_set_color(&tip->base, 200, 200, 200, 255);
-            djui_text_set_font_scale(tip, tip->font->defaultFontScale * 0.65f);
             sTooltip = tip;
         }
 #endif

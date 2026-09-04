@@ -30,10 +30,9 @@ void djui_panel_coopnet_create(struct DjuiBase* caller) {
             body,
             "Internet (libjuice + CoopNet)\nsm64coop-android lobbies");
         djui_base_set_size_type(&tip->base, DJUI_SVT_RELATIVE, DJUI_SVT_ABSOLUTE);
-        djui_base_set_size(&tip->base, 1.0f, 36);
+        djui_base_set_size(&tip->base, 1.0f, 60);
         djui_base_set_color(&tip->base, 200, 200, 200, 255);
         djui_text_set_alignment(tip, DJUI_HALIGN_CENTER, DJUI_VALIGN_CENTER);
-        djui_text_set_font_scale(tip, tip->font->defaultFontScale * 0.65f);
 
         djui_button_create(body, "Join Public Lobbies", DJUI_BUTTON_STYLE_NORMAL, djui_panel_coopnet_public);
         djui_button_create(body, "Join Private Lobbies", DJUI_BUTTON_STYLE_NORMAL, djui_panel_join_private_create);
