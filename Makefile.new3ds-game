@@ -23,8 +23,11 @@ NEW3DS_CIA_VERSION ?= 1
 # 1MB main thread stack. libctru/3dsx default is 32KB and CIA makerom
 # defaults to 16KB, which overflows as soon as thread5_game_loop starts.
 NEW3DS_MAIN_STACK_SIZE ?= 1048576
-# Install libctru user exception handlers (3dsx default). Disable with 0.
-NEW3DS_USER_EXCEPTIONS ?= 1
+# Keep the custom libctru exception handler OFF in normal hardware builds.
+# A registered handler can swallow a fatal CPU exception before Luma3DS gets
+# a chance to render its exception screen/dump. Set to 1 only for explicit
+# crash-log experiments; runtime checkpoints still go to logs/runtime.log.
+NEW3DS_USER_EXCEPTIONS ?= 0
 
 ifneq ($(NEW3DS_COOPNET),0)
 ifneq ($(NEW3DS_COOPNET),1)
