@@ -85,11 +85,50 @@ def main() -> int:
         "fog pass does not invalidate depth-write cache before restore",
     )
 
+    # The backend T invert already lands on source row v * height, so the DJUI
+    # font path must feed atlas V straight through (only the desktop UV nudge is
+    # dropped). Pre-inverting V here double-flips and garbles menu/title text.
     djui = read("src/pc/djui/djui_gfx.c")
     require(
-        "(h - tileY - tileH)" in djui and "(h - tileY)" in djui,
-        "DJUI 3DS font path must remap atlas V for T invert",
+        "(h - tileY - tileH)" not in djui,
+        "DJUI 3DS font path must not pre-invert atlas V (double-flips glyphs)",
     )
+    require(
+        "const f32 offsetX = 0.0f;" in djui and "const f32 offsetY = 0.0f;" in djui,
+        "DJUI 3DS font path must drop the desktop UV nudge",
+    )
+
+    # DJUI runs at a fixed 0.5x device scale on the 400x240 top screen, so a
+    # glyph quad of N units covers N/2 pixels. Only whole texel:pixel ratios
+    # decimate evenly under GPU_NEAREST; arbitrary shrink factors drop strokes
+    # and smear the text. Body text therefore stays on the 8x16 normal atlas at
+    # defaultFontScale (exactly 1:1).
+    text_src = read("src/pc/djui/djui_text.c")
+    require(
+        "gDjuiFonts[FONT_ALIASED]" not in text_src,
+        "3DS must not force the 16x32 aliased atlas (never 1:1 at 0.5x scale)",
+    )
+    button = read("src/pc/djui/djui_button.c")
+    require(
+        "defaultFontScale * 0.55f" not in button,
+        "3DS button text must render at defaultFontScale (1:1), not shrunk",
+    )
+    require(
+        "const f32 buttonHeight = 44.0f;" in button,
+        "3DS buttons must be tall enough for the 32-unit body glyph cell",
+    )
+    for path in (
+        "src/pc/djui/djui_panel_host.c",
+        "src/pc/djui/djui_panel_coopnet.c",
+        "src/pc/djui/djui_panel_host_settings.c",
+        "src/pc/djui/djui_panel_join_direct.c",
+        "src/pc/djui/djui_panel_join_lobbies.c",
+    ):
+        panel = read(path)
+        require(
+            "font->defaultFontScale *" not in panel,
+            f"{path} shrinks 3DS body text below the 1:1 atlas fit",
+        )
 
     require(
         "gfx_citro3d_new3ds_api.draw_triangles = new3ds_gfx_guard_draw_triangles;" in guard,

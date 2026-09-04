@@ -110,20 +110,24 @@ struct DjuiThreePanel* djui_panel_menu_create(char* headerText, bool forcedLeftS
         djui_text_set_alignment(header, DJUI_HALIGN_CENTER, DJUI_VALIGN_BOTTOM);
 #endif
         djui_text_set_font(header, hudFontHeader ? gDjuiFonts[2] : gDjuiFonts[1]);
+#if defined(__3DS__)
+        /*
+         * At the fixed 0.5x device scale a quad of N units covers N/2 pixels,
+         * so only whole texel:pixel ratios decimate a glyph evenly under
+         * GPU_NEAREST. Arbitrary factors (the old 0.55/0.45/0.85) drop strokes
+         * unevenly and smear the title. HUD atlas (16px cells) -> 32 units for
+         * 1:1; title atlas (64px cells) -> 128/3 units for an even 3:1.
+         */
+        djui_text_set_font_scale(
+            header,
+            hudFontHeader ? (gDjuiFonts[2]->defaultFontScale * 2.0f) : (128.0f / 3.0f));
+#else
         if (configExCoopTheme) {
             djui_text_set_font_scale(header, gDjuiFonts[1]->defaultFontScale);
-#if defined(__3DS__)
-            djui_text_set_font_scale(header, gDjuiFonts[1]->defaultFontScale * 0.55f);
-#endif
         } else {
-#if defined(__3DS__)
-            f32 scale = gDjuiFonts[1]->defaultFontScale * (hudFontHeader ? 0.45f : 0.55f);
-            if (strlen(headerText) > 12) { scale *= 0.85f; }
-            djui_text_set_font_scale(header, scale);
-#else
             djui_text_set_font_scale(header, gDjuiFonts[1]->defaultFontScale * (hudFontHeader ? 0.7f : 1.0f) * (strlen(headerText) > 15 ? 0.9f : 1.0f));
-#endif
         }
+#endif
 
         struct DjuiFlowLayout* body = djui_flow_layout_create(&panel->base);
         djui_base_set_alignment(&body->base, DJUI_HALIGN_CENTER, DJUI_VALIGN_CENTER);
