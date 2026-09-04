@@ -12,7 +12,7 @@
 #define SCALE_4_8(VAL_) ((VAL_) * 0x11)
 #define SCALE_8_4(VAL_) ((VAL_) / 0x11)
 #define SCALE_3_8(VAL_) ((VAL_) * 0x24)
-#define SCALE_8_3(VAL_) ((VAL_) * 0x24)
+#define SCALE_8_3(VAL_) ((VAL_) / 0x24)
 
 #define SCREEN_WIDTH 320
 #define SCREEN_HEIGHT 240
