@@ -29,6 +29,8 @@
 #include "pc/platform/new3ds/new3ds_bottom_ui.h"
 #include "pc/gfx/gfx_window_manager.h"
 
+extern void gfx_texture_cache_clear(void);
+
 /*
  * Citro3D backend for the New Nintendo 3DS port.
  *
@@ -326,24 +328,59 @@ static void new3ds_shader_get_info(struct ShaderProgram *program, uint8_t *num_i
     used_textures[1] = program->used_textures[1];
 }
 
+static void new3ds_reset_texture_slot(uint32_t id) {
+    New3dsTexture *texture = &sTextures[id];
+    if (texture->initialized) {
+        C3D_TexDelete(&texture->texture);
+    }
+    memset(texture, 0, sizeof(*texture));
+    texture->scale_s = 1.0f;
+    texture->scale_t = 1.0f;
+    texture->cms = NEW3DS_G_TX_WRAP;
+    texture->cmt = NEW3DS_G_TX_WRAP;
+
+    for (int tile = 0; tile < 2; ++tile) {
+        if (sBoundTexture[tile] == id) {
+            sBoundTexture[tile] = UINT32_MAX;
+            sBoundTextureApplied[tile] = UINT32_MAX;
+        }
+    }
+    if (sCurrentTexture == id) {
+        sCurrentTexture = UINT32_MAX;
+    }
+}
+
+/*
+ * Returning texture id 0 on overflow aliases a live texture (HUD icons on
+ * castle walls). Wipe the backend pool and gfx_pc cache together instead.
+ */
+static void new3ds_wipe_texture_pool(void) {
+    for (uint32_t i = 0; i < sTextureCount; ++i) {
+        new3ds_reset_texture_slot(i);
+    }
+    sTextureCount = 0;
+    sBoundTexture[0] = UINT32_MAX;
+    sBoundTexture[1] = UINT32_MAX;
+    sBoundTextureApplied[0] = UINT32_MAX;
+    sBoundTextureApplied[1] = UINT32_MAX;
+    sCurrentTexture = UINT32_MAX;
+    gfx_texture_cache_clear();
+}
+
 static uint32_t new3ds_new_texture(void) {
     if (sTextureCount >= NEW3DS_TEXTURE_POOL_SIZE) {
         sDroppedDrawCount++;
         NEW3DS_LOG_WARN_CAT(
             NEW3DS_LOG_CAT_GFX,
             "gfx",
-            "texture pool exhausted (%u)",
+            "texture pool full (%u), wiping backend + gfx_pc cache",
             NEW3DS_TEXTURE_POOL_SIZE);
-        return 0;
+        new3ds_wipe_texture_pool();
     }
 
-    New3dsTexture *texture = &sTextures[sTextureCount];
-    memset(texture, 0, sizeof(*texture));
-    texture->scale_s = 1.0f;
-    texture->scale_t = 1.0f;
-    texture->cms = NEW3DS_G_TX_WRAP;
-    texture->cmt = NEW3DS_G_TX_WRAP;
-    return sTextureCount++;
+    const uint32_t id = sTextureCount++;
+    new3ds_reset_texture_slot(id);
+    return id;
 }
 
 static void new3ds_select_texture(int tile, uint32_t texture_id) {
@@ -372,16 +409,24 @@ static void new3ds_swizzle_rgba8(
             for (int i = 0; i < 64; ++i) {
                 const int x2 = i & 7;
                 const int y2 = i >> 3;
-                const uint32_t real_x = (x + (uint32_t)x2) % src_width;
-                const uint32_t real_y = (y + (uint32_t)y2) % src_height;
+                const uint32_t real_x = x + (uint32_t)x2;
+                const uint32_t real_y = y + (uint32_t)y2;
                 const int pos = sTileOrder[(x2 & 3) + ((y2 & 3) << 2)]
                     + ((x2 >> 2) << 4) + ((y2 >> 2) << 5);
-                const uint8_t *pixel = src + ((real_y * src_width + real_x) * 4);
-                dst[dst_offset + (size_t)pos] =
-                    ((uint32_t)pixel[0] << 24) |
-                    ((uint32_t)pixel[1] << 16) |
-                    ((uint32_t)pixel[2] << 8) |
-                    (uint32_t)pixel[3];
+                /*
+                 * Replicate the edge texel into the pow2 padding instead of
+                 * wrapping with % (which tiles HUD/font edges into garbage).
+                 */
+                const uint32_t clamped_x = real_x < src_width ? real_x : src_width - 1;
+                const uint32_t clamped_y = real_y < src_height ? real_y : src_height - 1;
+                const uint8_t *pixel = src + ((clamped_y * src_width + clamped_x) * 4);
+                /* Match sf2d/mkst: bswap32 of packed RGBA8 bytes → GPU_RGBA8. */
+                const uint32_t rgba =
+                    (uint32_t)pixel[0] |
+                    ((uint32_t)pixel[1] << 8) |
+                    ((uint32_t)pixel[2] << 16) |
+                    ((uint32_t)pixel[3] << 24);
+                dst[dst_offset + (size_t)pos] = __builtin_bswap32(rgba);
             }
             dst_offset += 64;
         }
@@ -977,18 +1022,18 @@ static void new3ds_write_gpu_vertex(
     dst[3] = src[3];
 
     /*
-     * UVs map straight through (pad-aware via scale_s/scale_t).
-     *
-     * The old `1.0f - v * scale` T invert selected the wrong DJUI atlas rows
-     * (garbled menu glyphs). Hardware then showed that a depth-off S invert
-     * left-right mirrors HUD/DJUI ("MARIO" → "OIRAM") — do not reintroduce it.
-     * PICA200 T=0 is the first uploaded row; N64 V maps straight onto T.
+     * Match the proven mkst/sm64-port Citro3D backend:
+     *   S = s * scale_s
+     *   T = 1 - (t * scale_t)
+     * PICA200 samples with that V convention; "straight through" T left HUD and
+     * world textures flipped on real hardware. DJUI atlas rows are compensated
+     * in djui_gfx.c (3DS-only V remap) so fonts stay on the correct cells.
      */
     dst[4] = 0.0f;
     dst[5] = 0.0f;
     if (program->tex_offset[0] >= 0) {
         dst[4] = src[program->tex_offset[0]] * new3ds_texture_scale_s(0);
-        dst[5] = src[program->tex_offset[0] + 1] * new3ds_texture_scale_t(0);
+        dst[5] = 1.0f - (src[program->tex_offset[0] + 1] * new3ds_texture_scale_t(0));
     }
 
     dst[6] = 0.0f;
@@ -997,7 +1042,7 @@ static void new3ds_write_gpu_vertex(
     if (program->light_map && program->lightmap_offset >= 0) tex1_offset = program->lightmap_offset;
     if (tex1_offset >= 0) {
         dst[6] = src[tex1_offset] * new3ds_texture_scale_s(1);
-        dst[7] = src[tex1_offset + 1] * new3ds_texture_scale_t(1);
+        dst[7] = 1.0f - (src[tex1_offset + 1] * new3ds_texture_scale_t(1));
     }
 
     if (draw->primary_input >= 0) {

@@ -59,26 +59,36 @@ def main() -> int:
     require(cache_size == 512, f"unexpected New 3DS texture cache budget: {cache_size}")
     require(renderer_pool == 768, f"unexpected Citro3D texture pool budget: {renderer_pool}")
 
-    # Readable HUD/DJUI: both S and T map straight through (pad-aware scales).
+    # Match mkst/sm64-port: T = 1 - (t * scale); S straight. No depth-off S mirror.
     require(
-        "1.0f - src[program->tex_offset[0] + 1] * new3ds_texture_scale_t(0)" not in renderer,
-        "renderer still inverts T with the old non-pad-aware formula",
+        "1.0f - (src[program->tex_offset[0] + 1] * new3ds_texture_scale_t(0))" in renderer,
+        "renderer must use mkst-style T = 1 - (t * scale)",
     )
     require(
         "(sDepthTest ? s0 : (1.0f - s0))" not in renderer,
-        "renderer must not invert S for depth-off draws (mirrors MARIO→OIRAM)",
-    )
-    require(
-        "src[program->tex_offset[0] + 1] * new3ds_texture_scale_t(0)" in renderer,
-        "renderer does not map T straight through",
+        "renderer must not invert S for depth-off draws",
     )
     require(
         "src[program->tex_offset[0]] * new3ds_texture_scale_s(0)" in renderer,
         "renderer does not map S straight through",
     )
     require(
+        "new3ds_wipe_texture_pool" in renderer,
+        "texture pool must wipe on overflow instead of returning id 0",
+    )
+    require(
+        "clamped_x" in renderer and "clamped_y" in renderer,
+        "swizzle must edge-clamp NPOT padding (not modulo-wrap)",
+    )
+    require(
         "sDepthWriteApplied = !sDepthWrite;" in renderer,
         "fog pass does not invalidate depth-write cache before restore",
+    )
+
+    djui = read("src/pc/djui/djui_gfx.c")
+    require(
+        "(h - tileY - tileH)" in djui and "(h - tileY)" in djui,
+        "DJUI 3DS font path must remap atlas V for T invert",
     )
 
     require(
