@@ -25,7 +25,18 @@
 #define MAX_VERTICES 64
 #define MAX_TILES 8
 #define MAX_TEXTURES 2
+/*
+ * The New 3DS Citro3D backend intentionally owns 768 texture slots to stay
+ * within handheld memory limits. Keep the shared cache at exactly the same
+ * capacity on that platform so it starts reusing existing IDs before the
+ * backend can overflow. Returning texture ID 0 on overflow is unsafe because
+ * 0 is a valid texture and causes unrelated cache entries to alias/flicker.
+ */
+#if defined(__3DS__)
+#define MAX_CACHED_TEXTURES 768
+#else
 #define MAX_CACHED_TEXTURES 4096 // for preloading purposes
+#endif
 #define MAX_GFX_STATES 8
 
 #define HASH_SHIFT 0
