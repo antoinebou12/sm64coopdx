@@ -16,6 +16,7 @@ on:
       - src/pc/audio/audio_new3ds.*
       - src/pc/controller/controller_new3ds.*
       - src/pc/controller/controller_entry_point.c
+      - src/pc/gfx/gfx.h
       - src/pc/gfx/gfx_citro3d_new3ds.*
       - src/pc/gfx/gfx_window_manager.h
       - src/pc/pc_main.*
@@ -39,6 +40,7 @@ on:
       - src/pc/audio/audio_new3ds.*
       - src/pc/controller/controller_new3ds.*
       - src/pc/controller/controller_entry_point.c
+      - src/pc/gfx/gfx.h
       - src/pc/gfx/gfx_citro3d_new3ds.*
       - src/pc/gfx/gfx_window_manager.h
       - src/pc/pc_main.*
@@ -135,8 +137,8 @@ jobs:
         run: scripts/ci/new3ds-integration.sh
 
   build-new3ds-game:
-    name: devkitARM / full CoopDX .3dsx
-    if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main'
+    name: devkitARM / full CoopDX .3dsx + CIA
+    if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/new3ds-port'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     needs: build-new3ds-integration
@@ -171,7 +173,7 @@ jobs:
           else
             echo "available=false" >> "$GITHUB_OUTPUT"
             {
-              echo "### Full New 3DS .3dsx skipped"
+              echo "### Full New 3DS .3dsx + CIA skipped"
               echo "Set repository secret \`SM64_BASEROM_US_URL\` to enable the baserom-backed full build."
               echo "Shell and integration compile jobs still ran and must pass."
             } >> "$GITHUB_STEP_SUMMARY"
@@ -195,7 +197,7 @@ jobs:
       - name: Build full New 3DS application
         if: steps.baserom.outputs.available == 'true'
         shell: bash
-        run: make -f Makefile.new3ds-game new3ds-3dsx -j2
+        run: make -f Makefile.new3ds-game new3ds-3dsx new3ds-cia -j2
 
       - name: Verify full-game artifacts
         if: steps.baserom.outputs.available == 'true'
@@ -204,8 +206,10 @@ jobs:
           set -euo pipefail
           test -s build/us_new3ds/sm64coopdx.elf
           test -s build/us_new3ds/sm64coopdx.3dsx
+          test -s build/us_new3ds/sm64coopdx.cia
           test -s build/us_new3ds/sm64coopdx.smdh
           arm-none-eabi-size build/us_new3ds/sm64coopdx.elf
+          ls -lh build/us_new3ds/sm64coopdx.{elf,3dsx,cia,smdh}
 
       - name: Remove private baserom
         if: always() && steps.baserom.outputs.available == 'true'
@@ -216,10 +220,11 @@ jobs:
         if: ${{ steps.baserom.outputs.available == 'true' && !env.ACT }}
         uses: actions/upload-artifact@v4
         with:
-          name: sm64coopdx-new3ds-game
+          name: sm64coopdx-new3ds-0.0.1
           if-no-files-found: error
           path: |
             build/us_new3ds/sm64coopdx.elf
             build/us_new3ds/sm64coopdx.3dsx
+            build/us_new3ds/sm64coopdx.cia
             build/us_new3ds/sm64coopdx.smdh
             build/us_new3ds/sm64coopdx.map
