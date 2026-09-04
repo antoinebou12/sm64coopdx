@@ -31,6 +31,10 @@ def make_var(text: str, name: str) -> str:
     return match.group(1)
 
 
+def is_power_of_two(value: int) -> bool:
+    return value > 0 and (value & (value - 1)) == 0
+
+
 def main() -> int:
     gfx_h = read("src/pc/gfx/gfx.h")
     renderer = read("src/pc/gfx/gfx_citro3d_new3ds.c")
@@ -47,11 +51,13 @@ def main() -> int:
     require(cache_match is not None, "New 3DS MAX_CACHED_TEXTURES override is missing")
     cache_size = int(cache_match.group(1))
     renderer_pool = define_int(renderer, "NEW3DS_TEXTURE_POOL_SIZE")
+    require(is_power_of_two(cache_size), f"New 3DS texture cache must be power-of-two, got {cache_size}")
     require(
-        cache_size == renderer_pool,
-        f"texture cache/backend pool mismatch: cache={cache_size}, backend={renderer_pool}",
+        cache_size < renderer_pool,
+        f"texture cache must leave backend headroom: cache={cache_size}, backend={renderer_pool}",
     )
-    require(cache_size == 768, f"unexpected New 3DS texture budget: {cache_size}")
+    require(cache_size == 512, f"unexpected New 3DS texture cache budget: {cache_size}")
+    require(renderer_pool == 768, f"unexpected Citro3D texture pool budget: {renderer_pool}")
 
     require(
         "gfx_citro3d_new3ds_api.draw_triangles = new3ds_gfx_guard_draw_triangles;" in guard,
@@ -84,6 +90,10 @@ def main() -> int:
 
     require("new3ds-3dsx new3ds-cia" in workflow, "CI does not build both 3DSX and CIA")
     require("sm64coopdx.cia" in workflow, "CI does not verify/upload the CIA artifact")
+    require(
+        "python3 tools/new3ds/tests/test_hardware_stability.py" in workflow,
+        "CI does not execute the hardware stability regression test",
+    )
 
     print(
         "New 3DS hardware stability checks passed: "
