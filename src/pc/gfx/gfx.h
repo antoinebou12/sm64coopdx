@@ -12,7 +12,7 @@
 #define SCALE_4_8(VAL_) ((VAL_) * 0x11)
 #define SCALE_8_4(VAL_) ((VAL_) / 0x11)
 #define SCALE_3_8(VAL_) ((VAL_) * 0x24)
-#define SCALE_8_3(VAL_) ((VAL_) / 0x24)
+#define SCALE_8_3(VAL_) ((VAL_) * 0x24)
 
 #define SCREEN_WIDTH 320
 #define SCREEN_HEIGHT 240
@@ -26,14 +26,13 @@
 #define MAX_TILES 8
 #define MAX_TEXTURES 2
 /*
- * The New 3DS Citro3D backend intentionally owns 768 texture slots to stay
- * within handheld memory limits. Keep the shared cache at exactly the same
- * capacity on that platform so it starts reusing existing IDs before the
- * backend can overflow. Returning texture ID 0 on overflow is unsafe because
- * 0 is a valid texture and causes unrelated cache entries to alias/flicker.
+ * The shared texture cache hashes with HASH_MASK, so its capacity must be a
+ * power of two. Keep the New 3DS cache below the Citro3D backend's 768-slot
+ * pool: this both preserves the mask invariant and leaves headroom so a cache
+ * miss can never make the backend return/alias texture ID 0 on real hardware.
  */
 #if defined(__3DS__)
-#define MAX_CACHED_TEXTURES 768
+#define MAX_CACHED_TEXTURES 512
 #else
 #define MAX_CACHED_TEXTURES 4096 // for preloading purposes
 #endif
