@@ -21,7 +21,7 @@ static void djui_selectionbox_update_style(struct DjuiBase* base) {
         djui_base_set_color(&selectionbox->rect->base, rc.r, rc.g, rc.b, rc.a);
         djui_base_set_color(&selectionbox->rectText->base, tc.r, tc.g, tc.b, tc.a);
 
-        djui_base_set_location(&selectionbox->rectText->base, 0.0f, 3.0f);
+        djui_base_set_location(&selectionbox->rectText->base, 0.0f, 0.0f);
         djui_base_set_color(&selectionbox->rectImage->base, tc.r, tc.g, tc.b, tc.a);
         djui_base_set_color(&selectionbox->rectImage2->base, tc.r, tc.g, tc.b, tc.a);
         djui_base_set_color(&selectionbox->text->base, 220, 220, 220, 255);
@@ -32,7 +32,11 @@ static void djui_selectionbox_update_style(struct DjuiBase* base) {
         djui_base_set_border_color(&selectionbox->rect->base, bc.r, bc.g, bc.b, bc.a);
         djui_base_set_color(&selectionbox->rect->base, rc.r, rc.g, rc.b, rc.a);
 
+#if defined(__3DS__)
+        djui_base_set_location(&selectionbox->rectText->base, 0.5f, 0.5f);
+#else
         djui_base_set_location(&selectionbox->rectText->base, 0.5f, 3.5f);
+#endif
         djui_base_set_color(&selectionbox->text->base, 220, 220, 220, 255);
     } else if (gDjuiHovered == base && activeRegion) {
         struct DjuiColor bc = theme->interactables.hoveredBorderColor;
@@ -41,7 +45,11 @@ static void djui_selectionbox_update_style(struct DjuiBase* base) {
         djui_base_set_border_color(&selectionbox->rect->base, bc.r, bc.g, bc.b, bc.a);
         djui_base_set_color(&selectionbox->rect->base, rc.r, rc.g, rc.b, rc.a);
 
+#if defined(__3DS__)
+        djui_base_set_location(&selectionbox->rectText->base, -1.0f, 0.0f);
+#else
         djui_base_set_location(&selectionbox->rectText->base, -1.0f, 2.0f);
+#endif
         djui_base_set_color(&selectionbox->text->base, 220, 220, 220, 255);
     } else {
         struct DjuiSelectionbox* selectionbox = (struct DjuiSelectionbox*)base;
@@ -53,7 +61,11 @@ static void djui_selectionbox_update_style(struct DjuiBase* base) {
         djui_base_set_color(&selectionbox->rect->base, rc.r, rc.g, rc.b, rc.a);
         djui_base_set_color(&selectionbox->rectText->base, tc.r, tc.g, tc.b, tc.a);
 
+#if defined(__3DS__)
+        djui_base_set_location(&selectionbox->rectText->base, 0.0f, 0.0f);
+#else
         djui_base_set_location(&selectionbox->rectText->base, 0.0f, 3.0f);
+#endif
         djui_base_set_color(&selectionbox->rectImage->base, tc.r, tc.g, tc.b, tc.a);
         djui_base_set_color(&selectionbox->rectImage2->base, tc.r, tc.g, tc.b, tc.a);
         djui_base_set_color(&selectionbox->text->base, 220, 220, 220, 255);
@@ -124,7 +136,11 @@ struct DjuiSelectionbox* djui_selectionbox_create(struct DjuiBase* parent, const
     djui_base_set_alignment(&text->base, DJUI_HALIGN_LEFT, DJUI_VALIGN_CENTER);
     djui_base_set_size_type(&text->base, DJUI_SVT_RELATIVE, DJUI_SVT_RELATIVE);
     djui_base_set_size(&text->base, 0.6f, 1.0f);
+#if defined(__3DS__)
+    djui_text_set_alignment(text, DJUI_HALIGN_LEFT, DJUI_VALIGN_CENTER);
+#else
     djui_text_set_alignment(text, DJUI_HALIGN_LEFT, DJUI_VALIGN_BOTTOM);
+#endif
     djui_text_set_drop_shadow(text, 64, 64, 64, 100);
     selectionbox->text = text;
 
@@ -141,7 +157,11 @@ struct DjuiSelectionbox* djui_selectionbox_create(struct DjuiBase* parent, const
     djui_base_set_alignment(&rectText->base, DJUI_HALIGN_LEFT, DJUI_VALIGN_CENTER);
     djui_base_set_size_type(&rectText->base, DJUI_SVT_RELATIVE, DJUI_SVT_RELATIVE);
     djui_base_set_size(&rectText->base, 1.0f, 1.0f);
+#if defined(__3DS__)
+    djui_text_set_alignment(rectText, DJUI_HALIGN_CENTER, DJUI_VALIGN_CENTER);
+#else
     djui_text_set_alignment(rectText, DJUI_HALIGN_CENTER, DJUI_VALIGN_BOTTOM);
+#endif
     djui_text_set_drop_shadow(rectText, 64, 64, 64, 100);
     selectionbox->rectText = rectText;
 
@@ -162,7 +182,11 @@ struct DjuiSelectionbox* djui_selectionbox_create(struct DjuiBase* parent, const
     base->get_cursor_hover_location = djui_selectionbox_get_cursor_hover_location;
 
     djui_base_set_size_type(base, DJUI_SVT_RELATIVE, DJUI_SVT_ABSOLUTE);
+#if defined(__3DS__)
+    djui_base_set_size(base, 1.0f, 36);
+#else
     djui_base_set_size(base, 1.0f, 32);
+#endif
     djui_interactable_hook_value_change(base, on_value_change);
 
     return selectionbox;

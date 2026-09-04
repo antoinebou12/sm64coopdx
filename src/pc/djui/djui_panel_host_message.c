@@ -16,6 +16,10 @@
 #ifdef __SWITCH__
 #include "pc/platform/switch/switch_crash_log.h"
 #endif
+#ifdef __3DS__
+#include "pc/platform/new3ds/new3ds_log.h"
+#include "pc/platform/new3ds/new3ds_runtime.h"
+#endif
 
 static bool hideMessage = false;
 
@@ -28,6 +32,21 @@ void djui_panel_do_host(bool reconnecting, bool playSound) {
         configHostPort,
         reconnecting ? 1 : 0);
     switch_crash_log_checkpoint("host: begin");
+#endif
+#ifdef __3DS__
+    NEW3DS_LOG_INFO_CAT(
+        NEW3DS_LOG_CAT_NET,
+        "host",
+        "begin backend=%u players=%u port=%u reconnecting=%d",
+        configNetworkSystem,
+        configAmountOfPlayers,
+        configHostPort,
+        reconnecting ? 1 : 0);
+    if (!new3ds_runtime_ensure_network() || !new3ds_runtime_network_available()) {
+        NEW3DS_LOG_ERROR_CAT(NEW3DS_LOG_CAT_NET, "host", "blocked: SOC unavailable");
+        djui_popup_create("Network unavailable. Restart the game or check wireless settings.", 4.0f);
+        return;
+    }
 #endif
 
     stop_demo(NULL);
@@ -48,9 +67,15 @@ void djui_panel_do_host(bool reconnecting, bool playSound) {
 #ifdef __SWITCH__
     switch_crash_log_checkpoint("host: network init begin");
 #endif
+#ifdef __3DS__
+    NEW3DS_LOG_INFO_CAT(NEW3DS_LOG_CAT_NET, "host", "network init begin");
+#endif
     if (!network_init(NT_SERVER, reconnecting)) {
 #ifdef __SWITCH__
         switch_crash_log_checkpoint("host: network init failed");
+#endif
+#ifdef __3DS__
+        NEW3DS_LOG_ERROR_CAT(NEW3DS_LOG_CAT_NET, "host", "network init failed");
 #endif
         // network_init() can fail after the host panel has already been closed.
         // Use the standard shutdown path to clear any partial backend state and
@@ -61,14 +86,32 @@ void djui_panel_do_host(bool reconnecting, bool playSound) {
 #ifdef __SWITCH__
     switch_crash_log_checkpoint("host: network init complete");
 #endif
+#ifdef __3DS__
+    {
+        char ip[32];
+        new3ds_runtime_get_ipv4_string(ip, sizeof(ip));
+        NEW3DS_LOG_INFO_CAT(
+            NEW3DS_LOG_CAT_NET,
+            "host",
+            "network init complete clients_join_at=%s:%u",
+            ip,
+            configHostPort);
+    }
+#endif
 
     djui_panel_modlist_create(NULL);
 #ifdef __SWITCH__
     switch_crash_log_checkpoint("host: modlist complete");
 #endif
+#ifdef __3DS__
+    NEW3DS_LOG_INFO_CAT(NEW3DS_LOG_CAT_NET, "host", "modlist complete");
+#endif
     fake_lvl_init_from_save_file();
 #ifdef __SWITCH__
     switch_crash_log_checkpoint("host: level init complete");
+#endif
+#ifdef __3DS__
+    NEW3DS_LOG_INFO_CAT(NEW3DS_LOG_CAT_NET, "host", "level init complete");
 #endif
 
     extern s16 gChangeLevelTransition;
@@ -80,6 +123,9 @@ void djui_panel_do_host(bool reconnecting, bool playSound) {
     play_transition(WARP_TRANSITION_FADE_INTO_STAR, 0x14, 0x00, 0x00, 0x00);
 #ifdef __SWITCH__
     switch_crash_log_checkpoint("host: transition started");
+#endif
+#ifdef __3DS__
+    NEW3DS_LOG_INFO_CAT(NEW3DS_LOG_CAT_NET, "host", "transition started");
 #endif
 }
 
@@ -95,7 +141,31 @@ void djui_panel_host_message_create(struct DjuiBase* caller) {
 
     f32 warningLines = 8;
     warningMessage = calloc(512, sizeof(char));
+#ifdef __3DS__
+    {
+        char ip[32];
+        const bool networkReady = new3ds_runtime_get_ipv4_string(ip, sizeof(ip));
+        if (!networkReady) {
+            snprintf(
+                warningMessage,
+                512,
+                "Network is offline (SOC unavailable).\n\n"
+                "Enable wireless in System Settings, restart the game, then try hosting again.");
+            hideHostButton = true;
+            warningLines = 6;
+        } else {
+            snprintf(
+                warningMessage,
+                512,
+                "Clients join at %s:%u\n\n%s",
+                ip,
+                configHostPort,
+                DLANG(HOST_MESSAGE, WARN_SOCKET));
+        }
+    }
+#else
     snprintf(warningMessage, 512, DLANG(HOST_MESSAGE, WARN_SOCKET), configHostPort);
+#endif
 
     f32 textHeight = 32 * 0.8125f * warningLines + 8;
 

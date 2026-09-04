@@ -11,7 +11,42 @@
 
 #define PRIVATE_PASSWORD_CAPACITY 64
 
-#ifdef __SWITCH__
+#if defined(__3DS__)
+#include "djui_panel_switch_text_entry.h"
+
+static char sPrivatePassword[PRIVATE_PASSWORD_CAPACITY] = "";
+static struct DjuiButton* sPasswordButton = NULL;
+
+static void djui_panel_join_private_update_password_button(void) {
+    if (sPasswordButton == NULL) { return; }
+    char masked[PRIVATE_PASSWORD_CAPACITY] = "";
+    const size_t length = strlen(sPrivatePassword);
+    memset(masked, '#', length);
+    masked[length] = '\0';
+    djui_text_set_text(sPasswordButton->text, length > 0 ? masked : "(no password)");
+}
+
+static void djui_panel_join_private_password_apply(const char* text) {
+    snprintf(sPrivatePassword, sizeof(sPrivatePassword), "%s", text != NULL ? text : "");
+    djui_panel_join_private_update_password_button();
+}
+
+static void djui_panel_join_private_password_edit(struct DjuiBase* caller) {
+    djui_panel_switch_text_entry_create(
+        caller,
+        "Private password",
+        sPrivatePassword,
+        PRIVATE_PASSWORD_CAPACITY,
+        DJUI_SWITCH_TEXT_PASSWORD,
+        djui_panel_join_private_password_apply);
+}
+
+static void djui_panel_join_private_on_destroy(UNUSED struct DjuiBase* caller) {
+    sPasswordButton = NULL;
+    memset(sPrivatePassword, 0, sizeof(sPrivatePassword));
+}
+
+#elif defined(__SWITCH__)
 #define PRIVATE_KEY_COUNT 26
 
 static char sPrivatePassword[PRIVATE_PASSWORD_CAPACITY] = "";
@@ -101,7 +136,7 @@ static struct DjuiInputbox* sInputboxPassword = NULL;
 #endif
 
 static void djui_panel_join_private_lobbies(struct DjuiBase* caller) {
-#ifdef __SWITCH__
+#if defined(__SWITCH__) || defined(__3DS__)
     djui_panel_join_lobbies_create(caller, sPrivatePassword);
 #else
     djui_panel_join_lobbies_create(caller, sInputboxPassword->buffer);
@@ -115,14 +150,29 @@ void djui_panel_join_private_create(struct DjuiBase* caller) {
     {
         struct DjuiText* text1 = djui_text_create(body, DLANG(LOBBIES, ENTER_PASSWORD));
         djui_base_set_size_type(&text1->base, DJUI_SVT_RELATIVE, DJUI_SVT_ABSOLUTE);
+#if defined(__3DS__)
+        djui_base_set_size(&text1->base, 1.0f, 36);
+#else
         djui_base_set_size(&text1->base, 1.0f, 100);
+#endif
         djui_base_compute_tree(&text1->base);
         u16 directLines = djui_text_count_lines(text1, 12);
+#if defined(__3DS__)
+        f32 directTextHeight = 24 * 0.8125f * directLines + 4;
+        if (directTextHeight > 48.0f) { directTextHeight = 48.0f; }
+#else
         f32 directTextHeight = 32 * 0.8125f * directLines + 8;
+#endif
         djui_base_set_size(&text1->base, 1.0f, directTextHeight);
         djui_base_set_color(&text1->base, 220, 220, 220, 255);
 
-#ifdef __SWITCH__
+#if defined(__3DS__)
+        /* Shared scrollable DJUI keypad — never open native swkbd. */
+        sPasswordButton = djui_button_create(
+            body, "(no password)", DJUI_BUTTON_STYLE_NORMAL, djui_panel_join_private_password_edit);
+        djui_panel_join_private_update_password_button();
+        defaultBase = &sPasswordButton->base;
+#elif defined(__SWITCH__)
         struct DjuiText* passwordText = djui_text_create(body, "(empty)");
         djui_base_set_size_type(&passwordText->base, DJUI_SVT_RELATIVE, DJUI_SVT_ABSOLUTE);
         djui_base_set_size(&passwordText->base, 1.0f, 42);
@@ -161,23 +211,28 @@ void djui_panel_join_private_create(struct DjuiBase* caller) {
         sInputboxPassword = inputbox1;
 #endif
 
-        struct DjuiRect* rect2 = djui_rect_container_create(body, 64);
+#if defined(__3DS__)
+        const f32 footerH = 40.0f;
+#else
+        const f32 footerH = 64.0f;
+#endif
+        struct DjuiRect* rect2 = djui_rect_container_create(body, footerH);
         {
             struct DjuiButton* button1 = djui_button_create(&rect2->base, DLANG(MENU, BACK), DJUI_BUTTON_STYLE_BACK, djui_panel_menu_back);
-            djui_base_set_size(&button1->base, 0.485f, 64);
+            djui_base_set_size(&button1->base, 0.485f, footerH);
             djui_base_set_alignment(&button1->base, DJUI_HALIGN_LEFT, DJUI_VALIGN_TOP);
 
             struct DjuiButton* button2 = djui_button_create(&rect2->base, DLANG(LOBBIES, SEARCH), DJUI_BUTTON_STYLE_NORMAL, djui_panel_join_private_lobbies);
-            djui_base_set_size(&button2->base, 0.485f, 64);
+            djui_base_set_size(&button2->base, 0.485f, footerH);
             djui_base_set_alignment(&button2->base, DJUI_HALIGN_RIGHT, DJUI_VALIGN_TOP);
-#ifndef __SWITCH__
+#if !defined(__SWITCH__) && !defined(__3DS__)
             defaultBase = &button2->base;
 #endif
         }
     }
 
     struct DjuiPanel* added = djui_panel_add(caller, panel, defaultBase);
-#ifdef __SWITCH__
+#if defined(__SWITCH__) || defined(__3DS__)
     if (added) {
         added->on_panel_destroy = djui_panel_join_private_on_destroy;
     }

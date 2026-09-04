@@ -54,6 +54,8 @@ doxygen/doxygen/*
 build/*
 /build-logs/
 /dist/
+/.artifacts/
+/build/new3ds-tools/
 /*.nro
 *.dump
 *.mio0

@@ -10,9 +10,13 @@
 #include "pc/network/coopnet/coopnet.h"
 #include "pc/utils/misc.h"
 #include "pc/configfile.h"
-#ifdef __SWITCH__
+#if defined(__SWITCH__) && defined(COOPNET)
 #include "pc/platform/switch/switch_coopnet_log.h"
 #include "pc/platform/switch/switch_crash_log.h"
+#elif defined(__3DS__) && defined(COOPNET)
+#include "pc/platform/new3ds/new3ds_coopnet_log.h"
+#define switch_coopnet_log_printf new3ds_coopnet_log_printf
+#define switch_crash_log_checkpoint(phase) new3ds_coopnet_log_checkpoint("crash", phase, "checkpoint")
 #endif
 
 #define DJUI_JOIN_MESSAGE_ELAPSE 60
@@ -25,7 +29,7 @@ static struct DjuiText* sPanelText = NULL;
 static bool sDisplayingError = false;
 static bool sProgrammaticReturn = false;
 
-#if defined(__SWITCH__) && defined(COOPNET)
+#if (defined(__SWITCH__) || defined(__3DS__)) && defined(COOPNET)
 static bool sCharacterPromptActive = false;
 
 static void djui_panel_join_character_destroy(UNUSED struct DjuiBase* caller) {
@@ -124,7 +128,7 @@ void djui_panel_join_message_return_to_lobbies(const char* message) {
 void djui_panel_join_message_ready_to_join(void) {
     if (gNetworkType != NT_CLIENT || gNetworkSentJoin) { return; }
 
-#if defined(__SWITCH__) && defined(COOPNET)
+#if (defined(__SWITCH__) || defined(__3DS__)) && defined(COOPNET)
     if (gNetworkSystem == &gNetworkSystemCoopNet && !configPlayerModelSelected) {
         djui_panel_join_character_create();
         return;

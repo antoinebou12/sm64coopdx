@@ -549,7 +549,12 @@ struct DjuiText* djui_text_create(struct DjuiBase* parent, const char* message) 
     djui_base_init(parent, base, djui_text_render, djui_text_destroy);
 
     text->message = NULL;
+#if defined(__3DS__)
+    /* Prefer aliased atlas (16x32) — sharper on 400x240 than 8x16 normal. */
+    djui_text_set_font(text, gDjuiFonts[FONT_ALIASED]);
+#else
     djui_text_set_font(text, gDjuiFonts[configDjuiThemeFont == 0 ? FONT_NORMAL : FONT_ALIASED]);
+#endif
     djui_text_set_font_scale(text, text->font->defaultFontScale);
     djui_text_set_text(text, message);
     djui_text_set_alignment(text, DJUI_HALIGN_LEFT, DJUI_VALIGN_TOP);

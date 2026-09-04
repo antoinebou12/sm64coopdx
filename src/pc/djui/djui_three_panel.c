@@ -68,14 +68,19 @@ void djui_three_panel_recalculate_body_size(struct DjuiThreePanel* threePanel) {
     }
 
     f32 bodyHeight = body->margin.value;
+    bool hasAbsoluteChild = false;
     while (child != NULL) {
+        if (child->base->height.type != DJUI_SVT_ABSOLUTE) {
+            /* Skip relative-height children instead of aborting with bodySize=0. */
+            child = child->next;
+            continue;
+        }
+        hasAbsoluteChild = true;
         bodyHeight += body->margin.value;
         bodyHeight += child->base->height.value;
-        if (child->base->height.type != DJUI_SVT_ABSOLUTE) {
-            return;
-        }
         child = child->next;
     }
+    if (!hasAbsoluteChild) { return; }
     if (bodyHeight < 0) { bodyHeight = 0; }
     djui_three_panel_set_body_size(threePanel, bodyHeight);
 }
@@ -114,6 +119,26 @@ bool djui_three_panel_render(struct DjuiBase* base) {
     f32 bodySize   = (threePanel->bodySize.type == DJUI_SVT_RELATIVE) ? base->comp.height * threePanel->bodySize.value : threePanel->bodySize.value;
     f32 footerSize = minFooterSize;
 
+#if defined(HANDHELD) || defined(__3DS__)
+    /* Recover from a missed recalculate so Host/Join do not collapse to an empty header. */
+    if (bodySize <= 0.0f && body->child != NULL) {
+        djui_three_panel_recalculate_body_size(threePanel);
+        bodySize = (threePanel->bodySize.type == DJUI_SVT_RELATIVE)
+            ? base->comp.height * threePanel->bodySize.value
+            : threePanel->bodySize.value;
+    }
+#endif
+
+#if defined(__3DS__)
+    /* Empty footers become a black bar on 400x240 — collapse them and give height to body. */
+    const bool footerEmpty = (foot == NULL || foot->child == NULL);
+    if (footerEmpty) {
+        minFooterSize = 0.0f;
+        footerSize = 0.0f;
+        largestMinSize = minHeaderSize;
+    }
+#endif
+
     if (minHeaderSize + minFooterSize >= myHeight) {
         bodySize = 0;
         headerSize = myHeight * (minHeaderSize / (minHeaderSize + minFooterSize));
@@ -126,10 +151,25 @@ bool djui_three_panel_render(struct DjuiBase* base) {
         } else {
             headerSize = myHeight - footerSize - bodySize;
         }
+#if defined(HANDHELD) || defined(__3DS__)
+    } else if (bodySize > 0.0f) {
+        /* Prefer leftover height for the body instead of growing a huge empty header. */
+        headerSize = minHeaderSize;
+        footerSize = minFooterSize;
+        bodySize = myHeight - headerSize - footerSize;
+#endif
     } else {
         headerSize = (myHeight - bodySize) / 2.0f;
         footerSize = (myHeight - bodySize) / 2.0f;
     }
+
+#if defined(__3DS__)
+    if (footerEmpty) {
+        footerSize = 0.0f;
+        bodySize = myHeight - headerSize;
+        if (bodySize < 0.0f) { bodySize = 0.0f; }
+    }
+#endif
 
     if (head != NULL) {
         //djui_base_set_location_type(head, DJUI_SVT_ABSOLUTE, DJUI_SVT_ABSOLUTE);

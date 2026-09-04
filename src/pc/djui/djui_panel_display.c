@@ -79,11 +79,11 @@ void djui_panel_display_create(struct DjuiBase* caller) {
                 "DirectX 11"
 #endif
             };
-            djui_selectionbox_create(body, DLANG(DISPLAY, GRAPHICS_BACKEND), gfxBackendChoices, GFX_WINDOW_BACKEND_MAX, &configGraphicsBackend, djui_panel_display_update_restart_text);
+            djui_selectionbox_create(body, DLANG(DISPLAY, GRAPHICS_BACKEND), gfxBackendChoices, GFX_WINDOW_BACKEND_MAX, (unsigned int *)&configGraphicsBackend, djui_panel_display_update_restart_text);
         }
 
         char* framerateModeChoices[3] = { DLANG(DISPLAY, AUTO), DLANG(DISPLAY, MANUAL), DLANG(DISPLAY, UNCAPPED) };
-        djui_selectionbox_create(body, DLANG(DISPLAY, FRAMERATE_MODE), framerateModeChoices, 3, &configFramerateMode, djui_panel_display_framerate_mode_change);
+        djui_selectionbox_create(body, DLANG(DISPLAY, FRAMERATE_MODE), framerateModeChoices, 3, (unsigned int *)&configFramerateMode, djui_panel_display_framerate_mode_change);
 
         struct DjuiRect* rect1 = djui_rect_container_create(body, 32);
         {

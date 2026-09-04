@@ -11,6 +11,9 @@
 #include "pc/network/network.h"
 #include "pc/utils/misc.h"
 #include "pc/pc_main.h"
+#if defined(__3DS__) && defined(COOPNET)
+#include "djui_panel_coopnet.h"
+#endif
 
 static void djui_panel_options_back(struct DjuiBase* caller) {
     configfile_save(configfile_name());
@@ -22,12 +25,20 @@ void djui_panel_options_create(struct DjuiBase* caller) {
     struct DjuiBase* body = djui_three_panel_get_body(panel);
     {
         if (gDjuiInMainMenu) {
+#if defined(__3DS__)
+            struct DjuiRect* rect1 = djui_rect_container_create(body, 40);
+#else
             struct DjuiRect* rect1 = djui_rect_container_create(body, 64);
+#endif
             {
                 djui_button_left_create(&rect1->base, DLANG(PAUSE, PLAYER), DJUI_BUTTON_STYLE_NORMAL, djui_panel_player_create);
                 djui_button_right_create(&rect1->base, DLANG(PAUSE, DYNOS_PACKS), DJUI_BUTTON_STYLE_NORMAL, djui_panel_dynos_create);
             }
         }
+#if defined(__3DS__) && defined(COOPNET)
+        /* Discoverable CoopNet hub (Public/Private lobbies + Host). */
+        djui_button_create(body, "CoopNet", DJUI_BUTTON_STYLE_NORMAL, djui_panel_coopnet_create);
+#endif
         djui_button_create(body, DLANG(OPTIONS, CAMERA), DJUI_BUTTON_STYLE_NORMAL, djui_panel_camera_create);
         djui_button_create(body, DLANG(OPTIONS, CONTROLS), DJUI_BUTTON_STYLE_NORMAL, djui_panel_controls_create);
         djui_button_create(body, DLANG(OPTIONS, DISPLAY), DJUI_BUTTON_STYLE_NORMAL, djui_panel_display_create);

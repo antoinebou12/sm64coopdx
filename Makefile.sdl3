@@ -415,7 +415,8 @@ TOOLS_DIR := tools
 PYTHON := python3
 
 ifeq ($(filter clean distclean print-%,$(MAKECMDGOALS)),)
-  ifeq ($(WINDOWS_AUTO_BUILDER),0)
+  ifeq ($(filter new3ds-integration-smoke,$(MAKECMDGOALS)),)
+  else ifeq ($(WINDOWS_AUTO_BUILDER),0)
     $(info Building tools...)
     DUMMY != $(MAKE) -C $(TOOLS_DIR) >&2 || echo FAIL
       ifeq ($(DUMMY),FAIL)

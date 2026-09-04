@@ -2,9 +2,20 @@
 #include "socket_linux.h"
 #include "../network.h"
 #include "pc/debuglog.h"
+#if defined(__3DS__)
+#include "pc/platform/new3ds/new3ds_runtime.h"
+#include "pc/platform/new3ds/new3ds_log.h"
+#endif
 
 SOCKET socket_initialize(void) {
-#ifdef __SWITCH__
+#if defined(__3DS__)
+    if (!new3ds_runtime_ensure_network() || !new3ds_runtime_network_available()) {
+        NEW3DS_LOG_ERROR_CAT(NEW3DS_LOG_CAT_NET, "socket", "SOC unavailable");
+        LOG_ERROR("New 3DS Direct: socket unavailable (SOC not initialized)");
+        return INVALID_SOCKET;
+    }
+#endif
+#if defined(__SWITCH__) || defined(__3DS__)
     SOCKET sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 #else
     SOCKET sock = socket(AF_INET6, SOCK_DGRAM, IPPROTO_UDP);
@@ -21,15 +32,17 @@ SOCKET socket_initialize(void) {
         return INVALID_SOCKET;
     }
 
-#ifndef __SWITCH__
+#if defined(__SWITCH__)
+    LOG_INFO("Switch Direct: IPv4 UDP socket initialized");
+#elif defined(__3DS__)
+    LOG_INFO("New 3DS Direct: IPv4 UDP socket initialized");
+#else
     int v6only = 0;
     if (setsockopt(sock, IPPROTO_IPV6, IPV6_V6ONLY, (void *)&v6only, sizeof(v6only)) < 0) {
         LOG_ERROR("setsockopt(IPV6_V6ONLY) failed.");
         closesocket(sock);
         return INVALID_SOCKET;
     }
-#else
-    LOG_INFO("Switch Direct: IPv4 UDP socket initialized");
 #endif
 
     LOG_INFO("socket initialized.");

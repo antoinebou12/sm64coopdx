@@ -1,9 +1,15 @@
 #ifndef SMLUA_H
 #define SMLUA_H
 
+#ifdef __cplusplus
+extern "C" {
+#endif
 #include <lua.h>
 #include <lualib.h>
 #include <lauxlib.h>
+#ifdef __cplusplus
+}
+#endif
 
 #include <stdbool.h>
 #include "types.h"

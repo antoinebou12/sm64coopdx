@@ -16,6 +16,7 @@ TARGET     := $(BUILD_DIR)/sm64coopdx-switch-platform
 SOURCES    := tools/switch/platform_probe.c \
               src/pc/platform/switch/switch_platform.c \
               src/pc/platform/switch/switch_input.c \
+              src/pc/platform/switch/switch_crash_log.c \
               src/pc/controller/controller_switch.c
 OBJECTS    := $(patsubst %.c,$(BUILD_DIR)/%.o,$(SOURCES))
 ELF        := $(TARGET).elf

@@ -60,20 +60,36 @@ void djui_panel_menu_back(UNUSED struct DjuiBase* base) {
 }
 
 struct DjuiThreePanel* djui_panel_menu_create(char* headerText, bool forcedLeftSide) {
+#if defined(__3DS__)
+    /* Tall enough for rainbow HUD glyphs; negative header offset crops them on 240p. */
+    struct DjuiThreePanel* panel = djui_three_panel_create(&gDjuiRoot->base, 52, 0, 0);
+#else
     struct DjuiThreePanel* panel = djui_three_panel_create(&gDjuiRoot->base, 64, 0, 0);
+#endif
     struct DjuiTheme* theme = gDjuiThemes[configDjuiTheme];
     struct DjuiThreePanelTheme three = theme->threePanels;
     bool center = !forcedLeftSide && configDjuiThemeCenter;
     f32 widthMultiplier = center ? DJUI_THEME_CENTERED_WIDTH : 1.0f;
     f32 heightMultiplier = center ? DJUI_THEME_CENTERED_HEIGHT : 1.0f;
+#if defined(__3DS__)
+    /* Fill most of the 400x240 top screen; avoid empty footer bars.
+     * Keep width under ~1.05 so right-side Join/Accept buttons are not clipped. */
+    heightMultiplier = 1.0f;
+    if (widthMultiplier > 1.05f) { widthMultiplier = 1.05f; }
+#endif
 
     djui_base_set_size_type(&panel->base, DJUI_SVT_ABSOLUTE, DJUI_SVT_RELATIVE);
     djui_base_set_size(&panel->base, DJUI_DEFAULT_PANEL_WIDTH * widthMultiplier, heightMultiplier);
     djui_base_set_color(&panel->base, three.rectColor.r, three.rectColor.g, three.rectColor.b, three.rectColor.a);
     djui_base_set_border_color(&panel->base, three.borderColor.r, three.borderColor.g, three.borderColor.b, three.borderColor.a);
     if (center) djui_base_set_alignment(&panel->base, DJUI_HALIGN_CENTER, DJUI_VALIGN_CENTER);
+#if defined(__3DS__)
+    djui_base_set_border_width(&panel->base, 4);
+    djui_base_set_padding(&panel->base, 8, 8, 8, 8);
+#else
     djui_base_set_border_width(&panel->base, 8);
     djui_base_set_padding(&panel->base, 16, 16, 16, 16);
+#endif
     {
         bool hudFontHeader = gDjuiThemes[configDjuiTheme]->panels.hudFontHeader;
         if (!hudFontHeader) { generate_rainbow_text(headerText); }
@@ -85,13 +101,28 @@ struct DjuiThreePanel* djui_panel_menu_create(char* headerText, bool forcedLeftS
         } else {
             djui_base_set_color(&header->base, 255, 8, 0, 255);
         }
+#if defined(__3DS__)
+        /* Keep titles fully on-screen (desktop uses a -16 offset that clips at 240p). */
+        djui_base_set_location(&header->base, 0, 0);
+        djui_text_set_alignment(header, DJUI_HALIGN_CENTER, DJUI_VALIGN_CENTER);
+#else
         djui_base_set_location(&header->base, 0, DJUI_PANEL_HEADER_OFFSET);
         djui_text_set_alignment(header, DJUI_HALIGN_CENTER, DJUI_VALIGN_BOTTOM);
+#endif
         djui_text_set_font(header, hudFontHeader ? gDjuiFonts[2] : gDjuiFonts[1]);
         if (configExCoopTheme) {
             djui_text_set_font_scale(header, gDjuiFonts[1]->defaultFontScale);
+#if defined(__3DS__)
+            djui_text_set_font_scale(header, gDjuiFonts[1]->defaultFontScale * 0.55f);
+#endif
         } else {
+#if defined(__3DS__)
+            f32 scale = gDjuiFonts[1]->defaultFontScale * (hudFontHeader ? 0.45f : 0.55f);
+            if (strlen(headerText) > 12) { scale *= 0.85f; }
+            djui_text_set_font_scale(header, scale);
+#else
             djui_text_set_font_scale(header, gDjuiFonts[1]->defaultFontScale * (hudFontHeader ? 0.7f : 1.0f) * (strlen(headerText) > 15 ? 0.9f : 1.0f));
+#endif
         }
 
         struct DjuiFlowLayout* body = djui_flow_layout_create(&panel->base);
@@ -99,7 +130,12 @@ struct DjuiThreePanel* djui_panel_menu_create(char* headerText, bool forcedLeftS
         djui_base_set_size_type(&body->base, DJUI_SVT_RELATIVE, DJUI_SVT_ABSOLUTE);
         djui_base_set_size(&body->base, 1.0f, 0);
         djui_base_set_color(&body->base, 0, 0, 0, 0);
+#if defined(__3DS__)
+        djui_flow_layout_set_margin(body, 6);
+        djui_flow_layout_enable_scroll(body, true);
+#else
         djui_flow_layout_set_margin(body, 16);
+#endif
         djui_flow_layout_set_flow_direction(body, DJUI_FLOW_DIR_DOWN);
     }
     return panel;

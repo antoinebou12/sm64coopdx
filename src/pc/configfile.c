@@ -86,8 +86,15 @@ enum GfxWindowBackend configGraphicsBackend       = GFX_WINDOW_BACKEND_OPENGL;
 unsigned int configFiltering                      = 2; // 0 = Nearest, 1 = Bilinear, 2 = Trilinear
 bool         configShowFPS                        = false;
 bool         configShowPing                       = false;
+#if defined(__3DS__)
+enum RefreshRateMode configFramerateMode          = RRM_MANUAL;
+unsigned int configFrameLimit                     = 30;
+unsigned int configAmountOfPlayers                = 4;
+#else
 enum RefreshRateMode configFramerateMode          = RRM_AUTO;
 unsigned int configFrameLimit                     = 60;
+unsigned int configAmountOfPlayers                = MAX_PLAYERS;
+#endif
 unsigned int configInterpolationMode              = 1;
 unsigned int configDrawDistance                   = 6;
 // sound settings
@@ -161,8 +168,14 @@ bool         configDisableGamepads                = false;
 bool         configUseStandardKeyBindingsChat     = false;
 bool         configSmoothScrolling                = false;
 // free camera settings
+#if defined(__3DS__)
+/* C-Stick drives free-cam look; keep vanilla C-button synthesis as fallback. */
+bool         configEnableFreeCamera               = true;
+bool         configFreeCameraAnalog               = true;
+#else
 bool         configEnableFreeCamera               = false;
 bool         configFreeCameraAnalog               = false;
+#endif
 bool         configFreeCameraLCentering           = false;
 bool         configFreeCameraDPadBehavior         = false;
 bool         configFreeCameraHasCollision         = true;
@@ -189,6 +202,13 @@ bool         configLuaProfiler                    = false;
 bool         configDebugPrint                     = false;
 bool         configDebugInfo                      = false;
 bool         configDebugError                     = false;
+#ifdef __3DS__
+bool         configNew3dsLogs                     = false;
+bool         configNew3dsLogNet                   = false;
+bool         configNew3dsLogGfx                   = false;
+bool         configNew3dsLogPerf                  = false;
+bool         configNew3dsLogCoopnet               = false;
+#endif
 #ifdef DEVELOPMENT
 bool         configCtxProfiler                    = false;
 #endif
@@ -198,11 +218,14 @@ unsigned int configPlayerModel                    = 0;
 bool         configPlayerModelSelected            = false;
 struct PlayerPalette configPlayerPalette          = { { { 0x00, 0x00, 0xff }, { 0xff, 0x00, 0x00 }, { 0xff, 0xff, 0xff }, { 0x72, 0x1c, 0x0e }, { 0x73, 0x06, 0x00 }, { 0xfe, 0xc1, 0x79 }, { 0xff, 0x00, 0x00 }, { 0xff, 0x00, 0x00 } } };
 // coop settings
-unsigned int configAmountOfPlayers                = MAX_PLAYERS;
 bool         configBubbleDeath                    = true;
 unsigned int configHostPort                       = DEFAULT_PORT;
 unsigned int configHostSaveSlot                   = 1;
+#ifdef __3DS__
+char         configJoinIp[MAX_CONFIG_STRING]      = "192.168.68.50";
+#else
 char         configJoinIp[MAX_CONFIG_STRING]      = "";
+#endif
 unsigned int configJoinPort                       = DEFAULT_PORT;
 unsigned int configNetworkSystem                  = 0;
 unsigned int configPlayerInteraction              = 1;
@@ -211,7 +234,11 @@ unsigned int configStayInLevelAfterStar           = 0;
 bool         configNametags                       = true;
 bool         configModDevMode                     = false;
 unsigned int configBouncyLevelBounds              = 0;
-bool         configSkipIntro                      = 0;
+#if defined(__3DS__) || defined(__SWITCH__) || defined(HANDHELD)
+bool         configSkipIntro                      = true;
+#else
+bool         configSkipIntro                      = false;
+#endif
 bool         configPauseAnywhere                  = false;
 bool         configMenuStaffRoll                  = false;
 unsigned int configMenuLevel                      = 0;
@@ -230,7 +257,10 @@ char         configPassword[MAX_CONFIG_STRING]    = "";
 char         configDestId[MAX_CONFIG_STRING]      = "0";
 // DJUI settings
 unsigned int configDjuiTheme                      = DJUI_THEME_DARK;
-#ifdef HANDHELD
+#if defined(__3DS__)
+/* New 3DS top screen is 400x240 — center Host/Join over the 3D scene. */
+bool         configDjuiThemeCenter                = true;
+#elif defined(HANDHELD)
 bool         configDjuiThemeCenter                = false;
 #else
 bool         configDjuiThemeCenter                = true;
@@ -242,7 +272,11 @@ unsigned int configDjuiScale                      = 0;
 unsigned int configRulesVersion                   = 0;
 bool         configHideSocketWarning              = false;
 bool         configCompressOnStartup              = false;
+#if defined(__3DS__)
+bool         configSkipPackGeneration             = true;
+#else
 bool         configSkipPackGeneration             = false;
+#endif
 
 // secrets
 bool configExCoopTheme = false;
@@ -257,11 +291,11 @@ static const struct ConfigOption options[] = {
     {.name = "vsync",                          .type = CONFIG_TYPE_BOOL, .boolValue = &configWindow.vsync},
     {.name = "msaa",                           .type = CONFIG_TYPE_UINT, .uintValue = &configWindow.msaa},
     // display settings
-    {.name = "graphics_backend",               .type = CONFIG_TYPE_UINT, .uintValue = &configGraphicsBackend},
+    {.name = "graphics_backend",               .type = CONFIG_TYPE_UINT, .uintValue = (unsigned int *)&configGraphicsBackend},
     {.name = "texture_filtering",              .type = CONFIG_TYPE_UINT, .uintValue = &configFiltering},
     {.name = "show_fps",                       .type = CONFIG_TYPE_BOOL, .boolValue = &configShowFPS},
     {.name = "show_ping",                      .type = CONFIG_TYPE_BOOL, .boolValue = &configShowPing},
-    {.name = "framerate_mode",                 .type = CONFIG_TYPE_UINT, .uintValue = &configFramerateMode},
+    {.name = "framerate_mode",                 .type = CONFIG_TYPE_UINT, .uintValue = (unsigned int *)&configFramerateMode},
     {.name = "frame_limit",                    .type = CONFIG_TYPE_UINT, .uintValue = &configFrameLimit},
     {.name = "interpolation_mode",             .type = CONFIG_TYPE_UINT, .uintValue = &configInterpolationMode},
     {.name = "coop_draw_distance",             .type = CONFIG_TYPE_UINT, .uintValue = &configDrawDistance},
@@ -346,6 +380,13 @@ static const struct ConfigOption options[] = {
     {.name = "debug_print",                    .type = CONFIG_TYPE_BOOL, .boolValue   = &configDebugPrint},
     {.name = "debug_info",                     .type = CONFIG_TYPE_BOOL, .boolValue   = &configDebugInfo},
     {.name = "debug_error",                    .type = CONFIG_TYPE_BOOL, .boolValue   = &configDebugError},
+#ifdef __3DS__
+    {.name = "new3ds_logs",                    .type = CONFIG_TYPE_BOOL, .boolValue   = &configNew3dsLogs},
+    {.name = "new3ds_log_net",                 .type = CONFIG_TYPE_BOOL, .boolValue   = &configNew3dsLogNet},
+    {.name = "new3ds_log_gfx",                 .type = CONFIG_TYPE_BOOL, .boolValue   = &configNew3dsLogGfx},
+    {.name = "new3ds_log_perf",                .type = CONFIG_TYPE_BOOL, .boolValue   = &configNew3dsLogPerf},
+    {.name = "new3ds_log_coopnet",             .type = CONFIG_TYPE_BOOL, .boolValue   = &configNew3dsLogCoopnet},
+#endif
 #ifdef DEVELOPMENT
     {.name = "ctx_profiler",                   .type = CONFIG_TYPE_BOOL, .boolValue   = &configCtxProfiler},
 #endif
@@ -888,6 +929,31 @@ void configfile_reset_keybinds(bool extra) {
     }
 }
 
+#if defined(__3DS__)
+void configfile_apply_platform_defaults(void) {
+    configWindow.w = 400;
+    configWindow.h = 240;
+    configWindow.fullscreen = true;
+    configWindow.x = WAPI_WIN_CENTERPOS;
+    configWindow.y = WAPI_WIN_CENTERPOS;
+    configWindow.msaa = 0;
+    configWindow.settings_changed = false;
+    configWindow.reset = false;
+    configWindow.exiting_fullscreen = false;
+    configGraphicsBackend = GFX_WINDOW_BACKEND_OPENGL;
+    /* Fixed 0.5x → virtual 800x480 so DJUI_DEFAULT_PANEL_WIDTH (532) fits. */
+    configDjuiScale = 1;
+    configDjuiThemeCenter = true;
+    configForce4By3 = false;
+    configSkipIntro = true;
+    /* C-Stick = smooth camera (ext_stick) + digital C-button fallback. */
+    configEnableFreeCamera = true;
+    configFreeCameraAnalog = true;
+    configHostPort = DEFAULT_PORT;
+    configJoinPort = DEFAULT_PORT;
+}
+#endif
+
 void configfile_load(void) {
     bool configReadError = false;
 #ifdef DEVELOPMENT
@@ -899,6 +965,11 @@ void configfile_load(void) {
     } else {
         configfile_save(configfile_backup_name());
     }
+#endif
+#ifdef __3DS__
+    configfile_apply_platform_defaults();
+#elif defined(__SWITCH__) || defined(HANDHELD)
+    configSkipIntro = true;
 #endif
 }
 
@@ -941,6 +1012,10 @@ static void configfile_save_option(FILE *file, const struct ConfigOption *option
 // Writes the config file to 'filename'
 void configfile_save(const char *filename) {
     FILE *file;
+
+#ifdef __3DS__
+    configfile_apply_platform_defaults();
+#endif
 
     file = fopen(fs_get_write_path(filename), "w");
     if (file == NULL) {

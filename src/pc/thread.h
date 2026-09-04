@@ -1,7 +1,11 @@
 #ifndef THREADING_H
 #define THREADING_H
 
+#if defined(__3DS__)
+#include <3ds.h>
+#else
 #include <pthread.h>
+#endif
 
 #include "cliopts.h"
 #include "types.h"
@@ -18,8 +22,16 @@ enum ThreadState {
 };
 
 struct ThreadHandle {
+#if defined(__3DS__)
+    Thread thread;
+    LightLock mutex;
+    void *(*entry)(void *);
+    void *arg;
+    bool detached;
+#else
     pthread_t thread;
     pthread_mutex_t mutex;
+#endif
     enum ThreadState state;
 };
 

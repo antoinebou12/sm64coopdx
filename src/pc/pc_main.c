@@ -70,7 +70,16 @@
 #include <windows.h>
 #endif
 
+#if !defined(__3DS__)
 #include <SDL2/SDL.h>
+#endif
+
+#if defined(__3DS__)
+#include "pc/platform/new3ds/new3ds_platform_ui.h"
+#include "pc/platform/new3ds/new3ds_boot_trace.h"
+#include "pc/platform/new3ds/new3ds_boot_progress.h"
+#include "pc/platform/new3ds/new3ds_bottom_ui.h"
+#endif
 
 extern Vp gViewportFullscreen;
 
@@ -205,12 +214,16 @@ static s32 get_num_frames_to_draw(f64 t, u32 frameLimit) {
 static u32 get_display_refresh_rate(void) {
     static u32 refreshRate = 0;
     if (!refreshRate) {
+#if defined(__3DS__)
+        refreshRate = 60;
+#else
         SDL_DisplayMode mode;
         if (SDL_GetCurrentDisplayMode(0, &mode) == 0) {
             if (mode.refresh_rate > 0) { refreshRate = (u32) mode.refresh_rate; }
         } else {
             refreshRate = 60;
         }
+#endif
     }
     return refreshRate;
 }
@@ -218,7 +231,14 @@ static u32 get_display_refresh_rate(void) {
 static u32 get_target_refresh_rate(void) {
     if (configFramerateMode == RRM_MANUAL) { return configFrameLimit; }
     if (configFramerateMode == RRM_UNLIMITED) { return 3000; } // Has no effect
+#if defined(__3DS__)
+    {
+        u32 rate = get_display_refresh_rate();
+        return rate > 30 ? 30 : rate;
+    }
+#else
     return get_display_refresh_rate();
+#endif
 }
 
 static void select_graphics_backend(void) {
@@ -239,7 +259,12 @@ static void select_graphics_backend(void) {
     switch (backend) {
         case GFX_WINDOW_BACKEND_OPENGL:
             gRenderApi = &gfx_opengl_api;
+#if defined(__3DS__)
+            /* NDSP must be initialized after gfxInit/Citro3D; defer until gfx_init(). */
+            gAudioApi  = &audio_null;
+#else
             gAudioApi  = &audio_sdl;
+#endif
             break;
 #if defined(_WIN32)
         case GFX_WINDOW_BACKEND_DIRECTX:
@@ -253,10 +278,21 @@ static void select_graphics_backend(void) {
             break;
     }
 
+#if !defined(__3DS__)
+    if (!gAudioApi->init()) {
+        gAudioApi = &audio_null;
+    }
+#endif
+}
+
+#if defined(__3DS__)
+static void init_new3ds_audio_after_gfx(void) {
+    gAudioApi = &audio_new3ds;
     if (!gAudioApi->init()) {
         gAudioApi = &audio_null;
     }
 }
+#endif
 
 void produce_interpolation_frames_and_delay(void) {
     u32 refreshRate = get_target_refresh_rate();
@@ -432,7 +468,9 @@ void produce_one_dummy_frame(void (*callback)(), u8 clearColorR, u8 clearColorG,
     end_master_display_list();
     alloc_display_list(0);
     gfx_run((Gfx*) gGfxSPTask->task.t.data_ptr); // send_display_list
+#if !defined(__3DS__)
     display_and_vsync();
+#endif
 
     // delay to go easy on the cpu
     f64 frameEnd = clock_elapsed_f64();
@@ -468,39 +506,98 @@ void game_deinit(void) {
 void game_exit(void) {
     LOG_INFO("exiting cleanly");
     game_deinit();
+#if defined(__3DS__)
+    new3ds_platform_quit();
+#else
     exit(0);
+#endif
 }
 
 void* main_game_init(UNUSED void* dummy) {
+#if defined(__3DS__)
+    new3ds_boot_checkpoint("main_game_init: begin");
+    new3ds_boot_progress_set("Language...");
+#endif
     // load language
     if (!djui_language_init(configLanguage)) { snprintf(configLanguage, MAX_CONFIG_STRING, "%s", ""); }
+#if defined(__3DS__)
+    new3ds_boot_checkpoint("main_game_init: language");
+#endif
 
-    LOADING_SCREEN_MUTEX(loading_screen_set_segment_text("Loading"));
+    LOADING_SCREEN_MUTEX(
+        loading_screen_set_segment_text("Loading");
+        gCurrLoadingSegment.percentage = 0.05f;
+    );
+#if defined(__3DS__)
+    new3ds_boot_checkpoint("main_game_init: dynos begin");
+    new3ds_boot_progress_set("DynOS / packs...");
+#endif
     dynos_gfx_init();
     enable_queued_dynos_packs();
     sync_objects_init_system();
+#if defined(__3DS__)
+    new3ds_boot_checkpoint("main_game_init: dynos ok");
+#endif
 
     if (gCLIOpts.network != NT_SERVER && !gCLIOpts.skipUpdateCheck) {
         check_for_updates();
     }
 
-    LOADING_SCREEN_MUTEX(loading_screen_set_segment_text("Loading ROM Assets"));
+    LOADING_SCREEN_MUTEX(
+        loading_screen_set_segment_text("Loading ROM Assets");
+        gCurrLoadingSegment.percentage = 0.25f;
+    );
+#if defined(__3DS__)
+    new3ds_boot_checkpoint("main_game_init: rom_assets begin");
+    new3ds_boot_progress_set("ROM assets...");
+#endif
     rom_assets_load();
     smlua_text_utils_init();
+#if defined(__3DS__)
+    new3ds_boot_checkpoint("main_game_init: rom_assets ok");
+#endif
 
+    LOADING_SCREEN_MUTEX(
+        loading_screen_set_segment_text("Loading Mods");
+        gCurrLoadingSegment.percentage = 0.55f;
+    );
+#if defined(__3DS__)
+    new3ds_boot_checkpoint("main_game_init: mods begin");
+    new3ds_boot_progress_set("Mods...");
+#endif
     mods_init();
     enable_queued_mods();
+#if defined(__3DS__)
+    new3ds_boot_checkpoint("main_game_init: mods ok");
+#endif
     LOADING_SCREEN_MUTEX(
-        gCurrLoadingSegment.percentage = 0;
+        gCurrLoadingSegment.percentage = 0.75f;
         loading_screen_set_segment_text("Starting Game");
     );
 
+#if defined(__3DS__)
+    new3ds_boot_checkpoint("main_game_init: audio begin");
+    new3ds_boot_progress_set("Audio...");
+#endif
     audio_init();
+#if defined(__3DS__)
+    new3ds_boot_checkpoint("main_game_init: sound begin");
+#endif
     sound_init();
+#if defined(__3DS__)
+    new3ds_boot_checkpoint("main_game_init: network_player begin");
+    new3ds_boot_progress_set("Network players...");
+#endif
     network_player_init();
     mumble_init();
 
+    LOADING_SCREEN_MUTEX(gCurrLoadingSegment.percentage = 1.0f);
+
     gGameInited = true;
+#if defined(__3DS__)
+    new3ds_boot_checkpoint("main_game_init: done");
+    new3ds_boot_progress_set("Game data ready");
+#endif
     return NULL;
 }
 
@@ -532,7 +629,15 @@ int main(int argc, char *argv[]) {
     fs_init(gCLIOpts.savePath[0] ? gCLIOpts.savePath : sys_user_path());
 #endif
 
+#if defined(__3DS__)
+    new3ds_boot_progress_begin();
+    new3ds_boot_progress_set("Loading config...");
+#endif
     configfile_load();
+#if defined(__3DS__)
+    new3ds_boot_checkpoint("boot: config loaded");
+    new3ds_boot_progress_set("Config OK");
+#endif
 
     legacy_folder_handler();
 
@@ -540,10 +645,23 @@ int main(int argc, char *argv[]) {
 
     // create the window almost straight away
     if (!gGfxInited) {
+#if defined(__3DS__)
+        new3ds_boot_checkpoint("boot: gfx_init begin");
+        new3ds_boot_progress_set("Initializing graphics...");
+#endif
         gfx_init(gRenderApi, TITLE);
+#if defined(__3DS__)
+        new3ds_boot_checkpoint("boot: gfx_init ok");
+        new3ds_boot_progress_set("Graphics OK");
+#endif
         gfx_wm_set_keyboard_callbacks(keyboard_on_key_down, keyboard_on_key_up, keyboard_on_all_keys_up,
             keyboard_on_text_input, keyboard_on_text_editing);
         gfx_wm_set_scroll_callback(mouse_on_scroll);
+#if defined(__3DS__)
+        init_new3ds_audio_after_gfx();
+        new3ds_boot_checkpoint("boot: audio after gfx");
+        new3ds_boot_progress_set("Checking ROM...");
+#endif
     }
 
     // render the rom setup screen
@@ -555,12 +673,26 @@ int main(int argc, char *argv[]) {
             return 0;
         }
     }
+#if defined(__3DS__)
+    else {
+        new3ds_boot_checkpoint("boot: rom ok");
+        new3ds_boot_progress_set("ROM OK — loading assets...");
+    }
+#endif
 
     // start the thread for setting up the game
     bool threadSuccess = false;
     if (!gCLIOpts.hideLoadingScreen && !gCLIOpts.headless) {
         if (init_thread_handle(&gLoadingThread, main_game_init, NULL, NULL, 0) == 0) {
+#if defined(__3DS__)
+            new3ds_boot_checkpoint("boot: loading thread created");
+            new3ds_boot_checkpoint("boot: loading screen begin");
+            new3ds_boot_progress_set("Loading game data...");
+#endif
             render_loading_screen(); // render the loading screen while the game is setup
+#if defined(__3DS__)
+            new3ds_boot_checkpoint("boot: loading screen end");
+#endif
             threadSuccess = true;
             destroy_mutex(&gLoadingThread);
         }
@@ -569,19 +701,44 @@ int main(int argc, char *argv[]) {
         main_game_init(NULL); // failsafe incase threading doesn't work
     }
 
+#if defined(__3DS__)
+    new3ds_boot_checkpoint("boot: thread5 begin");
+    new3ds_boot_progress_set("Starting game loop...");
+#endif
     // initialize sm64 data and controllers
     thread5_game_loop(NULL);
+#if defined(__3DS__)
+    new3ds_boot_checkpoint("boot: thread5 end");
+#endif
 
     // Initialize the audio thread if possible.
     // init_thread_handle(&gAudioThread, audio_thread, NULL, NULL, 0);
 
+#if defined(__3DS__)
+    new3ds_boot_checkpoint("boot: loading_screen_reset begin");
+#endif
     loading_screen_reset();
+#if defined(__3DS__)
+    new3ds_boot_checkpoint("boot: loading_screen_reset ok");
+#endif
 
     // initialize djui
+#if defined(__3DS__)
+    new3ds_boot_checkpoint("boot: djui_init begin");
+    new3ds_boot_progress_set("Initializing menus...");
+#endif
     djui_init();
+#if defined(__3DS__)
+    new3ds_boot_checkpoint("boot: djui_init ok");
+#endif
     djui_unicode_init();
     djui_init_late();
     djui_console_message_dequeue();
+
+#if defined(__3DS__)
+    new3ds_boot_progress_end();
+    new3ds_bottom_ui_init();
+#endif
 
     show_update_popup();
 

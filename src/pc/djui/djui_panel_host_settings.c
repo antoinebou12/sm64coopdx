@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <string.h>
 #include "djui.h"
 #include "djui_panel.h"
 #include "djui_panel_menu.h"
@@ -7,9 +8,18 @@
 #include "pc/utils/misc.h"
 #include "pc/configfile.h"
 #include "djui_inputbox.h"
+#if defined(__SWITCH__) || defined(__3DS__)
+#include "djui_panel_switch_text_entry.h"
+#endif
 
 static unsigned int sKnockbackIndex = 0;
+#if !defined(__SWITCH__) && !defined(__3DS__)
 struct DjuiInputbox* sPlayerAmount = NULL;
+#endif
+#if defined(__SWITCH__) || defined(__3DS__)
+static struct DjuiButton* sButtonPlayers = NULL;
+static char sPlayersText[16] = "";
+#endif
 static bool sFalse = false;
 
 static void djui_panel_host_settings_knockback_change(UNUSED struct DjuiBase* caller) {
@@ -20,6 +30,7 @@ static void djui_panel_host_settings_knockback_change(UNUSED struct DjuiBase* ca
     }
 }
 
+#if !defined(__SWITCH__) && !defined(__3DS__)
 static bool djui_panel_host_limit_valid(void) {
     char* buffer = sPlayerAmount->buffer;
     int limit = 0;
@@ -44,6 +55,32 @@ static void djui_panel_host_player_text_change(struct DjuiBase* caller) {
     }
     configAmountOfPlayers = atoi(sPlayerAmount->buffer);
 }
+#endif
+
+#if defined(__SWITCH__) || defined(__3DS__)
+static void djui_panel_host_settings_players_apply(const char* text) {
+    if (text == NULL || text[0] == '\0') { return; }
+    int limit = atoi(text);
+    if (limit < 1) { limit = 1; }
+    if (limit > MAX_PLAYERS) { limit = MAX_PLAYERS; }
+    configAmountOfPlayers = (unsigned int)limit;
+    snprintf(sPlayersText, sizeof(sPlayersText), "%u", configAmountOfPlayers);
+    if (sButtonPlayers != NULL) {
+        djui_text_set_text(sButtonPlayers->text, sPlayersText);
+    }
+}
+
+static void djui_panel_host_settings_players_edit(struct DjuiBase* caller) {
+    snprintf(sPlayersText, sizeof(sPlayersText), "%u", configAmountOfPlayers);
+    djui_panel_switch_text_entry_create(
+        caller,
+        "Players",
+        sPlayersText,
+        sizeof(sPlayersText),
+        DJUI_SWITCH_TEXT_NUMERIC,
+        djui_panel_host_settings_players_apply);
+}
+#endif
 
 void djui_panel_host_settings_create(struct DjuiBase* caller) {
     struct DjuiThreePanel* panel = djui_panel_menu_create(DLANG(HOST_SETTINGS, SETTINGS), false);
@@ -74,6 +111,16 @@ void djui_panel_host_settings_create(struct DjuiBase* caller) {
 
         struct DjuiCheckbox* chkDevMode = djui_checkbox_create(body, DLANG(HOST_SETTINGS, MOD_DEV_MODE), (configNetworkSystem == NS_SOCKET) ? &configModDevMode : &sFalse, NULL);
         djui_base_set_enabled(&chkDevMode->base, configNetworkSystem == NS_SOCKET);
+#if defined(__3DS__)
+        {
+            struct DjuiText* tip = djui_text_create(body, "Mod Dev Mode is LAN-only (not CoopNet)");
+            djui_base_set_size_type(&tip->base, DJUI_SVT_RELATIVE, DJUI_SVT_ABSOLUTE);
+            djui_base_set_size(&tip->base, 1.0f, 20);
+            djui_base_set_color(&tip->base, 180, 180, 180, 255);
+            djui_text_set_alignment(tip, DJUI_HALIGN_CENTER, DJUI_VALIGN_CENTER);
+            djui_text_set_font_scale(tip, tip->font->defaultFontScale * 0.42f);
+        }
+#endif
 
         struct DjuiRect* rect1 = djui_rect_container_create(body, 32);
         {
@@ -84,6 +131,12 @@ void djui_panel_host_settings_create(struct DjuiBase* caller) {
             djui_base_set_alignment(&text1->base, DJUI_HALIGN_LEFT, DJUI_VALIGN_TOP);
             djui_text_set_drop_shadow(text1, 64, 64, 64, 100);
 
+#if defined(__SWITCH__) || defined(__3DS__)
+            snprintf(sPlayersText, sizeof(sPlayersText), "%u", configAmountOfPlayers);
+            sButtonPlayers = djui_button_create(&rect1->base, sPlayersText, DJUI_BUTTON_STYLE_NORMAL, djui_panel_host_settings_players_edit);
+            djui_base_set_size(&sButtonPlayers->base, 0.45f, 32);
+            djui_base_set_alignment(&sButtonPlayers->base, DJUI_HALIGN_RIGHT, DJUI_VALIGN_TOP);
+#else
             struct DjuiInputbox* inputbox1 = djui_inputbox_create(&rect1->base, 32);
             djui_base_set_size_type(&inputbox1->base, DJUI_SVT_RELATIVE, DJUI_SVT_ABSOLUTE);
             djui_base_set_size(&inputbox1->base, 0.45f, 32);
@@ -93,6 +146,7 @@ void djui_panel_host_settings_create(struct DjuiBase* caller) {
             djui_inputbox_set_text(inputbox1, limitString);
             djui_interactable_hook_value_change(&inputbox1->base, djui_panel_host_player_text_change);
             sPlayerAmount = inputbox1;
+#endif
         }
 
         djui_button_create(body, DLANG(MENU, BACK), DJUI_BUTTON_STYLE_BACK, djui_panel_menu_back);

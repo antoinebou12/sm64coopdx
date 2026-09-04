@@ -1,4 +1,4 @@
-#ifdef __SWITCH__
+#if defined(__SWITCH__) || defined(__3DS__)
 
 #include <stdio.h>
 #include <string.h>
@@ -88,7 +88,14 @@ static struct DjuiButton* switch_text_key_row(
     const size_t count = strlen(characters);
     if (count == 0) { return defaultButton; }
 
-    struct DjuiRect* row = djui_rect_container_create(body, 44);
+#if defined(__3DS__)
+    const f32 rowH = 28.0f;
+    const f32 keyH = 26.0f;
+#else
+    const f32 rowH = 44.0f;
+    const f32 keyH = 42.0f;
+#endif
+    struct DjuiRect* row = djui_rect_container_create(body, rowH);
     for (size_t i = 0; i < count; i++) {
         char label[2] = { characters[i], '\0' };
         if (!sUppercase && label[0] >= 'A' && label[0] <= 'Z') {
@@ -98,7 +105,7 @@ static struct DjuiButton* switch_text_key_row(
             &row->base, label, DJUI_BUTTON_STYLE_NORMAL, switch_text_key);
         button->base.tag = (s64)characters[i];
         djui_base_set_size_type(&button->base, DJUI_SVT_RELATIVE, DJUI_SVT_ABSOLUTE);
-        djui_base_set_size(&button->base, (1.0f / (f32)count) - 0.006f, 42);
+        djui_base_set_size(&button->base, (1.0f / (f32)count) - 0.006f, keyH);
         djui_base_set_location_type(&button->base, DJUI_SVT_RELATIVE, DJUI_SVT_ABSOLUTE);
         djui_base_set_location(&button->base, (f32)i / (f32)count, 0);
         djui_base_set_alignment(&button->base, DJUI_HALIGN_LEFT, DJUI_VALIGN_TOP);
@@ -151,7 +158,11 @@ void djui_panel_switch_text_entry_create(
 
     sValueText = djui_text_create(body, "");
     djui_base_set_size_type(&sValueText->base, DJUI_SVT_RELATIVE, DJUI_SVT_ABSOLUTE);
+#if defined(__3DS__)
+    djui_base_set_size(&sValueText->base, 1.0f, 28);
+#else
     djui_base_set_size(&sValueText->base, 1.0f, 48);
+#endif
     djui_base_set_color(&sValueText->base, 220, 220, 220, 255);
     djui_text_set_alignment(sValueText, DJUI_HALIGN_CENTER, DJUI_VALIGN_CENTER);
     djui_text_set_drop_shadow(sValueText, 64, 64, 64, 100);
@@ -169,32 +180,41 @@ void djui_panel_switch_text_entry_create(
             defaultButton);
     }
 
-    struct DjuiRect* editRow = djui_rect_container_create(body, 50);
+#if defined(__3DS__)
+    const f32 editH = 32.0f;
+    const f32 editBtnH = 30.0f;
+    const f32 actionH = 36.0f;
+#else
+    const f32 editH = 50.0f;
+    const f32 editBtnH = 48.0f;
+    const f32 actionH = 64.0f;
+#endif
+    struct DjuiRect* editRow = djui_rect_container_create(body, editH);
     if (mode != DJUI_SWITCH_TEXT_NUMERIC) {
         struct DjuiButton* caseButton = djui_button_create(
             &editRow->base, "a/A", DJUI_BUTTON_STYLE_NORMAL, switch_text_case);
-        djui_base_set_size(&caseButton->base, 0.32f, 48);
+        djui_base_set_size(&caseButton->base, 0.32f, editBtnH);
         djui_base_set_alignment(&caseButton->base, DJUI_HALIGN_LEFT, DJUI_VALIGN_TOP);
     }
     struct DjuiButton* backspaceButton = djui_button_create(
         &editRow->base, "Backspace", DJUI_BUTTON_STYLE_NORMAL, switch_text_backspace);
-    djui_base_set_size(&backspaceButton->base, mode == DJUI_SWITCH_TEXT_NUMERIC ? 0.49f : 0.32f, 48);
+    djui_base_set_size(&backspaceButton->base, mode == DJUI_SWITCH_TEXT_NUMERIC ? 0.49f : 0.32f, editBtnH);
     djui_base_set_alignment(&backspaceButton->base,
                             mode == DJUI_SWITCH_TEXT_NUMERIC ? DJUI_HALIGN_LEFT : DJUI_HALIGN_CENTER,
                             DJUI_VALIGN_TOP);
     struct DjuiButton* clearButton = djui_button_create(
         &editRow->base, "Clear", DJUI_BUTTON_STYLE_NORMAL, switch_text_clear);
-    djui_base_set_size(&clearButton->base, mode == DJUI_SWITCH_TEXT_NUMERIC ? 0.49f : 0.32f, 48);
+    djui_base_set_size(&clearButton->base, mode == DJUI_SWITCH_TEXT_NUMERIC ? 0.49f : 0.32f, editBtnH);
     djui_base_set_alignment(&clearButton->base, DJUI_HALIGN_RIGHT, DJUI_VALIGN_TOP);
 
-    struct DjuiRect* actionRow = djui_rect_container_create(body, 64);
+    struct DjuiRect* actionRow = djui_rect_container_create(body, actionH);
     struct DjuiButton* backButton = djui_button_create(
         &actionRow->base, "Back", DJUI_BUTTON_STYLE_BACK, djui_panel_menu_back);
-    djui_base_set_size(&backButton->base, 0.485f, 64);
+    djui_base_set_size(&backButton->base, 0.485f, actionH);
     djui_base_set_alignment(&backButton->base, DJUI_HALIGN_LEFT, DJUI_VALIGN_TOP);
     struct DjuiButton* acceptButton = djui_button_create(
         &actionRow->base, "Apply", DJUI_BUTTON_STYLE_NORMAL, switch_text_accept);
-    djui_base_set_size(&acceptButton->base, 0.485f, 64);
+    djui_base_set_size(&acceptButton->base, 0.485f, actionH);
     djui_base_set_alignment(&acceptButton->base, DJUI_HALIGN_RIGHT, DJUI_VALIGN_TOP);
 
     struct DjuiPanel* added = djui_panel_add(caller, panel, defaultButton != NULL ? &defaultButton->base : &acceptButton->base);

@@ -1,14 +1,24 @@
 #pragma once
 
 #include <PR/ultratypes.h>
-#ifdef __SWITCH__
+#include <stdint.h>
+#include <stdbool.h>
+
+#if defined(__3DS__)
+/*
+ * The New 3DS backend is native libctru/Citro3D and must not depend on SDL.
+ * Keep lightweight compatibility types here because the shared backend API
+ * still carries SDL-named types for desktop/Switch implementations.
+ */
+typedef struct SDL_Window SDL_Window;
+typedef struct SDL_Event {
+    uint32_t type;
+} SDL_Event;
+#elif defined(__SWITCH__)
 #include <SDL2/SDL.h>
 #else
 #include <SDL3/SDL.h>
 #endif
-
-#include <stdint.h>
-#include <stdbool.h>
 
 // special value for window position that signifies centered position
 #define WAPI_WIN_CENTERPOS 0xFFFFFFFF
@@ -46,6 +56,9 @@ void gfx_wm_set_keyboard_callbacks(kb_callback_t on_key_down, kb_callback_t on_k
     void (*on_text_input)(char*), void (*on_text_editing)(char*, int));
 void gfx_wm_set_scroll_callback(void (*on_scroll)(float, float));
 void gfx_wm_main_loop(void (*run_one_game_iter)(void));
+#if defined(__3DS__)
+void gfx_wm_set_force_exit_on_start(bool enable);
+#endif
 void gfx_wm_get_dimensions(uint32_t *width, uint32_t *height);
 void gfx_wm_handle_events(void);
 bool gfx_wm_start_frame(void);

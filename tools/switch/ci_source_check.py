@@ -51,6 +51,7 @@ def main() -> None:
 
     makefile = text("Makefile.switch-game")
     workflow = text(".github/workflows/build-switch-game.yml")
+    portability_script = text("scripts/ci/switch-portability.sh")
     platform_h = text("src/pc/platform/switch/switch_platform.h")
     platform_c = text("src/pc/platform/switch/switch_platform.c")
     window_c = text("src/pc/platform/switch/switch_window_manager.c")
@@ -139,7 +140,9 @@ def main() -> None:
     # SDL boundary and renderer safety.
     require(
         "window manager public API selects SDL2 on Switch",
-        "#ifdef __SWITCH__\n#include <SDL2/SDL.h>\n#else\n#include <SDL3/SDL.h>" in gfx_window_h,
+        "#include <SDL2/SDL.h>" in gfx_window_h
+        and "#include <SDL3/SDL.h>" in gfx_window_h
+        and ("defined(__SWITCH__)" in gfx_window_h or "#ifdef __SWITCH__" in gfx_window_h),
     )
     require(
         "OpenGL window backend has explicit Horizon branch",
@@ -372,26 +375,45 @@ def main() -> None:
     )
     require(
         "authoritative Switch CI runs the Switch unit tests",
-        "Run Switch unit tests" in workflow
-        and "tools/switch/tests/run_tests.py" in workflow,
+        (
+            "Run Switch unit tests" in workflow
+            and "tools/switch/tests/run_tests.py" in workflow
+        )
+        or (
+            "Run Switch portability gates" in workflow
+            and "scripts/ci/switch-portability.sh" in workflow
+            and "tools/switch/tests/run_tests.py" in portability_script
+        ),
     )
     require(
         "authoritative Switch CI cross-compiles every overlay and LDN object",
-        "Compile every Switch overlay and local-wireless object" in workflow
-        and "build/us_switch/src/pc/pc_main.o" in workflow
-        and "build/us_switch/src/pc/loading.o" in workflow
-        and "socket_ldn.o" in workflow
-        and "socket_ldn_glue.o" in workflow
-        and "socket_ldn_util.o" in workflow
-        and "djui_panel_ldn_browser.o" in workflow
-        and "build/us_switch/src/pc/network/network.o" in workflow,
+        (
+            "Compile every Switch overlay and local-wireless object" in workflow
+            and "build/us_switch/src/pc/pc_main.o" in workflow
+            and "build/us_switch/src/pc/loading.o" in workflow
+            and "socket_ldn.o" in workflow
+            and "socket_ldn_glue.o" in workflow
+            and "socket_ldn_util.o" in workflow
+            and "djui_panel_ldn_browser.o" in workflow
+            and "build/us_switch/src/pc/network/network.o" in workflow
+        )
+        or (
+            "build/us_switch/src/pc/pc_main.o" in portability_script
+            and "build/us_switch/src/pc/loading.o" in portability_script
+            and "socket_ldn.o" in portability_script
+            and "socket_ldn_glue.o" in portability_script
+            and "socket_ldn_util.o" in portability_script
+            and "djui_panel_ldn_browser.o" in portability_script
+            and "build/us_switch/src/pc/network/network.o" in portability_script
+        ),
     )
 
     # Input/audio console-specific behavior.
     require(
         "native libnx controller backend is selected on Switch",
-        '#ifdef __SWITCH__\n#include "controller_switch.h"' in controller_entry
-        and "&controller_switch" in controller_entry,
+        '#include "controller_switch.h"' in controller_entry
+        and "&controller_switch" in controller_entry
+        and ("defined(__SWITCH__)" in controller_entry or "#ifdef __SWITCH__" in controller_entry),
     )
     require(
         "native input supports multiple Horizon pad slots",

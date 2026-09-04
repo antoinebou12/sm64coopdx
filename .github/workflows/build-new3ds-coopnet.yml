@@ -1,0 +1,61 @@
+name: Build New 3DS CoopNet
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: new3ds-coopnet-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DEVKITPRO: /opt/devkitpro
+  DEVKITARM: /opt/devkitpro/devkitARM
+
+jobs:
+  build-new3ds-coopnet:
+    name: devkitARM / CoopNet compile-only
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    container:
+      image: devkitpro/devkitarm:latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install 3DS libraries
+        run: |
+          dkp-pacman -Syu --noconfirm 3ds-dev 3ds-zlib
+          apt-get update -qq
+          apt-get install -y -qq git python3 curl bsdextrautils patch
+
+      - name: Add devkitARM to PATH
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "${DEVKITPRO}/devkitARM/bin" >> "$GITHUB_PATH"
+          echo "${DEVKITPRO}/tools/bin" >> "$GITHUB_PATH"
+
+      - name: Build libjuice and CoopNet for New 3DS
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash tools/new3ds/build-libjuice.sh
+          bash tools/new3ds/build-coopnet.sh
+
+      - name: Compile integration smoke with CoopNet enabled
+        shell: bash
+        run: make -f Makefile.new3ds-game NEW3DS_COOPNET=1 new3ds-integration-smoke -j2
+
+      - name: Upload CoopNet dependency artifacts
+        if: ${{ !env.ACT }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: sm64coopdx-new3ds-coopnet-deps
+          if-no-files-found: error
+          path: |
+            build/new3ds-deps/libjuice/lib/libjuice.a
+            build/new3ds-deps/coopnet/lib/libcoopnet.a

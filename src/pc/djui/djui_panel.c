@@ -19,6 +19,15 @@ bool djui_panel_is_active(void) {
     return (sPanelList != NULL);
 }
 
+void djui_panel_set_overlay_visible(bool visible) {
+    if (sPanelList == NULL || sPanelList->base == NULL) {
+        return;
+    }
+    djui_base_set_visible(sPanelList->base, visible);
+    djui_base_set_enabled(sPanelList->base, visible);
+    gInteractableOverridePad = visible;
+}
+
 static struct DjuiBase* djui_panel_find_first_interactable(struct DjuiBaseChild* child) {
     while (child) {
         if (child->base->interactable && child->base->interactable->enabled) {

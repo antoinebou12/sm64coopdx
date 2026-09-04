@@ -19,7 +19,7 @@ extern void djui_panel_ldn_browser_create(struct DjuiBase* caller);
 #endif
 
 void djui_panel_join_create(struct DjuiBase* caller) {
-#ifdef __SWITCH__
+#if defined(__SWITCH__)
     // Keep every Switch transport available from one screen: local LDN,
     // CoopNet internet lobbies (when compiled in), and direct IP.
     struct DjuiThreePanel* panel = djui_panel_menu_create(DLANG(JOIN, JOIN_TITLE), false);
@@ -31,6 +31,27 @@ void djui_panel_join_create(struct DjuiBase* caller) {
         djui_button_create(body, DLANG(JOIN, PRIVATE_LOBBIES), DJUI_BUTTON_STYLE_NORMAL, djui_panel_join_private_create);
 #endif
         djui_button_create(body, DLANG(JOIN, DIRECT), DJUI_BUTTON_STYLE_NORMAL, djui_panel_join_direct_create);
+        djui_button_create(body, DLANG(MENU, BACK), DJUI_BUTTON_STYLE_BACK, djui_panel_menu_back);
+    }
+
+    djui_panel_add(caller, panel, NULL);
+#elif defined(__3DS__)
+    // Always show a Join menu on New 3DS (never skip straight to Direct).
+    struct DjuiThreePanel* panel = djui_panel_menu_create(DLANG(JOIN, JOIN_TITLE), false);
+    struct DjuiBase* body = djui_three_panel_get_body(panel);
+    {
+#ifdef COOPNET
+        struct DjuiText* tip = djui_text_create(body, "LAN = local Wi-Fi   CoopNet = internet");
+        djui_base_set_size_type(&tip->base, DJUI_SVT_RELATIVE, DJUI_SVT_ABSOLUTE);
+        djui_base_set_size(&tip->base, 1.0f, 24);
+        djui_base_set_color(&tip->base, 200, 200, 200, 255);
+        djui_text_set_alignment(tip, DJUI_HALIGN_CENTER, DJUI_VALIGN_CENTER);
+        djui_text_set_font_scale(tip, tip->font->defaultFontScale * 0.7f);
+
+        djui_button_create(body, "CoopNet Public", DJUI_BUTTON_STYLE_NORMAL, djui_panel_join_public_lobbies);
+        djui_button_create(body, "CoopNet Private", DJUI_BUTTON_STYLE_NORMAL, djui_panel_join_private_create);
+#endif
+        djui_button_create(body, "Join LAN (IP)", DJUI_BUTTON_STYLE_NORMAL, djui_panel_join_direct_create);
         djui_button_create(body, DLANG(MENU, BACK), DJUI_BUTTON_STYLE_BACK, djui_panel_menu_back);
     }
 

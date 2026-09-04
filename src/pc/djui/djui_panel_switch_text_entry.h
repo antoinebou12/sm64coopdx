@@ -1,7 +1,7 @@
 #ifndef DJUI_PANEL_SWITCH_TEXT_ENTRY_H
 #define DJUI_PANEL_SWITCH_TEXT_ENTRY_H
 
-#ifdef __SWITCH__
+#if defined(__SWITCH__) || defined(__3DS__)
 
 #include "djui.h"
 

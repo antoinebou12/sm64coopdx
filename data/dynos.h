@@ -10,7 +10,14 @@
 #include <math.h>
 #include <limits.h>
 #include <dirent.h>
-#ifdef HAVE_SDL2
+#if defined(__3DS__)
+/*
+ * The New 3DS port uses native libctru/Citro3D and intentionally has no SDL
+ * dependency. Keep DynOS' common header platform-neutral so every game/DynOS
+ * translation unit can compile under devkitARM. Any genuinely SDL-specific
+ * DynOS implementation must stay behind its own desktop/Switch platform guard.
+ */
+#elif defined(HAVE_SDL2)
 // Horizon builds against devkitPro SDL2; desktop stays on SDL3.
 #include <SDL2/SDL.h>
 #else

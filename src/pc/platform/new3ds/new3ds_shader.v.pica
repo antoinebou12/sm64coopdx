@@ -1,0 +1,24 @@
+; SM64CoopDX New 3DS pass-through vertex shader
+;
+; v0 = clip-space position
+; v1 = texture coordinate 0
+; v2 = texture coordinate 1 / light-map coordinate
+; v3 = primary combiner color
+
+.out outpos position
+.out outtc0 texcoord0
+.out outtc1 texcoord1
+.out outclr color
+
+.alias inpos v0
+.alias intex0 v1
+.alias intex1 v2
+.alias inclr v3
+
+.proc main
+    mov outpos, inpos
+    mov outtc0, intex0
+    mov outtc1, intex1
+    mov outclr, inclr
+    end
+.end

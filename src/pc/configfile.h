@@ -14,7 +14,11 @@
 #define MAX_CONFIG_STRING 64
 #define MAX_SAVE_NAME_STRING 32
 
+#if defined(__3DS__)
+#define DEFAULT_PORT 1234
+#else
 #define DEFAULT_PORT 7777
+#endif
 #define DEFAULT_COOPNET_IP "net.coop64.us"
 #define DEFAULT_COOPNET_PORT 34197
 
@@ -128,6 +132,13 @@ extern bool         configLuaProfiler;
 extern bool         configDebugPrint;
 extern bool         configDebugInfo;
 extern bool         configDebugError;
+#ifdef __3DS__
+extern bool         configNew3dsLogs;
+extern bool         configNew3dsLogNet;
+extern bool         configNew3dsLogGfx;
+extern bool         configNew3dsLogPerf;
+extern bool         configNew3dsLogCoopnet;
+#endif
 #ifdef DEVELOPMENT
 extern bool         configCtxProfiler;
 #endif
@@ -187,6 +198,9 @@ void enable_queued_dynos_packs(void);
 void configfile_reset_keybinds(bool extra);
 void configfile_load(void);
 void configfile_save(const char *filename);
+#if defined(__3DS__)
+void configfile_apply_platform_defaults(void);
+#endif
 const char *configfile_name(void);
 const char *configfile_backup_name(void);
 
