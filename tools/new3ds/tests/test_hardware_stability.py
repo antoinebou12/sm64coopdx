@@ -24,6 +24,13 @@ def define_int(text: str, name: str) -> int:
     return int(match.group(1))
 
 
+def make_var(text: str, name: str) -> str:
+    match = re.search(rf"^{re.escape(name)}\s*\?=\s*([^\s#]+)", text, re.MULTILINE)
+    if match is None:
+        raise AssertionError(f"missing make variable: {name}")
+    return match.group(1)
+
+
 def main() -> int:
     gfx_h = read("src/pc/gfx/gfx.h")
     renderer = read("src/pc/gfx/gfx_citro3d_new3ds.c")
@@ -54,14 +61,21 @@ def main() -> int:
     require("C3D_DepthMap(" in guard, "depth mapping is not reasserted after backend draws")
     require("C3D_AlphaBlend(" in guard, "blend state is not reasserted after backend draws")
 
-    require("svcBreak(USERBREAK_PANIC);" in exception_handler, "fatal exceptions are not re-raised")
+    # The optional handler may still be used for targeted SD-log experiments,
+    # but normal hardware builds must let Luma/system exception handling see the
+    # original fault rather than swallowing it behind a permanent black screen.
+    require("svcBreak(USERBREAK_PANIC);" in exception_handler, "optional handler does not re-raise fatal faults")
     require(
         "while (aptMainLoop())" not in exception_handler,
         "fatal exception handler still contains the black-screen wait loop",
     )
+    require(
+        make_var(makefile, "NEW3DS_USER_EXCEPTIONS") == "0",
+        "custom libctru exception handler must be disabled by default on hardware",
+    )
 
-    require("NEW3DS_APP_VERSION ?= 0.0.1" in makefile, "3DSX/CIA semantic version is not 0.0.1")
-    require("NEW3DS_CIA_VERSION ?= 1" in makefile, "CIA numeric title version is not 1")
+    require(make_var(makefile, "NEW3DS_APP_VERSION") == "0.0.1", "3DSX/CIA semantic version is not 0.0.1")
+    require(make_var(makefile, "NEW3DS_CIA_VERSION") == "1", "CIA numeric title version is not 1")
     require("-ver $(NEW3DS_CIA_VERSION)" in makefile, "makerom is not receiving the CIA title version")
     require(
         "new3ds_gfx_state_guard.o" in makefile,
@@ -73,7 +87,8 @@ def main() -> int:
 
     print(
         "New 3DS hardware stability checks passed: "
-        f"texture_cache={cache_size}, renderer_pool={renderer_pool}, version=0.0.1"
+        f"texture_cache={cache_size}, renderer_pool={renderer_pool}, "
+        "version=0.0.1, user_exceptions=off"
     )
     return 0
 
