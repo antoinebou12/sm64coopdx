@@ -59,18 +59,22 @@ def main() -> int:
     require(cache_size == 512, f"unexpected New 3DS texture cache budget: {cache_size}")
     require(renderer_pool == 768, f"unexpected Citro3D texture pool budget: {renderer_pool}")
 
-    # Readable HUD/DJUI: T straight through; depth-off S un-mirror for 2D quads.
+    # Readable HUD/DJUI: both S and T map straight through (pad-aware scales).
     require(
         "1.0f - src[program->tex_offset[0] + 1] * new3ds_texture_scale_t(0)" not in renderer,
         "renderer still inverts T with the old non-pad-aware formula",
     )
     require(
-        "t0 * new3ds_texture_scale_t(0)" in renderer,
+        "(sDepthTest ? s0 : (1.0f - s0))" not in renderer,
+        "renderer must not invert S for depth-off draws (mirrors MARIO→OIRAM)",
+    )
+    require(
+        "src[program->tex_offset[0] + 1] * new3ds_texture_scale_t(0)" in renderer,
         "renderer does not map T straight through",
     )
     require(
-        "(sDepthTest ? s0 : (1.0f - s0))" in renderer,
-        "renderer does not un-mirror S for depth-off HUD/DJUI draws",
+        "src[program->tex_offset[0]] * new3ds_texture_scale_s(0)" in renderer,
+        "renderer does not map S straight through",
     )
     require(
         "sDepthWriteApplied = !sDepthWrite;" in renderer,
