@@ -25,7 +25,17 @@
 #define MAX_VERTICES 64
 #define MAX_TILES 8
 #define MAX_TEXTURES 2
+/*
+ * The shared texture cache hashes with HASH_MASK, so its capacity must be a
+ * power of two. Keep the New 3DS cache below the Citro3D backend's 768-slot
+ * pool: this both preserves the mask invariant and leaves headroom so a cache
+ * miss can never make the backend return/alias texture ID 0 on real hardware.
+ */
+#if defined(__3DS__)
+#define MAX_CACHED_TEXTURES 512
+#else
 #define MAX_CACHED_TEXTURES 4096 // for preloading purposes
+#endif
 #define MAX_GFX_STATES 8
 
 #define HASH_SHIFT 0

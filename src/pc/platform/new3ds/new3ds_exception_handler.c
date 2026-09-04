@@ -76,16 +76,21 @@ static void new3ds_exception_handler(ERRF_ExceptionInfo *excep, CpuRegisters *re
             fprintf(file, "pc=0x%08lX\n", (unsigned long)pc);
             fprintf(file, "lr=0x%08lX\n", (unsigned long)lr);
             fprintf(file, "cpsr=0x%08lX\n", (unsigned long)cpsr);
+            fflush(file);
             fclose(file);
         }
     }
 
     svcOutputDebugString("SM64CoopDX: fatal exception captured\n", 34);
 
-    while (aptMainLoop()) {
-        gspWaitForVBlank();
-    }
-
+    /*
+     * Do not wait forever in aptMainLoop here. The old handler swallowed the
+     * fault and left real hardware on a black screen with no Luma/system dump.
+     * Re-raise as a user panic after the best-effort SD log so the normal 3DS
+     * crash UI can capture a visible diagnostic. svcExitProcess is a fallback
+     * for environments that return from svcBreak.
+     */
+    svcBreak(USERBREAK_PANIC);
     svcExitProcess();
     __builtin_unreachable();
 }

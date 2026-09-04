@@ -18,7 +18,7 @@ void djui_panel_confirm_create(struct DjuiBase* caller, char* title, char* messa
         djui_base_compute_tree(&text->base);
         u16 lines = djui_text_count_lines(text, 12);
 #if defined(__3DS__)
-        f32 textHeight = 28 * 0.8125f * lines + 8;
+        f32 textHeight = 32 * 0.8125f * lines + 8;
         if (textHeight > 96.0f) { textHeight = 96.0f; }
 #else
         f32 textHeight = 32 * 0.8125f * lines + 8;

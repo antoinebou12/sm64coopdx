@@ -136,10 +136,6 @@ void djui_init(void) {
 }
 
 void djui_init_late(void) {
-#if defined(__3DS__)
-    /* Keep menu body text on the aliased font for readability. */
-    configDjuiThemeFont = 1;
-#endif
     djui_panel_main_create(NULL);
 #if defined(__3DS__)
     if (configLanguage[0] == '\0') {

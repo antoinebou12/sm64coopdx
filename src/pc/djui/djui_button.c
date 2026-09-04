@@ -51,7 +51,8 @@ struct DjuiButton* djui_button_create(struct DjuiBase* parent, const char* messa
     struct DjuiButton* button = calloc(1, sizeof(struct DjuiButton));
     struct DjuiBase* base     = &button->base;
 #if defined(__3DS__)
-    const f32 buttonHeight = 36.0f;
+    /* 44 units = 22px: room for the 32-unit (16px, 1:1) body glyph cell. */
+    const f32 buttonHeight = 44.0f;
 #else
     const f32 buttonHeight = configDjuiThemeCenter ? 50.0f : 64.0f;
 #endif
@@ -75,9 +76,6 @@ struct DjuiButton* djui_button_create(struct DjuiBase* parent, const char* messa
     djui_base_set_color(&text->base, color.r, color.g, color.b, color.a);
     djui_text_set_alignment(text, DJUI_HALIGN_CENTER, DJUI_VALIGN_CENTER);
     djui_text_set_drop_shadow(text, 64, 64, 64, 100);
-#if defined(__3DS__)
-    djui_text_set_font_scale(text, text->font->defaultFontScale * 0.55f);
-#endif
     button->text = text;
 
     djui_base_set_size_type(base, DJUI_SVT_RELATIVE, DJUI_SVT_ABSOLUTE);
@@ -92,7 +90,7 @@ struct DjuiButton* djui_button_create(struct DjuiBase* parent, const char* messa
 struct DjuiButton* djui_button_left_create(struct DjuiBase* parent, const char* message, enum DjuiButtonStyle style, void (*on_click)(struct DjuiBase*)) {
     struct DjuiButton* button = djui_button_create(parent, message, style, on_click);
 #if defined(__3DS__)
-    djui_base_set_size(&button->base, 0.485f, 36);
+    djui_base_set_size(&button->base, 0.485f, 44);
 #else
     djui_base_set_size(&button->base, 0.485f, 64);
 #endif
@@ -103,7 +101,7 @@ struct DjuiButton* djui_button_left_create(struct DjuiBase* parent, const char* 
 struct DjuiButton* djui_button_right_create(struct DjuiBase* parent, const char* message, enum DjuiButtonStyle style, void (*on_click)(struct DjuiBase*)) {
     struct DjuiButton* button = djui_button_create(parent, message, style, on_click);
 #if defined(__3DS__)
-    djui_base_set_size(&button->base, 0.485f, 36);
+    djui_base_set_size(&button->base, 0.485f, 44);
 #else
     djui_base_set_size(&button->base, 0.485f, 64);
 #endif

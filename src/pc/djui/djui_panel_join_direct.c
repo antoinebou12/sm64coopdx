@@ -321,17 +321,15 @@ void djui_panel_join_direct_create(struct DjuiBase* caller) {
         {
             struct DjuiText* title = djui_text_create(body, "Enter host LAN IP");
             djui_base_set_size_type(&title->base, DJUI_SVT_RELATIVE, DJUI_SVT_ABSOLUTE);
-            djui_base_set_size(&title->base, 1.0f, 26);
+            djui_base_set_size(&title->base, 1.0f, 36);
             djui_base_set_color(&title->base, 230, 230, 230, 255);
             djui_text_set_alignment(title, DJUI_HALIGN_CENTER, DJUI_VALIGN_CENTER);
-            djui_text_set_font_scale(title, title->font->defaultFontScale * 0.55f);
 
             struct DjuiText* tip = djui_text_create(body, "Ex: 192.168.1.10:1234");
             djui_base_set_size_type(&tip->base, DJUI_SVT_RELATIVE, DJUI_SVT_ABSOLUTE);
-            djui_base_set_size(&tip->base, 1.0f, 24);
+            djui_base_set_size(&tip->base, 1.0f, 36);
             djui_base_set_color(&tip->base, 160, 210, 160, 255);
             djui_text_set_alignment(tip, DJUI_HALIGN_CENTER, DJUI_VALIGN_CENTER);
-            djui_text_set_font_scale(tip, tip->font->defaultFontScale * 0.5f);
         }
 #else
         struct DjuiText* text1 = djui_text_create(body, DLANG(JOIN, JOIN_SOCKET));
