@@ -89,10 +89,20 @@ const char *new3ds_log_directory(void) {
     return NEW3DS_LOG_DIR;
 }
 
-void new3ds_log_init(void) {
-    if (!configNew3dsLogs) {
-        return;
+/*
+ * Errors and boot checkpoints are written even when file logging is off. The
+ * DJUI checkbox that turns logging on is unreachable when the failure is
+ * gfx_init itself, so gating these left a dead console with no diagnostic
+ * anywhere. Everything else still respects configNew3dsLogs.
+ */
+static bool new3ds_log_is_critical(const char *level, const char *tag) {
+    if (level != NULL && strcmp(level, "ERROR") == 0) {
+        return true;
     }
+    return tag != NULL && strcmp(tag, "boot") == 0;
+}
+
+void new3ds_log_init(void) {
     if (!new3ds_log_prepare_file()) {
         return;
     }
@@ -112,7 +122,7 @@ void new3ds_log_flush(void) {
 }
 
 void new3ds_log_shutdown(void) {
-    if (!configNew3dsLogs || !sFileLogReady) {
+    if (!sFileLogReady) {
         return;
     }
 
@@ -165,20 +175,23 @@ void new3ds_log_write(const char *level, const char *tag, const char *fmt, ...) 
     (void)fmt;
     return;
 #else
-    char message[64];
+    /*
+     * Must track the emitted line, not a smaller fixed cap: at 64 the perf
+     * line lost "degraded=/dropped=" and messages ended mid-word.
+     */
+    char message[NEW3DS_LOG_LINE_SIZE];
     char line[NEW3DS_LOG_LINE_SIZE];
     va_list args;
     bool is_error;
-
-    if (!configNew3dsLogs) {
-        return;
-    }
 
     if (level == NULL) {
         level = "INFO";
     }
     if (tag == NULL) {
         tag = "new3ds";
+    }
+    if (!configNew3dsLogs && !new3ds_log_is_critical(level, tag)) {
+        return;
     }
     if (new3ds_log_level_value(level) > NEW3DS_LOG_LEVEL) {
         return;

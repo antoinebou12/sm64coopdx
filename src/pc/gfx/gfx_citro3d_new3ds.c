@@ -1212,6 +1212,21 @@ void new3ds_gfx_get_stats(New3dsGfxStats *out) {
     }
 }
 
+/*
+ * The CIA exheader decides how much APPLICATION memory the process gets, and a
+ * misconfigured one starves the heaps long before any of this code runs. Log
+ * the numbers at the last point where they are still actionable.
+ */
+static void new3ds_log_memory(const char *phase) {
+    NEW3DS_LOG_INFO(
+        "boot",
+        "mem %s app_total=%luKB app_free=%luKB linear_free=%luKB",
+        phase,
+        (unsigned long)(osGetMemRegionSize(MEMREGION_APPLICATION) >> 10),
+        (unsigned long)(osGetMemRegionFree(MEMREGION_APPLICATION) >> 10),
+        (unsigned long)(linearSpaceFree() >> 10));
+}
+
 static void new3ds_gfx_show_fatal_and_exit(const char *message) {
     NEW3DS_LOG_ERROR_CAT(NEW3DS_LOG_CAT_GFX, "gfx", "%s", message);
     new3ds_platform_show_exit_message(message);
@@ -1222,8 +1237,29 @@ static void new3ds_gfx_show_fatal_and_exit(const char *message) {
 static void new3ds_init(void) {
     if (sInitialized) return;
 
+    new3ds_log_memory("pre-c3d");
+
     if (!C3D_Init(C3D_DEFAULT_CMDBUF_SIZE)) {
-        new3ds_gfx_show_fatal_and_exit("Graphics initialization failed.\nCitro3D could not start.");
+        /*
+         * C3D_Init only fails when its command buffer cannot be allocated, so
+         * report the free memory rather than a bare "could not start": on
+         * hardware that means a starved linear heap, i.e. the installed title
+         * is not running with New 3DS extended memory.
+         */
+        char message[224];
+        snprintf(
+            message,
+            sizeof(message),
+            "Graphics initialization failed.\n"
+            "Citro3D could not start.\n\n"
+            "linear free: %luKB\n"
+            "app memory free: %luKB of %luKB\n\n"
+            "Reinstall the latest CIA; this title needs\n"
+            "New 3DS extended memory.",
+            (unsigned long)(linearSpaceFree() >> 10),
+            (unsigned long)(osGetMemRegionFree(MEMREGION_APPLICATION) >> 10),
+            (unsigned long)(osGetMemRegionSize(MEMREGION_APPLICATION) >> 10));
+        new3ds_gfx_show_fatal_and_exit(message);
     }
 
     const u32 transfer_flags =
@@ -1278,12 +1314,14 @@ static void new3ds_init(void) {
     C3D_AlphaTest(true, GPU_GREATER, 0);
 
     sInitialized = true;
-    NEW3DS_LOG_INFO_CAT(
-        NEW3DS_LOG_CAT_GFX,
-        "gfx",
-        "initialized logical=400x240 gpu=240x400 fb=BGR8 tex_pool=%u vbo_bytes=%u",
+    /* Boot-tagged, not CAT_GFX: this is the line that proves the renderer came
+     * up, so it must not depend on the new3ds_log_gfx opt-in. */
+    NEW3DS_LOG_INFO(
+        "boot",
+        "gfx initialized logical=400x240 gpu=240x400 fb=BGR8 tex_pool=%u vbo_bytes=%u",
         NEW3DS_TEXTURE_POOL_SIZE,
         (unsigned)NEW3DS_VBO_BYTES);
+    new3ds_log_memory("post-c3d");
 }
 
 static void new3ds_on_resize(void) {

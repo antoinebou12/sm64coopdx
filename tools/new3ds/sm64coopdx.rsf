@@ -10,7 +10,170 @@ TitleInfo:
 
 Option:
   UseOnSD               : true
+  EnableCompress        : true
   EnableCrypt           : false
+  FreeProductCode       : true
+  MediaFootPadding      : false
 
 SystemControlInfo:
   StackSize             : 0x100000
+
+#
+# The full AccessControlInfo below is load-bearing, not boilerplate.
+#
+# Without it makerom fell back to its built-in "app:4" template, which encodes
+# an Old 3DS process: SystemMode 64MB, New3DS SystemModeExt Legacy, 268MHz, no
+# L2 cache. The linked ELF maps ~63.4MB (text 4.8 + rodata 36.6 + data 8.1 +
+# bss 12.9 + 1MB stack) of that 64MB region, leaving nothing for the malloc and
+# linear heaps, so linearAlloc() inside C3D_Init() failed and the CIA died with
+# "Citro3D could not start". The .3dsx never hit this because Homebrew Launcher
+# hands homebrew an extended-memory process, and emulators ignore the exheader
+# entirely -- which is exactly why this reproduced on hardware only.
+#
+AccessControlInfo:
+  CoreVersion                : 2
+  DescVersion                : 2
+
+  # Minimum kernel: 11.2.0-35
+  ReleaseKernelMajor         : "02"
+  ReleaseKernelMinor         : "46"
+
+  # Process settings. SystemMode is the Old 3DS fallback; this port is New 3DS
+  # only and runs under SystemModeExt.
+  MemoryType                 : Application
+  SystemMode                 : 64MB
+  IdealProcessor             : 0
+  AffinityMask               : 1
+  Priority                   : 16
+  MaxCpu                     : 0
+  HandleTableSize            : 0x200
+  DisableDebug               : false
+  EnableForceDebug           : false
+  CanWriteSharedPage         : true
+  CanUsePrivilegedPriority   : false
+  CanUseNonAlphabetAndNumber : true
+  PermitMainFunctionArgument : true
+  CanShareDeviceMemory       : true
+  RunnableOnSleep            : false
+  SpecialMemoryArrange       : true
+  UseExtSaveData             : false
+
+  # New 3DS exclusive settings. 124MB is what keeps the heaps alive; 804MHz and
+  # the L2 cache are what make osSetSpeedupEnable(true) actually take effect.
+  SystemModeExt              : 124MB
+  CpuSpeed                   : 804MHz
+  EnableL2Cache              : true
+  CanAccessCore2             : false
+
+  FileSystemAccess:
+    - CategorySystemApplication
+    - CategoryHardwareCheck
+    - CategoryFileSystemTool
+    - Debug
+    - TwlCardBackup
+    - TwlNandData
+    - DirectSdmc
+    - CtrNandRo
+    - CtrNandRw
+    - CtrNandRoWrite
+    - CategorySystemSettings
+    - CardBoard
+    - ExportImportIvs
+    - DirectSdmcWrite
+    - SwitchCleanup
+    - SaveDataMove
+    - Shell
+    - CategoryHomeMenu
+
+  IORegisterMapping:
+    - 1ff00000-1ff7ffff
+  MemoryMapping:
+    - 1f000000-1f5fffff:r
+
+  SystemCallAccess:
+    ArbitrateAddress: 34
+    Backdoor: 123
+    Break: 60
+    CancelTimer: 28
+    ClearEvent: 25
+    ClearTimer: 29
+    CloseHandle: 35
+    ConnectToPort: 45
+    ControlMemory: 1
+    CreateAddressArbiter: 33
+    CreateEvent: 23
+    CreateMemoryBlock: 30
+    CreateMutex: 19
+    CreateSemaphore: 21
+    CreateThread: 8
+    CreateTimer: 26
+    DuplicateHandle: 39
+    ExitProcess: 3
+    ExitThread: 9
+    GetCurrentProcessorNumber: 17
+    GetHandleInfo: 41
+    GetProcessId: 53
+    GetProcessIdOfThread: 54
+    GetProcessIdealProcessor: 6
+    GetProcessInfo: 43
+    GetResourceLimit: 56
+    GetResourceLimitCurrentValues: 58
+    GetResourceLimitLimitValues: 57
+    GetSystemInfo: 42
+    GetSystemTick: 40
+    GetThreadContext: 59
+    GetThreadId: 55
+    GetThreadIdealProcessor: 15
+    GetThreadInfo: 44
+    GetThreadPriority: 11
+    InvalidateProcessDataCache: 82
+    MapMemoryBlock: 31
+    OutputDebugString: 61
+    QueryMemory: 2
+    ReleaseMutex: 20
+    ReleaseSemaphore: 22
+    ReplyAndReceive: 79
+    SendSyncRequest1: 46
+    SendSyncRequest2: 47
+    SendSyncRequest3: 48
+    SendSyncRequest4: 49
+    SendSyncRequest: 50
+    SetThreadPriority: 12
+    SetTimer: 27
+    SignalEvent: 24
+    SleepThread: 10
+    StoreProcessDataCache: 81
+    UnmapMemoryBlock: 32
+    WaitSynchronization1: 36
+    WaitSynchronizationN: 37
+
+  ServiceAccessControl:
+    - APT:U
+    - ac:u
+    - am:net
+    - boss:U
+    - cam:u
+    - cecd:u
+    - cfg:nor
+    - cfg:u
+    - csnd:SND
+    - dsp::DSP
+    - frd:u
+    - fs:USER
+    - gsp::Gpu
+    - hid:USER
+    - http:C
+    - ir:rst
+    - ir:u
+    - ir:USER
+    - ldr:ro
+    - mic:u
+    - ndm:u
+    - news:u
+    - nwm::UDS
+    - ptm:sysm
+    - ptm:u
+    - pxi:dev
+    - soc:U
+    - ssl:C
+    - y2r:u

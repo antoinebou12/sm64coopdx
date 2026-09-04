@@ -130,6 +130,39 @@ def main() -> int:
             f"{path} shrinks 3DS body text below the 1:1 atlas fit",
         )
 
+    # A gfx_init failure kills the app before DJUI exists, so the checkbox that
+    # enables file logging is unreachable. Errors and boot checkpoints must
+    # therefore reach runtime.log with logging off, and errors must not be
+    # gated on their subsystem category (gfx fatals log under CAT_GFX).
+    log_h = read("src/pc/platform/new3ds/new3ds_log.h")
+    error_cat = log_h.split("#define NEW3DS_LOG_ERROR_CAT", 1)[1].split("#define", 1)[0]
+    require(
+        "new3ds_log_category_enabled" not in error_cat,
+        "NEW3DS_LOG_ERROR_CAT must not be category-gated (drops gfx fatals)",
+    )
+    log_c = read("src/pc/platform/new3ds/new3ds_log.c")
+    require(
+        "new3ds_log_is_critical" in log_c,
+        "errors and boot checkpoints must bypass the configNew3dsLogs gate",
+    )
+    require(
+        "if (!configNew3dsLogs && !new3ds_log_is_critical(level, tag)) {" in log_c,
+        "new3ds_log_write must let critical lines through with logging off",
+    )
+    require(
+        "char message[64];" not in log_c,
+        "log messages must not be capped below the emitted line size",
+    )
+    require(
+        "char message[NEW3DS_LOG_LINE_SIZE];" in log_c,
+        "log message buffer must track NEW3DS_LOG_LINE_SIZE",
+    )
+    require(
+        '"gfx initialized logical=400x240' in renderer
+        and '"initialized logical=400x240' not in renderer,
+        "gfx init summary must be boot-tagged, not gated on new3ds_log_gfx",
+    )
+
     require(
         "gfx_citro3d_new3ds_api.draw_triangles = new3ds_gfx_guard_draw_triangles;" in guard,
         "PICA draw-state guard is not installed",
@@ -151,9 +184,42 @@ def main() -> int:
         "custom libctru exception handler must be disabled by default on hardware",
     )
 
-    require(make_var(makefile, "NEW3DS_APP_VERSION") == "0.0.1", "3DSX/CIA semantic version is not 0.0.1")
-    require(make_var(makefile, "NEW3DS_CIA_VERSION") == "1", "CIA numeric title version is not 1")
+    require(make_var(makefile, "NEW3DS_APP_VERSION") == "0.0.3", "3DSX/CIA semantic version is not 0.0.3")
+    require(make_var(makefile, "NEW3DS_CIA_VERSION") == "3", "CIA numeric title version is not 3")
     require("-ver $(NEW3DS_CIA_VERSION)" in makefile, "makerom is not receiving the CIA title version")
+
+    # The CIA exheader is what gives the process its memory region. makerom's
+    # built-in "app:4" descriptor encodes an Old 3DS 64MB/268MHz process; the
+    # linked ELF maps ~63MB of that, so the linear heap ended up empty and
+    # C3D_Init failed on hardware only (the 3DSX inherits Homebrew Launcher's
+    # extended-memory process, and emulators ignore the exheader).
+    require(
+        "-desc app:" not in makefile,
+        "makerom -desc preset overrides the RSF exheader with an Old 3DS process",
+    )
+    rsf = read("tools/new3ds/sm64coopdx.rsf")
+    require("AccessControlInfo:" in rsf, "RSF must define AccessControlInfo, not inherit a preset")
+    require(
+        re.search(r"^\s*SystemModeExt\s*:\s*124MB\s*$", rsf, re.MULTILINE) is not None,
+        "RSF must request New 3DS extended memory (SystemModeExt: 124MB)",
+    )
+    require(
+        re.search(r"^\s*CpuSpeed\s*:\s*804MHz\s*$", rsf, re.MULTILINE) is not None,
+        "RSF must request the New 3DS 804MHz clock",
+    )
+    require(
+        re.search(r"^\s*EnableL2Cache\s*:\s*true\s*$", rsf, re.MULTILINE) is not None,
+        "RSF must enable the New 3DS L2 cache",
+    )
+    for service in ("gsp::Gpu", "fs:USER", "hid:USER", "dsp::DSP", "soc:U", "ptm:sysm"):
+        require(
+            f"- {service}" in rsf,
+            f"RSF ServiceAccessControl is missing {service}",
+        )
+    require(
+        "new3ds_log_memory(\"pre-c3d\")" in renderer,
+        "renderer must log memory before C3D_Init so a starved heap is diagnosable",
+    )
     require(
         "new3ds_gfx_state_guard.o" in makefile,
         "hardware state guard is missing from the integration compile gate",
@@ -169,7 +235,7 @@ def main() -> int:
     print(
         "New 3DS hardware stability checks passed: "
         f"texture_cache={cache_size}, renderer_pool={renderer_pool}, "
-        "version=0.0.1, user_exceptions=off"
+        "version=0.0.3, user_exceptions=off"
     )
     return 0
 

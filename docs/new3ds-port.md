@@ -146,6 +146,44 @@ sdmc:/3ds/sm64coopdx/logs/runtime.log
 
 On launch, the **bottom screen** should show boot phases within 1–2 seconds (`Loading config…`, `Checking ROM…`, etc.). If Homebrew Launcher keeps spinning with a blank bottom screen for minutes, the build is too old or the `.3dsx`/`.smdh` pair is missing. If the bottom screen shows a ROM MD5/region error, replace the SD file with a verified US `.z64` (Azahar may be using a different host copy than the SD card).
 
+### Real hardware install (CIA)
+
+Install `sm64coopdx.cia` with FBI (or any CFW title installer) and keep the same
+SD payload as the 3DSX install above — the CIA reads `baserom.us.z64`, config,
+mods and logs from `sdmc:/3ds/sm64coopdx/`. The HOME menu description shows the
+app version (`SM64CoopDX v0.0.3`), which is the quickest way to confirm which
+build is installed.
+
+The CIA's exheader (`tools/new3ds/sm64coopdx.rsf`) requests New 3DS extended
+memory. That is a hard requirement, not a tuning knob:
+
+| | Old 3DS process (`SystemModeExt: Legacy`) | New 3DS process (`SystemModeExt: 124MB`) |
+| --- | --- | --- |
+| APPLICATION region | 64MB | 124MB |
+| Mapped by the linked ELF | ~63.4MB (text 4.8 + rodata 36.6 + data 8.1 + bss 12.9 + 1MB stack) | same |
+| Left for malloc + linear heaps | effectively nothing | ~60MB |
+| Clock / L2 cache | 268MHz, L2 off | 804MHz, L2 on |
+
+With the Legacy exheader the first `linearAlloc()` fails, so `C3D_Init()` returns
+false and the app dies on the bottom screen with:
+
+```text
+Graphics initialization failed.
+Citro3D could not start.
+```
+
+**This reproduces on hardware only.** The 3DSX never hits it because Homebrew
+Launcher hands homebrew an extended-memory process, and Citra/Azahar ignore the
+exheader entirely. If you see that message on a real console, the installed CIA
+predates the exheader fix — rebuild with `new3ds-cia` and reinstall. The failure
+screen now prints `linear free` and `app memory free`, and `runtime.log` carries
+the same numbers as `boot: mem pre-c3d app_total=... linear_free=...`.
+
+Do not add `-desc app:<n>` back to the `makerom` call: the built-in preset
+overwrites the RSF's `AccessControlInfo` with an Old 3DS descriptor and silently
+reintroduces this failure. `tools/new3ds/tests/test_hardware_stability.py`
+guards both the preset and the RSF memory settings.
+
 ### Dual-screen UX (full game)
 
 - **Top (400×240):** gameplay + DJUI menus (compact logo/buttons, scrollable panel bodies via C-Stick Y / L+R)

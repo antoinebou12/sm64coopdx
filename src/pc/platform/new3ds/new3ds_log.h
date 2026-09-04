@@ -53,9 +53,16 @@ int new3ds_log_level_value(const char *level);
 
 #define NEW3DS_LOG_INFO_CAT(cat, tag, ...)  NEW3DS_LOG_CAT("INFO", cat, tag, __VA_ARGS__)
 #define NEW3DS_LOG_WARN_CAT(cat, tag, ...)  NEW3DS_LOG_CAT("WARN", cat, tag, __VA_ARGS__)
+/*
+ * Deliberately NOT category-gated, unlike INFO/WARN/VERBOSE. A fatal is
+ * reported under its subsystem category (gfx init failures use CAT_GFX)
+ * whose config flag is off by default, so gating errors here dropped the
+ * one line that explains why the app died.
+ */
 #define NEW3DS_LOG_ERROR_CAT(cat, tag, ...) \
     do { \
-        if (NEW3DS_LOG_ENABLED("ERROR") && new3ds_log_category_enabled(cat)) { \
+        (void)(cat); \
+        if (NEW3DS_LOG_ENABLED("ERROR")) { \
             new3ds_log_write("ERROR", tag, __VA_ARGS__); \
         } \
     } while (0)

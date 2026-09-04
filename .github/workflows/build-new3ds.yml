@@ -225,7 +225,7 @@ jobs:
         if: ${{ steps.baserom.outputs.available == 'true' && !env.ACT }}
         uses: actions/upload-artifact@v4
         with:
-          name: sm64coopdx-new3ds-0.0.1
+          name: sm64coopdx-new3ds-0.0.3
           if-no-files-found: error
           path: |
             build/us_new3ds/sm64coopdx.elf

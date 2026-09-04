@@ -17,9 +17,9 @@ endif
 VERSION ?= us
 NEW3DS_COOPNET ?= 1
 NEW3DS_LOG_LEVEL ?= 2
-NEW3DS_APP_VERSION ?= 0.0.1
-# makerom stores the CIA title version as a 16-bit integer. 0.0.1 maps to 1.
-NEW3DS_CIA_VERSION ?= 1
+NEW3DS_APP_VERSION ?= 0.0.3
+# makerom stores the CIA title version as a 16-bit integer. 0.0.3 maps to 3.
+NEW3DS_CIA_VERSION ?= 3
 # 1MB main thread stack. libctru/3dsx default is 32KB and CIA makerom
 # defaults to 16KB, which overflows as soon as thread5_game_loop starts.
 NEW3DS_MAIN_STACK_SIZE ?= 1048576
@@ -282,7 +282,9 @@ $(EXE): new3ds-deps $(NEW3DS_SHADER_OBJ)
 new3ds-game: $(EXE)
 	@echo "Built New 3DS game ELF: $(EXE)"
 
-$(NEW3DS_SMDH):
+# Depends on the makefile so a NEW3DS_APP_VERSION bump actually regenerates the
+# HOME menu title, which is how you tell which build is installed on hardware.
+$(NEW3DS_SMDH): Makefile.new3ds-game
 	@mkdir -p $(dir $@)
 	$(NEW3DS_SMDHTOOL) --create \
 		"SM64CoopDX v$(NEW3DS_APP_VERSION)" \
@@ -301,9 +303,13 @@ new3ds-3dsx: $(NEW3DS_3DSX)
 new3ds-fetch-makerom:
 	bash tools/new3ds/fetch-makerom.sh
 
-$(NEW3DS_CIA): $(EXE) $(NEW3DS_SMDH) | new3ds-fetch-makerom
+# No -desc preset: makerom's built-in "app:4" access descriptor overrode the
+# exheader with an Old 3DS process (64MB, Legacy New3DS mode, 268MHz), which
+# starved the heaps and made C3D_Init fail on hardware. -target t makes makerom
+# derive and sign the access descriptor from the RSF's own AccessControlInfo.
+$(NEW3DS_CIA): $(EXE) $(NEW3DS_SMDH) tools/new3ds/sm64coopdx.rsf | new3ds-fetch-makerom
 	@test -x "$(NEW3DS_MAKEROM)" || (echo "makerom missing under $(NEW3DS_TOOL_CACHE)" && exit 1)
-	$(NEW3DS_MAKEROM) -f cia -o $@ -rsf tools/new3ds/sm64coopdx.rsf -target t -desc app:4 -ver $(NEW3DS_CIA_VERSION) -icon $(NEW3DS_SMDH) -elf $(EXE)
+	$(NEW3DS_MAKEROM) -f cia -o $@ -rsf tools/new3ds/sm64coopdx.rsf -target t -ver $(NEW3DS_CIA_VERSION) -icon $(NEW3DS_SMDH) -elf $(EXE)
 
 new3ds-cia: $(NEW3DS_CIA)
 	@echo "Built New 3DS CIA v$(NEW3DS_APP_VERSION): $(NEW3DS_CIA)"
