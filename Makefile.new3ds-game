@@ -17,6 +17,9 @@ endif
 VERSION ?= us
 NEW3DS_COOPNET ?= 1
 NEW3DS_LOG_LEVEL ?= 2
+NEW3DS_APP_VERSION ?= 0.0.1
+# makerom stores the CIA title version as a 16-bit integer. 0.0.1 maps to 1.
+NEW3DS_CIA_VERSION ?= 1
 # 1MB main thread stack. libctru/3dsx default is 32KB and CIA makerom
 # defaults to 16KB, which overflows as soon as thread5_game_loop starts.
 NEW3DS_MAIN_STACK_SIZE ?= 1048576
@@ -210,7 +213,7 @@ NEW3DS_SMDH := $(BUILD_DIR)/sm64coopdx.smdh
 NEW3DS_3DSX := $(BUILD_DIR)/sm64coopdx.3dsx
 NEW3DS_CIA := $(BUILD_DIR)/sm64coopdx.cia
 NEW3DS_ICON ?= $(CTRULIB)/default_icon.png
-NEW3DS_VERSION ?= 1.5.1-new3ds
+NEW3DS_VERSION ?= $(NEW3DS_APP_VERSION)
 NEW3DS_TOOL_CACHE := build/new3ds-tools/bin
 NEW3DS_MAKEROM := $(NEW3DS_TOOL_CACHE)/makerom
 NEW3DS_DIST_ROOT := dist/sm64coopdx-new3ds-$(NEW3DS_VERSION)
@@ -224,6 +227,7 @@ NEW3DS_INTEGRATION_OBJS := \
 	$(BUILD_DIR)/src/pc/pc_main.o \
 	$(BUILD_DIR)/src/pc/gfx/gfx_pc.o \
 	$(BUILD_DIR)/src/pc/gfx/gfx_citro3d_new3ds.o \
+	$(BUILD_DIR)/src/pc/platform/new3ds/new3ds_gfx_state_guard.o \
 	$(BUILD_DIR)/src/pc/platform/new3ds/new3ds_window_manager.o \
 	$(BUILD_DIR)/src/pc/platform/new3ds/new3ds_platform.o \
 	$(BUILD_DIR)/src/pc/platform/new3ds/new3ds_thread.o \
@@ -278,8 +282,8 @@ new3ds-game: $(EXE)
 $(NEW3DS_SMDH):
 	@mkdir -p $(dir $@)
 	$(NEW3DS_SMDHTOOL) --create \
-		"SM64CoopDX" \
-		"SM64CoopDX New 3DS port" \
+		"SM64CoopDX v$(NEW3DS_APP_VERSION)" \
+		"SM64CoopDX New 3DS port v$(NEW3DS_APP_VERSION)" \
 		"SM64CoopDX contributors" \
 		"$(NEW3DS_ICON)" $@
 
@@ -287,7 +291,7 @@ $(NEW3DS_3DSX): $(EXE) $(NEW3DS_SMDH)
 	$(NEW3DS_3DSXTOOL) $(EXE) $@ --smdh=$(NEW3DS_SMDH)
 
 new3ds-3dsx: $(NEW3DS_3DSX)
-	@echo "Built New 3DS application: $(NEW3DS_3DSX)"
+	@echo "Built New 3DS application v$(NEW3DS_APP_VERSION): $(NEW3DS_3DSX)"
 
 .PHONY: new3ds-fetch-makerom
 
@@ -296,10 +300,10 @@ new3ds-fetch-makerom:
 
 $(NEW3DS_CIA): $(EXE) $(NEW3DS_SMDH) | new3ds-fetch-makerom
 	@test -x "$(NEW3DS_MAKEROM)" || (echo "makerom missing under $(NEW3DS_TOOL_CACHE)" && exit 1)
-	$(NEW3DS_MAKEROM) -f cia -o $@ -rsf tools/new3ds/sm64coopdx.rsf -target t -desc app:4 -icon $(NEW3DS_SMDH) -elf $(EXE)
+	$(NEW3DS_MAKEROM) -f cia -o $@ -rsf tools/new3ds/sm64coopdx.rsf -target t -desc app:4 -ver $(NEW3DS_CIA_VERSION) -icon $(NEW3DS_SMDH) -elf $(EXE)
 
 new3ds-cia: $(NEW3DS_CIA)
-	@echo "Built New 3DS CIA: $(NEW3DS_CIA)"
+	@echo "Built New 3DS CIA v$(NEW3DS_APP_VERSION): $(NEW3DS_CIA)"
 
 ifneq ($(wildcard baserom.us.z64),)
 NEW3DS_DIST_BASEROM_ARGS := --baserom baserom.us.z64
