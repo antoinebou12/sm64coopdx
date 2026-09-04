@@ -298,6 +298,13 @@ bool djui_gfx_add_clipping_specific(struct DjuiBase* base, f32 dX, f32 dY, f32 d
     if (dY2 < clip->y) { return true; }
     if (dY  > clipY2)  { return true; }
 
+#if defined(__3DS__)
+    /*
+     * Partial TEXCLIP rewrites UVs in place. On PICA200 that shreds 8x16 body
+     * glyphs into noise; hard-reject fully outside only and let overflow draw.
+     */
+    return false;
+#else
     f32 dClipX1 = fmax((clip->x - dX) / dW, 0);
     f32 dClipY1 = fmax((clip->y - dY) / dH, 0);
     f32 dClipX2 = fmax((dX - (clipX2 - dW)) / dW, 0);
@@ -308,6 +315,7 @@ bool djui_gfx_add_clipping_specific(struct DjuiBase* base, f32 dX, f32 dY, f32 d
     }
 
     return false;
+#endif
 }
 
 bool djui_gfx_add_clipping(struct DjuiBase* base) {

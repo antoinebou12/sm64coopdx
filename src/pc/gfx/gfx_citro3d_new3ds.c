@@ -976,11 +976,22 @@ static void new3ds_write_gpu_vertex(
     dst[2] = -src[2];
     dst[3] = src[3];
 
+    /*
+     * T maps straight through: the uploader writes the source top row first and
+     * PICA200 T=0 addresses that row. The old `1.0f - v * scale` invert selected
+     * the wrong DJUI atlas rows (garbled menu text) and was not pad-aware.
+     *
+     * HUD/DJUI draw with depth testing off. On the landscape→portrait clip
+     * transform those quads need S mirrored so icons/glyphs are not left-right
+     * flipped; 3D (depth on) keeps S unchanged.
+     */
     dst[4] = 0.0f;
     dst[5] = 0.0f;
     if (program->tex_offset[0] >= 0) {
-        dst[4] = src[program->tex_offset[0]] * new3ds_texture_scale_s(0);
-        dst[5] = 1.0f - src[program->tex_offset[0] + 1] * new3ds_texture_scale_t(0);
+        const float s0 = src[program->tex_offset[0]];
+        const float t0 = src[program->tex_offset[0] + 1];
+        dst[4] = (sDepthTest ? s0 : (1.0f - s0)) * new3ds_texture_scale_s(0);
+        dst[5] = t0 * new3ds_texture_scale_t(0);
     }
 
     dst[6] = 0.0f;
@@ -988,8 +999,10 @@ static void new3ds_write_gpu_vertex(
     int tex1_offset = program->tex_offset[1];
     if (program->light_map && program->lightmap_offset >= 0) tex1_offset = program->lightmap_offset;
     if (tex1_offset >= 0) {
-        dst[6] = src[tex1_offset] * new3ds_texture_scale_s(1);
-        dst[7] = 1.0f - src[tex1_offset + 1] * new3ds_texture_scale_t(1);
+        const float s1 = src[tex1_offset];
+        const float t1 = src[tex1_offset + 1];
+        dst[6] = (sDepthTest ? s1 : (1.0f - s1)) * new3ds_texture_scale_s(1);
+        dst[7] = t1 * new3ds_texture_scale_t(1);
     }
 
     if (draw->primary_input >= 0) {
@@ -1032,6 +1045,16 @@ static void new3ds_render_fog(
         GPU_SRC_ALPHA, GPU_ONE_MINUS_SRC_ALPHA,
         GPU_ZERO, GPU_DST_ALPHA);
     C3D_DepthTest(sDepthTest, GPU_LEQUAL, GPU_WRITE_COLOR);
+
+    /*
+     * Fog wrote depth/blend behind the state cache. Invalidate Applied so the
+     * restores below cannot early-out and leave PICA200 stuck in fog state
+     * (castle/window/ground flicker on real hardware).
+     */
+    sUseAlphaApplied = !sUseAlpha;
+    sDepthTestApplied = !sDepthTest;
+    sDepthWriteApplied = !sDepthWrite;
+    sDepthDecalApplied = !sDepthDecal;
 
     const size_t start = sGpuVertexIndex;
     for (size_t vertex = 0; vertex < vertices; ++vertex) {

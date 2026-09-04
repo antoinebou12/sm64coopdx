@@ -59,6 +59,24 @@ def main() -> int:
     require(cache_size == 512, f"unexpected New 3DS texture cache budget: {cache_size}")
     require(renderer_pool == 768, f"unexpected Citro3D texture pool budget: {renderer_pool}")
 
+    # Readable HUD/DJUI: T straight through; depth-off S un-mirror for 2D quads.
+    require(
+        "1.0f - src[program->tex_offset[0] + 1] * new3ds_texture_scale_t(0)" not in renderer,
+        "renderer still inverts T with the old non-pad-aware formula",
+    )
+    require(
+        "t0 * new3ds_texture_scale_t(0)" in renderer,
+        "renderer does not map T straight through",
+    )
+    require(
+        "(sDepthTest ? s0 : (1.0f - s0))" in renderer,
+        "renderer does not un-mirror S for depth-off HUD/DJUI draws",
+    )
+    require(
+        "sDepthWriteApplied = !sDepthWrite;" in renderer,
+        "fog pass does not invalidate depth-write cache before restore",
+    )
+
     require(
         "gfx_citro3d_new3ds_api.draw_triangles = new3ds_gfx_guard_draw_triangles;" in guard,
         "PICA draw-state guard is not installed",
