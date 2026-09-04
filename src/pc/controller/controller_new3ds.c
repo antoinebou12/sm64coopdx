@@ -31,13 +31,19 @@ static void new3ds_transform_stick(float *x, float *y, bool right_stick) {
 }
 
 static void new3ds_scale_stick(s8 *out_x, s8 *out_y, const circlePosition *stick, bool right_stick) {
-    float x = new3ds_clampf((float)stick->dx / 156.0f, -1.0f, 1.0f);
-    float y = new3ds_clampf((float)stick->dy / 156.0f, -1.0f, 1.0f);
+    /* Circle Pad ~±156; New 3DS C-Stick typically reaches ~±167. */
+    const float axis_max = right_stick ? 167.0f : 156.0f;
+    float x = new3ds_clampf((float)stick->dx / axis_max, -1.0f, 1.0f);
+    float y = new3ds_clampf((float)stick->dy / axis_max, -1.0f, 1.0f);
 
     new3ds_transform_stick(&x, &y, right_stick);
 
     const float magnitude = sqrtf(x * x + y * y);
+    /* Slightly lower deadzone on the C-Stick so camera responds sooner. */
     float deadzone = ((float)configStickDeadzone * (float)DEADZONE_STEP) / 32768.0f;
+    if (right_stick) {
+        deadzone *= 0.65f;
+    }
     deadzone = new3ds_clampf(deadzone, 0.0f, 0.95f);
 
     if (magnitude <= deadzone || magnitude <= 0.0001f) {
@@ -83,7 +89,8 @@ static void new3ds_apply_buttons(OSContPad *pad, u32 keys) {
 }
 
 static void new3ds_apply_cstick_buttons(OSContPad *pad) {
-    const s8 threshold = 45;
+    /* Digital C-button fallback for vanilla camera when analog free-cam is off. */
+    const s8 threshold = 35;
     if (pad->ext_stick_x < -threshold) pad->button |= L_CBUTTONS;
     if (pad->ext_stick_x > threshold) pad->button |= R_CBUTTONS;
     if (pad->ext_stick_y > threshold) pad->button |= U_CBUTTONS;

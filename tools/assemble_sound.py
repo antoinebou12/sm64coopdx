@@ -16,6 +16,8 @@ STACK_TRACES = False
 DUMP_INDIVIDUAL_BINS = False
 ENDIAN_MARKER = ">"
 WORD_BYTES = 4
+RAW_OUTPUT = False
+OFFSETS_DIR = "sound"
 
 orderedJsonDecoder = JSONDecoder(object_pairs_hook=OrderedDict)
 
@@ -753,28 +755,41 @@ def serialize_seqfile(
         compress = False
 
         if out_filename.endswith('sound_data.tbl'):
-            out_offsets_filename = 'sound/samples_offsets.h'
+            if OFFSETS_DIR == "sound":
+                out_offsets_filename = os.path.join("sound", "samples_offsets.h")
+            else:
+                out_offsets_filename = os.path.join(OFFSETS_DIR, "samples_offsets.h")
+            os.makedirs(os.path.dirname(os.path.abspath(out_offsets_filename)), exist_ok=True)
             with open(out_offsets_filename, "w") as f:
                 for fname in asset_offsets:
                     macro_name = 'SAMPLE_' + fname.split('/samples/')[-1].replace('/', '_').replace('.', '_').replace('-', '_')
                     f.write(f'#define {macro_name} {hex(asset_offsets[fname] + data_start)} // {fname}\n')
-            out_filename = 'sound/sound_data_compressed.tbl'
-            compress = True
+            if not RAW_OUTPUT:
+                out_filename = 'sound/sound_data_compressed.tbl'
+                compress = True
 
         if out_filename.endswith('sequences.bin'):
-            out_offsets_filename = 'sound/sequences_offsets.h'
+            if OFFSETS_DIR == "sound":
+                out_offsets_filename = os.path.join("sound", "sequences_offsets.h")
+            else:
+                out_offsets_filename = os.path.join(OFFSETS_DIR, "sound", "sequences_offsets.h")
+            os.makedirs(os.path.dirname(os.path.abspath(out_offsets_filename)), exist_ok=True)
             with open(out_offsets_filename, "w") as f:
                 for fname in asset_offsets:
                     macro_name = 'SEQUENCE_' + fname.split('/sequences/')[-1].replace('/', '_').replace('.', '_').replace('-', '_')
                     f.write(f'#define {macro_name} {hex(asset_offsets[fname] + data_start)} // {fname}\n')
             data = data[:entry_offsets[1] + data_start] # remove the fake data
-            out_filename = 'sound/sequences_compressed.bin'
-            compress = True
+            if not RAW_OUTPUT:
+                out_filename = 'sound/sequences_compressed.bin'
+                compress = True
 
-        if out_filename.endswith('sound_data.ctl'):
+        if out_filename.endswith('sound_data.ctl') and not RAW_OUTPUT:
             out_filename = 'sound/sound_data_compressed.ctl'
             compress = True
 
+        out_dir = os.path.dirname(out_filename)
+        if out_dir:
+            os.makedirs(out_dir, exist_ok=True)
         with open(out_filename, "wb") as f:
             if compress:
                 f.write(zlib.compress(data))
@@ -915,9 +930,12 @@ def write_sequences(
         extra_padding=False,
     )
 
-    compress = True
-    out_bank_sets = 'sound/bank_sets_compressed'
-    with open(out_bank_sets, "wb") as f:
+    compress = not RAW_OUTPUT
+    bank_sets_path = out_bank_sets if RAW_OUTPUT else 'sound/bank_sets_compressed'
+    bank_sets_dir = os.path.dirname(bank_sets_path)
+    if bank_sets_dir:
+        os.makedirs(bank_sets_dir, exist_ok=True)
+    with open(bank_sets_path, "wb") as f:
         ser = ReserveSerializer()
         table = ser.reserve(len(ind_to_name) * 2)
         for name in ind_to_name:
@@ -938,6 +956,8 @@ def main():
     global DUMP_INDIVIDUAL_BINS
     global ENDIAN_MARKER
     global WORD_BYTES
+    global RAW_OUTPUT
+    global OFFSETS_DIR
     need_help = False
     skip_next = 0
     cpp_command = None
@@ -986,6 +1006,11 @@ def main():
             DUMP_INDIVIDUAL_BINS = True
         elif a == "--print-samples":
             print_samples = True
+        elif a == "--raw-output":
+            RAW_OUTPUT = True
+        elif a == "--offsets-dir":
+            OFFSETS_DIR = sys.argv[i + 1]
+            skip_next = 1
         elif a == "--sequences":
             sequences_out_file = sys.argv[i + 1]
             sequences_header_out_file = sys.argv[i + 2]

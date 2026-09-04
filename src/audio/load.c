@@ -13,6 +13,10 @@
 #include "pc/fs/fs.h"
 #include "data/dynos.c.h"
 #include "pc/lua/smlua_hooks.h"
+#ifdef __3DS__
+#include "pc/platform/new3ds/new3ds_boot_trace.h"
+#include "pc/platform/new3ds/new3ds_log.h"
+#endif
 
 #define ALIGN16(val) (((val) + 0xF) & ~0xF)
 
@@ -1970,6 +1974,22 @@ void audio_init() {
     gSeqFileHeader = soundAlloc(&gAudioInitPool, size);
     audio_dma_copy_immediate((uintptr_t) data, gSeqFileHeader, size);
     alSeqFileNew(gSeqFileHeader, data);
+#ifdef __3DS__
+    {
+        u32 seq0_len = 0;
+        if (gSeqFileHeader != NULL && gSequenceCount > 0) {
+            seq0_len = (u32)gSeqFileHeader->seqArray[0].len;
+        }
+        new3ds_log_write(
+            "INFO",
+            "audio",
+            "init seqCount=%u seqData=%u seq0len=%lu",
+            (unsigned)gSequenceCount,
+            (unsigned)sizeof(ALSeqData),
+            (unsigned long)seq0_len);
+        new3ds_boot_checkpoint("audio_init: headers loaded");
+    }
+#endif
 
     // Load header for CTL (assets/sound_data.ctl.s, i.e. ADSR)
     gAlCtlHeader = (ALSeqFile *) buf;

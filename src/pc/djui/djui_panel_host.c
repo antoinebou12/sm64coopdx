@@ -13,12 +13,15 @@
 #include "pc/utils/misc.h"
 #include "pc/configfile.h"
 #include "pc/update_checker.h"
-#ifdef __SWITCH__
+#if defined(__SWITCH__) || defined(__3DS__)
 #include "djui_panel_switch_text_entry.h"
+#endif
+#if defined(__3DS__)
+#include "pc/platform/new3ds/new3ds_runtime.h"
 #endif
 
 static struct DjuiRect* sRectPort = NULL;
-#ifndef __SWITCH__
+#if !defined(__SWITCH__) && !defined(__3DS__)
 static struct DjuiInputbox* sInputboxPort = NULL;
 #else
 static struct DjuiButton* sButtonPort = NULL;
@@ -26,16 +29,17 @@ static char sSwitchPortText[16] = "";
 #endif
 #ifdef COOPNET
 static struct DjuiRect* sRectPassword = NULL;
-#ifndef __SWITCH__
+#if !defined(__SWITCH__) && !defined(__3DS__)
 static struct DjuiInputbox* sInputboxPassword = NULL;
 #else
 static struct DjuiButton* sButtonPassword = NULL;
 #endif
 
+#if !defined(__3DS__)
 static void djui_panel_host_network_system_change(UNUSED struct DjuiBase* base) {
     djui_base_set_visible(&sRectPort->base, (configNetworkSystem == NS_SOCKET));
     djui_base_set_visible(&sRectPassword->base, (configNetworkSystem == NS_COOPNET));
-#ifndef __SWITCH__
+#if !defined(__SWITCH__)
     djui_base_set_enabled(&sInputboxPort->base, (configNetworkSystem == NS_SOCKET));
     djui_base_set_enabled(&sInputboxPassword->base, (configNetworkSystem == NS_COOPNET));
 #else
@@ -48,9 +52,10 @@ static void djui_panel_host_network_system_change(UNUSED struct DjuiBase* base) 
 #endif
 }
 #endif
+#endif
 
 static bool djui_panel_host_port_valid(void) {
-#ifdef __SWITCH__
+#if defined(__SWITCH__) || defined(__3DS__)
     return configHostPort >= 1 && configHostPort <= 65535;
 #else
     char* buffer = sInputboxPort->buffer;
@@ -69,7 +74,7 @@ static bool djui_panel_host_port_valid(void) {
 #endif
 }
 
-#ifndef __SWITCH__
+#if !defined(__SWITCH__) && !defined(__3DS__)
 static void djui_panel_host_port_text_change(struct DjuiBase* caller) {
     struct DjuiInputbox* sInputboxPort = (struct DjuiInputbox*)caller;
     struct DjuiTheme* theme = gDjuiThemes[configDjuiTheme];
@@ -106,7 +111,7 @@ static void djui_panel_host_switch_port_edit(struct DjuiBase* caller) {
 #endif
 
 #ifdef COOPNET
-#ifndef __SWITCH__
+#if !defined(__SWITCH__) && !defined(__3DS__)
 static void djui_panel_host_password_text_change(UNUSED struct DjuiBase* caller) {
     snprintf(configPassword, 64, "%s", sInputboxPassword->buffer);
     if (strlen(sInputboxPassword->buffer) >= 64) {
@@ -143,7 +148,7 @@ static void djui_panel_host_switch_password_edit(struct DjuiBase* caller) {
 extern void djui_panel_do_host(bool reconnecting, bool playSound);
 static void djui_panel_host_do_host(struct DjuiBase* caller) {
     if (!djui_panel_host_port_valid()) {
-#ifndef __SWITCH__
+#if !defined(__SWITCH__) && !defined(__3DS__)
         djui_interactable_set_input_focus(&sInputboxPort->base);
         djui_inputbox_select_all(sInputboxPort);
 #endif
@@ -154,7 +159,7 @@ static void djui_panel_host_do_host(struct DjuiBase* caller) {
         return;
     }
 
-#ifndef __SWITCH__
+#if !defined(__SWITCH__) && !defined(__3DS__)
     configHostPort = atoi(sInputboxPort->buffer);
 #endif
 
@@ -183,6 +188,12 @@ void djui_panel_host_create(struct DjuiBase* caller) {
         configNetworkSystem = NS_SOCKET;
     }
 #endif
+#if defined(__3DS__)
+    /* Main Host is always LAN; clamp bad values and force socket for LAN host UI. */
+    if (configNetworkSystem != NS_COOPNET) {
+        configNetworkSystem = NS_SOCKET;
+    }
+#endif
     struct DjuiBase* defaultBase = NULL;
     struct DjuiThreePanel* panel = djui_panel_menu_create(
         (gNetworkType == NT_SERVER) ? DLANG(HOST, SERVER_TITLE) : DLANG(HOST, HOST_TITLE),
@@ -194,7 +205,30 @@ void djui_panel_host_create(struct DjuiBase* caller) {
             djui_button_create(body, "PLAY SOLO", DJUI_BUTTON_STYLE_NORMAL, djui_panel_host_play_solo);
         }
 #endif
-#ifdef COOPNET
+#if defined(__3DS__)
+        /* Compact readable LAN status — keep Settings/Mods/Host on-screen. */
+        if (configNetworkSystem == NS_SOCKET) {
+            char ip[32] = "No network";
+            char line[72];
+            (void)new3ds_runtime_ensure_network();
+            (void)new3ds_runtime_get_ipv4_string(ip, sizeof(ip));
+            snprintf(line, sizeof(line), "IP %s  Port %u", ip, configHostPort);
+
+            struct DjuiText* ipText = djui_text_create(body, line);
+            djui_base_set_size_type(&ipText->base, DJUI_SVT_RELATIVE, DJUI_SVT_ABSOLUTE);
+            djui_base_set_size(&ipText->base, 1.0f, 28);
+            djui_base_set_color(&ipText->base, 120, 255, 160, 255);
+            djui_text_set_alignment(ipText, DJUI_HALIGN_CENTER, DJUI_VALIGN_CENTER);
+            djui_text_set_font_scale(ipText, ipText->font->defaultFontScale * 0.55f);
+        } else {
+            struct DjuiText* mode = djui_text_create(body, "Mode: CoopNet");
+            djui_base_set_size_type(&mode->base, DJUI_SVT_RELATIVE, DJUI_SVT_ABSOLUTE);
+            djui_base_set_size(&mode->base, 1.0f, 22);
+            djui_base_set_color(&mode->base, 200, 200, 200, 255);
+            djui_text_set_alignment(mode, DJUI_HALIGN_CENTER, DJUI_VALIGN_CENTER);
+            djui_text_set_font_scale(mode, mode->font->defaultFontScale * 0.5f);
+        }
+#elif defined(COOPNET)
         char* nChoices[] = { DLANG(HOST, DIRECT_CONNECTION), DLANG(HOST, COOPNET) };
         struct DjuiSelectionbox* selectionbox1 = djui_selectionbox_create(body, DLANG(HOST, NETWORK_SYSTEM), nChoices, 2, &configNetworkSystem, djui_panel_host_network_system_change);
         if (gNetworkType == NT_SERVER) {
@@ -218,7 +252,7 @@ void djui_panel_host_create(struct DjuiBase* caller) {
                     djui_base_set_enabled(&text1->base, false);
                 }
 
-#ifndef __SWITCH__
+#if !defined(__SWITCH__) && !defined(__3DS__)
                 sInputboxPort = djui_inputbox_create(&sRectPort->base, 32);
                 djui_base_set_size_type(&sInputboxPort->base, DJUI_SVT_RELATIVE, DJUI_SVT_ABSOLUTE);
                 djui_base_set_size(&sInputboxPort->base, 0.45f, 32);
@@ -254,7 +288,7 @@ void djui_panel_host_create(struct DjuiBase* caller) {
                     djui_base_set_enabled(&text1->base, false);
                 }
 
-#ifndef __SWITCH__
+#if !defined(__SWITCH__) && !defined(__3DS__)
                 sInputboxPassword = djui_inputbox_create(&sRectPassword->base, 32);
                 sInputboxPassword->passwordChar[0] = '#';
                 djui_base_set_size_type(&sInputboxPassword->base, DJUI_SVT_RELATIVE, DJUI_SVT_ABSOLUTE);
@@ -299,14 +333,19 @@ void djui_panel_host_create(struct DjuiBase* caller) {
         djui_button_create(body, DLANG(HOST, SETTINGS), DJUI_BUTTON_STYLE_NORMAL, djui_panel_host_settings_create);
         djui_button_create(body, DLANG(HOST, MODS), DJUI_BUTTON_STYLE_NORMAL, djui_panel_host_mods_create);
 
-        struct DjuiRect* rect3 = djui_rect_container_create(body, 64);
+#if defined(__3DS__)
+        const f32 hostBtnH = 40.0f;
+#else
+        const f32 hostBtnH = 64.0f;
+#endif
+        struct DjuiRect* rect3 = djui_rect_container_create(body, hostBtnH);
         {
             struct DjuiButton* button1 = djui_button_create(&rect3->base, (gNetworkType == NT_SERVER) ? DLANG(MENU, CANCEL) : DLANG(MENU, BACK), DJUI_BUTTON_STYLE_BACK, djui_panel_menu_back);
-            djui_base_set_size(&button1->base, 0.485f, 64);
+            djui_base_set_size(&button1->base, 0.485f, hostBtnH);
             djui_base_set_alignment(&button1->base, DJUI_HALIGN_LEFT, DJUI_VALIGN_TOP);
 
             struct DjuiButton* button2 = djui_button_create(&rect3->base, (gNetworkType == NT_SERVER) ? DLANG(HOST, APPLY) : DLANG(HOST, HOST), DJUI_BUTTON_STYLE_NORMAL, djui_panel_host_do_host);
-            djui_base_set_size(&button2->base, 0.485f, 64);
+            djui_base_set_size(&button2->base, 0.485f, hostBtnH);
             djui_base_set_alignment(&button2->base, DJUI_HALIGN_RIGHT, DJUI_VALIGN_TOP);
 
             defaultBase = (gNetworkType == NT_SERVER)

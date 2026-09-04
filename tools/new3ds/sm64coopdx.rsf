@@ -11,3 +11,6 @@ TitleInfo:
 Option:
   UseOnSD               : true
   EnableCrypt           : false
+
+SystemControlInfo:
+  StackSize             : 0x100000

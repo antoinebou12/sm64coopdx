@@ -42,7 +42,7 @@ void djui_panel_do_host(bool reconnecting, bool playSound) {
         configAmountOfPlayers,
         configHostPort,
         reconnecting ? 1 : 0);
-    if (!new3ds_runtime_network_available()) {
+    if (!new3ds_runtime_ensure_network() || !new3ds_runtime_network_available()) {
         NEW3DS_LOG_ERROR_CAT(NEW3DS_LOG_CAT_NET, "host", "blocked: SOC unavailable");
         djui_popup_create("Network unavailable. Restart the game or check wireless settings.", 4.0f);
         return;

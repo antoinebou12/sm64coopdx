@@ -15,8 +15,13 @@ $(error "Please set DEVKITARM, for example /opt/devkitpro/devkitARM")
 endif
 
 VERSION ?= us
-NEW3DS_COOPNET ?= 0
+NEW3DS_COOPNET ?= 1
 NEW3DS_LOG_LEVEL ?= 2
+# 1MB main thread stack. libctru/3dsx default is 32KB and CIA makerom
+# defaults to 16KB, which overflows as soon as thread5_game_loop starts.
+NEW3DS_MAIN_STACK_SIZE ?= 1048576
+# Install libctru user exception handlers (3dsx default). Disable with 0.
+NEW3DS_USER_EXCEPTIONS ?= 1
 
 ifneq ($(NEW3DS_COOPNET),0)
 ifneq ($(NEW3DS_COOPNET),1)
@@ -104,7 +109,8 @@ NEW3DS_EXCLUDE_C := \
     src/pc/thread.c \
     src/pc/update_checker.c \
     src/pc/platform/new3ds/new3ds_main.c \
-    src/pc/platform/new3ds/new3ds_ui.c
+    src/pc/platform/new3ds/new3ds_ui.c \
+    src/pc/platform/new3ds/new3ds_mouse_stub.c
 
 NEW3DS_EXCLUDE_CPP := \
     src/pc/gfx/gfx_direct3d11.cpp \
@@ -120,8 +126,10 @@ override S_FILES := $(foreach dir,$(SRC_DIRS),$(wildcard $(dir)/*.s))
 # code generation matter more than desktop-style peak throughput.
 override OPT_FLAGS := -O2 -g $(NEW3DS_ARCH) -mword-relocations -ffunction-sections -fdata-sections
 override EXTRA_CFLAGS := \
-    -D__3DS__ -D__CONSOLE__ -DNEW_3DS_PORT=1 -DNEW3DS_LOG_LEVEL=$(NEW3DS_LOG_LEVEL) -D_GNU_SOURCE \
-    -DNON_MATCHING=1 -DAVOID_UB=1 -DLUA_USE_C89 \
+    -D__3DS__ -D__CONSOLE__ -DNEW_3DS_PORT=1 -DNEW3DS_LOG_LEVEL=$(NEW3DS_LOG_LEVEL) \
+    -DNEW3DS_MAIN_STACK_SIZE=$(NEW3DS_MAIN_STACK_SIZE) \
+    -DNEW3DS_USER_EXCEPTIONS=$(NEW3DS_USER_EXCEPTIONS) -D_GNU_SOURCE \
+    -DNON_MATCHING=1 -DAVOID_UB=1 -DLUA_USE_C89 -DBITS_32=1 \
     -I$(CURDIR)/src/pc/platform/new3ds \
     -I$(CTRULIB)/include -I$(PORTLIBS)/include \
     -Wno-format-security -Wno-trigraphs -Wno-missing-braces -Wno-missing-field-initializers \
@@ -129,8 +137,10 @@ override EXTRA_CFLAGS := \
 override EXTRA_CPP_FLAGS := -std=gnu++17 $(NEW3DS_ARCH) -mword-relocations -fno-rtti -fno-exceptions
 
 NEW3DS_BACKEND_CFLAGS := \
-    -D__3DS__ -D__CONSOLE__ -DNEW_3DS_PORT=1 -DNEW3DS_LOG_LEVEL=$(NEW3DS_LOG_LEVEL) -D_GNU_SOURCE \
-    -DNON_MATCHING=1 -DAVOID_UB=1 -DLUA_USE_C89 \
+    -D__3DS__ -D__CONSOLE__ -DNEW_3DS_PORT=1 -DNEW3DS_LOG_LEVEL=$(NEW3DS_LOG_LEVEL) \
+    -DNEW3DS_MAIN_STACK_SIZE=$(NEW3DS_MAIN_STACK_SIZE) \
+    -DNEW3DS_USER_EXCEPTIONS=$(NEW3DS_USER_EXCEPTIONS) -D_GNU_SOURCE \
+    -DNON_MATCHING=1 -DAVOID_UB=1 -DLUA_USE_C89 -DBITS_32=1 \
     -I$(CURDIR)/src/pc/platform/new3ds \
     -I$(CTRULIB)/include -I$(PORTLIBS)/include
 
@@ -160,6 +170,41 @@ override AR := $(NEW3DS_CROSS)ar
 override OBJCOPY := $(NEW3DS_CROSS)objcopy
 override OBJDUMP := $(NEW3DS_CROSS)objdump
 override LD := $(CXX)
+override ASFLAGS += $(NEW3DS_ASFLAGS) --defsym BITS_32=1
+
+# Rebuild sound banks as 32-bit little-endian. The repo prebuilts are 64-bit
+# PC/Switch blobs; overlaying them on 32-bit audio structs crashes in play_music.
+NEW3DS_SOUND_STAMP := $(SOUND_BIN_DIR)/.32bit-assembled
+NEW3DS_SOUND_PLAYER_M64 := $(BUILD_DIR)/sound/sequences/00_sound_player.m64
+
+$(BUILD_DIR)/sound/sequences:
+	@mkdir -p $@
+
+$(NEW3DS_SOUND_PLAYER_M64): | $(BUILD_DIR)/sound/sequences
+
+$(NEW3DS_SOUND_STAMP): $(NEW3DS_SOUND_PLAYER_M64) $(SOUND_BANK_FILES) sound/sequences.json tools/new3ds/assemble_sound_32bit.py tools/assemble_sound.py
+	@mkdir -p $(SOUND_BIN_DIR)
+	$(PYTHON) tools/new3ds/assemble_sound_32bit.py \
+		--root $(CURDIR) \
+		--build-dir $(BUILD_DIR) \
+		--sound-bin-dir $(SOUND_BIN_DIR) \
+		--version $(VERSION)
+	@touch $@
+
+$(BUILD_DIR)/sound/sequences_assets.o: $(BUILD_DIR)/sound/sequences_offsets.h
+$(BUILD_DIR)/sound/samples_assets.o: $(BUILD_DIR)/samples_offsets.h
+$(BUILD_DIR)/sound/sequences_offsets.h $(BUILD_DIR)/samples_offsets.h: $(NEW3DS_SOUND_STAMP)
+	@test -s $@
+$(BUILD_DIR)/sound/sound_data.o: $(SOUND_BIN_DIR)/sound_data.ctl.inc.c $(SOUND_BIN_DIR)/sound_data.tbl.inc.c $(SOUND_BIN_DIR)/sequences.bin.inc.c $(SOUND_BIN_DIR)/bank_sets.inc.c
+
+$(SOUND_BIN_DIR)/sound_data.tbl: $(NEW3DS_SOUND_STAMP)
+	@test -s $@
+$(SOUND_BIN_DIR)/sound_data.ctl: $(NEW3DS_SOUND_STAMP)
+	@test -s $@
+$(SOUND_BIN_DIR)/bank_sets: $(NEW3DS_SOUND_STAMP)
+	@test -s $@
+$(SOUND_BIN_DIR)/sequences.bin: $(NEW3DS_SOUND_STAMP)
+	@test -s $@
 
 NEW3DS_SMDH := $(BUILD_DIR)/sm64coopdx.smdh
 NEW3DS_3DSX := $(BUILD_DIR)/sm64coopdx.3dsx
@@ -187,6 +232,8 @@ NEW3DS_INTEGRATION_OBJS := \
 	$(BUILD_DIR)/src/pc/network/socket/socket.o \
 	$(BUILD_DIR)/src/pc/network/socket/socket_linux.o \
 	$(BUILD_DIR)/src/pc/platform/new3ds/new3ds_log.o \
+	$(BUILD_DIR)/src/pc/platform/new3ds/new3ds_boot_trace.o \
+	$(BUILD_DIR)/src/pc/platform/new3ds/new3ds_exception_handler.o \
 	$(BUILD_DIR)/src/pc/djui/djui_panel_host_message.o \
 	$(BUILD_DIR)/src/engine/lighting_engine.o \
 	$(BUILD_DIR)/src/pc/mods/mod_fs.o \
@@ -254,15 +301,21 @@ $(NEW3DS_CIA): $(EXE) $(NEW3DS_SMDH) | new3ds-fetch-makerom
 new3ds-cia: $(NEW3DS_CIA)
 	@echo "Built New 3DS CIA: $(NEW3DS_CIA)"
 
+ifneq ($(wildcard baserom.us.z64),)
+NEW3DS_DIST_BASEROM_ARGS := --baserom baserom.us.z64
+endif
+
 new3ds-dist: new3ds-3dsx new3ds-cia docs/new3ds-port.md tools/new3ds/package_dist.py
 	$(PYTHON) tools/new3ds/package_dist.py \
 		--root . \
 		--3dsx "$(NEW3DS_3DSX)" \
 		--cia "$(NEW3DS_CIA)" \
 		--smdh "$(NEW3DS_SMDH)" \
+		--lang-dir lang \
 		--install-guide docs/new3ds-port.md \
 		--output-dir "$(NEW3DS_DIST_ROOT)" \
-		--output-zip "$(NEW3DS_DIST_ZIP)"
+		--output-zip "$(NEW3DS_DIST_ZIP)" \
+		$(NEW3DS_DIST_BASEROM_ARGS)
 	@echo "New 3DS distribution folder: $(NEW3DS_DIST_ROOT)"
 	@echo "New 3DS distribution ZIP: $(NEW3DS_DIST_ZIP)"
 

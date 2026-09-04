@@ -9,7 +9,7 @@
 
 SOCKET socket_initialize(void) {
 #if defined(__3DS__)
-    if (!new3ds_runtime_network_available()) {
+    if (!new3ds_runtime_ensure_network() || !new3ds_runtime_network_available()) {
         NEW3DS_LOG_ERROR_CAT(NEW3DS_LOG_CAT_NET, "socket", "SOC unavailable");
         LOG_ERROR("New 3DS Direct: socket unavailable (SOC not initialized)");
         return INVALID_SOCKET;

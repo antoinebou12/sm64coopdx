@@ -5,6 +5,7 @@
 #ifndef NEW3DS_SHELL_BUILD
 #include "pc/configfile.h"
 #else
+static bool configNew3dsLogs = false;
 static bool configNew3dsLogNet = true;
 static bool configNew3dsLogGfx = false;
 static bool configNew3dsLogPerf = false;
@@ -14,13 +15,116 @@ static bool configShowFPS = false;
 #endif
 
 #include <3ds.h>
+#include <errno.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/stat.h>
+#include <time.h>
+#ifndef NEW3DS_SHELL_BUILD
+#include "pc/platform/new3ds/new3ds_bottom_ui.h"
+#endif
+
+#define NEW3DS_LOG_ROOT "sdmc:/3ds/sm64coopdx"
+#define NEW3DS_LOG_DIR NEW3DS_LOG_ROOT "/logs"
+#define NEW3DS_RUNTIME_LOG NEW3DS_LOG_DIR "/runtime.log"
+#define NEW3DS_LOG_FLUSH_INTERVAL 16u
 
 static char sLogLines[NEW3DS_LOG_LINE_COUNT][NEW3DS_LOG_LINE_SIZE];
 static uint32_t sLogWriteIndex = 0;
 static uint32_t sLogCount = 0;
+static bool sFileLogReady = false;
+static uint32_t sPendingFileWrites = 0;
+
+static bool new3ds_log_mkdir(const char *path) {
+    if (mkdir(path, 0777) == 0) {
+        return true;
+    }
+    return errno == EEXIST;
+}
+
+static bool new3ds_log_prepare_file(void) {
+    if (sFileLogReady) {
+        return true;
+    }
+
+    if (!new3ds_log_mkdir("sdmc:/3ds")) {
+        return false;
+    }
+    if (!new3ds_log_mkdir(NEW3DS_LOG_ROOT)) {
+        return false;
+    }
+    if (!new3ds_log_mkdir(NEW3DS_LOG_DIR)) {
+        return false;
+    }
+
+    sFileLogReady = true;
+    return true;
+}
+
+static void new3ds_log_commit_sdmc(void) {
+    sPendingFileWrites = 0;
+}
+
+static void new3ds_log_append_file(const char *line, bool force_commit) {
+    if (line == NULL || !new3ds_log_prepare_file()) {
+        return;
+    }
+
+    FILE *file = fopen(NEW3DS_RUNTIME_LOG, "a");
+    if (file == NULL) {
+        return;
+    }
+
+    fprintf(file, "[%lld] %s\n", (long long)time(NULL), line);
+    fclose(file);
+
+    sPendingFileWrites++;
+    if (force_commit || sPendingFileWrites >= NEW3DS_LOG_FLUSH_INTERVAL) {
+        new3ds_log_commit_sdmc();
+    }
+}
+
+const char *new3ds_log_directory(void) {
+    return NEW3DS_LOG_DIR;
+}
+
+void new3ds_log_init(void) {
+    if (!configNew3dsLogs) {
+        return;
+    }
+    if (!new3ds_log_prepare_file()) {
+        return;
+    }
+
+    FILE *file = fopen(NEW3DS_RUNTIME_LOG, "a");
+    if (file != NULL) {
+        fprintf(file, "\n=== SM64CoopDX session begin epoch=%lld ===\n", (long long)time(NULL));
+        fclose(file);
+        new3ds_log_commit_sdmc();
+    }
+}
+
+void new3ds_log_flush(void) {
+    if (sFileLogReady && sPendingFileWrites > 0) {
+        new3ds_log_commit_sdmc();
+    }
+}
+
+void new3ds_log_shutdown(void) {
+    if (!configNew3dsLogs || !sFileLogReady) {
+        return;
+    }
+
+    FILE *file = fopen(NEW3DS_RUNTIME_LOG, "a");
+    if (file != NULL) {
+        fprintf(file, "=== SM64CoopDX session end epoch=%lld ===\n", (long long)time(NULL));
+        fclose(file);
+    }
+
+    new3ds_log_commit_sdmc();
+    sFileLogReady = false;
+}
 
 int new3ds_log_level_value(const char *level) {
     if (level == NULL) {
@@ -64,6 +168,11 @@ void new3ds_log_write(const char *level, const char *tag, const char *fmt, ...) 
     char message[64];
     char line[NEW3DS_LOG_LINE_SIZE];
     va_list args;
+    bool is_error;
+
+    if (!configNew3dsLogs) {
+        return;
+    }
 
     if (level == NULL) {
         level = "INFO";
@@ -75,6 +184,8 @@ void new3ds_log_write(const char *level, const char *tag, const char *fmt, ...) 
         return;
     }
 
+    is_error = strcmp(level, "ERROR") == 0;
+
     va_start(args, fmt);
     vsnprintf(message, sizeof(message), fmt ? fmt : "", args);
     va_end(args);
@@ -82,8 +193,20 @@ void new3ds_log_write(const char *level, const char *tag, const char *fmt, ...) 
     snprintf(line, sizeof(line), "[%s][%s] %s", level, tag, message);
     line[sizeof(line) - 1] = '\0';
 
+    /*
+     * When the bottom-screen log UI owns PrintConsole, do not printf here —
+     * that races the UI redraw and corrupts the last rows. Early boot (before
+     * bottom UI) still prints so Homebrew Launcher progress stays visible.
+     */
+#ifndef NEW3DS_SHELL_BUILD
+    if (!new3ds_bottom_ui_owns_console()) {
+        printf("%s\n", line);
+    }
+#else
     printf("%s\n", line);
+#endif
     svcOutputDebugString(line, (s32)strlen(line));
+    new3ds_log_append_file(line, is_error);
 
     {
         const size_t copy_len = strnlen(line, NEW3DS_LOG_LINE_SIZE - 1);
@@ -99,6 +222,10 @@ void new3ds_log_write(const char *level, const char *tag, const char *fmt, ...) 
 
 uint32_t new3ds_log_line_count(void) {
     return sLogCount;
+}
+
+uint32_t new3ds_log_write_index(void) {
+    return sLogWriteIndex;
 }
 
 const char *new3ds_log_line(uint32_t index) {

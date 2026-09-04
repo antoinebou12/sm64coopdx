@@ -11,7 +11,7 @@
 #endif
 
 #define NEW3DS_LOG_LINE_COUNT 32
-#define NEW3DS_LOG_LINE_SIZE  96
+#define NEW3DS_LOG_LINE_SIZE  160
 
 typedef enum New3dsLogCategory {
     NEW3DS_LOG_CAT_RUNTIME = 0,
@@ -22,8 +22,13 @@ typedef enum New3dsLogCategory {
 } New3dsLogCategory;
 
 void new3ds_log_write(const char *level, const char *tag, const char *fmt, ...);
+void new3ds_log_init(void);
+void new3ds_log_flush(void);
+void new3ds_log_shutdown(void);
+const char *new3ds_log_directory(void);
 void new3ds_log_snapshot(char *buf, size_t len);
 uint32_t new3ds_log_line_count(void);
+uint32_t new3ds_log_write_index(void);
 const char *new3ds_log_line(uint32_t index);
 bool new3ds_log_category_enabled(New3dsLogCategory category);
 int new3ds_log_level_value(const char *level);

@@ -5,6 +5,7 @@
 
 #include "new3ds_runtime.h"
 #include "new3ds_ui.h"
+#include "new3ds_platform_ui.h"
 
 static void new3ds_platform_shutdown_graphics(New3dsUiState *ui) {
     new3ds_ui_shutdown(ui);
@@ -17,12 +18,19 @@ int main(void) {
     New3dsRuntimeState runtime = {0};
     New3dsUiState ui = {0};
 
-    gfxInit(GSP_RGB565_OES, GSP_RGB565_OES, false);
+    gfxInit(GSP_BGR8_OES, GSP_BGR8_OES, false);
     gfxSet3D(false);
 
     if (!new3ds_runtime_init(&runtime)) {
         consoleInit(GFX_BOTTOM, NULL);
         printf("SM64CoopDX New 3DS\n\nRuntime initialization failed.\n");
+        gfxExit();
+        return 1;
+    }
+
+    if (!runtime.is_new_3ds) {
+        new3ds_platform_show_exit_message(new3ds_platform_unsupported_hardware_message());
+        new3ds_runtime_shutdown(&runtime);
         gfxExit();
         return 1;
     }

@@ -11,7 +11,7 @@ static void new3ds_controls_note(struct DjuiBase *body, const char *message, flo
     djui_base_set_size_type(&text->base, DJUI_SVT_RELATIVE, DJUI_SVT_ABSOLUTE);
     djui_base_set_size(&text->base, 1.0f, height);
     djui_base_set_color(&text->base, 235, 235, 235, 255);
-    djui_text_set_font_scale(text, text->font->defaultFontScale * 0.72f);
+    djui_text_set_font_scale(text, text->font->defaultFontScale * 0.65f);
 }
 
 static void new3ds_controls_value_change(UNUSED struct DjuiBase *caller) {
@@ -23,8 +23,8 @@ static void new3ds_controls_stick_options_create(struct DjuiBase *caller) {
     struct DjuiBase *body = djui_three_panel_get_body(panel);
 
     new3ds_controls_note(body,
-        "Circle Pad = movement\nC-Stick = camera / C-buttons",
-        46.0f);
+        "Circle Pad = move   C-Stick = camera",
+        28.0f);
 
     djui_checkbox_create(body, DLANG(CONTROLS, ROTATE_LEFT), &configStick.rotateLeft, NULL);
     djui_checkbox_create(body, DLANG(CONTROLS, INVERT_LEFT_X), &configStick.invertLeftX, NULL);
@@ -43,17 +43,11 @@ void djui_panel_controls_create(struct DjuiBase *caller) {
     struct DjuiBase *body = djui_three_panel_get_body(panel);
 
     new3ds_controls_note(body,
-        "NEW 3DS BUILT-IN CONTROLS\nNo external gamepad is required.",
-        46.0f);
-    new3ds_controls_note(body,
-        "Circle Pad  Move Mario\nC-Stick     Camera / C-buttons",
-        46.0f);
-    new3ds_controls_note(body,
-        "A/B/X/Y      Game actions\nL/R/ZL/ZR   Shoulder actions",
-        46.0f);
-    new3ds_controls_note(body,
-        "D-Pad        Menu / D-pad actions\nTouch        Bottom-screen UI",
-        46.0f);
+        "NEW 3DS BUILT-IN CONTROLS\n"
+        "Circle Pad move  C-Stick camera\n"
+        "A/B/X/Y actions  L/R/ZL/ZR shoulders\n"
+        "D-Pad menu  C-Stick scroll lists  Touch cursor",
+        72.0f);
 
     djui_button_create(body, DLANG(CONTROLS, ANALOG_STICK_OPTIONS), DJUI_BUTTON_STYLE_NORMAL, new3ds_controls_stick_options_create);
     djui_button_create(body, DLANG(MENU, BACK), DJUI_BUTTON_STYLE_BACK, djui_panel_menu_back);

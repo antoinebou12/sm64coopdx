@@ -17,6 +17,7 @@
 #include "djui_hud_utils.h"
 #include "engine/math_util.h"
 #include "pc/utils/misc.h"
+#include "pc/configfile.h"
 
 static Gfx* sSavedDisplayListHead = NULL;
 static Gfx* sHookHudRenderGfx = NULL;
@@ -135,11 +136,22 @@ void djui_init(void) {
 }
 
 void djui_init_late(void) {
+#if defined(__3DS__)
+    /* Keep menu body text on the aliased font for readability. */
+    configDjuiThemeFont = 1;
+#endif
     djui_panel_main_create(NULL);
+#if defined(__3DS__)
+    if (configLanguage[0] == '\0') {
+        snprintf(configLanguage, MAX_CONFIG_STRING, "%s", "English");
+        djui_language_init(configLanguage);
+    }
+#else
     if (configLanguage[0] == '\0') {
         gPanelLanguageOnStartup = true;
         djui_panel_language_create(NULL);
     }
+#endif
 
     // djui_panel_debug_create();
     djui_cursor_create();

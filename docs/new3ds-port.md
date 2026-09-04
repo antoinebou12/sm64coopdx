@@ -113,7 +113,50 @@ dist/sm64coopdx-console-1.5.1-console/   # combined NRO + 3DSX + CIA
 
 `new3ds-cia` downloads `makerom` on first use into `build/new3ds-tools/bin/`.
 
-The full-game target defaults to `NEW3DS_COOPNET=0`. LAN direct hosting is the first multiplayer milestone; opt into CoopNet only after local socket transport is validated on hardware.
+### Real hardware install (Homebrew Launcher)
+
+**Always overwrite both app files** from a fresh `new3ds-dist` (stale `.3dsx` causes old hash/freeze behavior):
+
+```text
+sdmc:/3ds/sm64coopdx/sm64coopdx.3dsx   # overwrite
+sdmc:/3ds/sm64coopdx/sm64coopdx.smdh   # overwrite (same basename)
+sdmc:/3ds/sm64coopdx/baserom.us.z64   # vanilla US .z64 only, 8 MiB
+```
+
+After installing a new build, **delete** any stale hash cache so the new binary re-checks cleanly:
+
+```text
+sdmc:/3ds/sm64coopdx/baserom.us.z64.md5   # delete if present
+```
+
+`baserom.us.z64` must be a **vanilla US** Super Mario 64 dump in native `.z64` byte order:
+
+- Required MD5: `20b854b239203baf6c961b850a4a51a2`
+- EU / JP / Shindou dumps are rejected (wrong region)
+- `.v64` / `.n64` byte-swapped US dumps are auto-converted once to `.z64` on boot
+- A patched or wrong-size file fails with a bottom-screen error and START/HOME to exit (not a silent hang)
+- After a hash failure, `runtime.log` must show separate lines `expected=` and `computed=` (if you still see a single line `invalid baserom.us.z64 hash path=...` plus `loading: ui init`, the SD still has an old `.3dsx`)
+
+Optional after first successful boot (speeds later boots):
+
+```text
+sdmc:/3ds/sm64coopdx/baserom.us.z64.md5
+sdmc:/3ds/sm64coopdx/logs/runtime.log
+```
+
+On launch, the **bottom screen** should show boot phases within 1–2 seconds (`Loading config…`, `Checking ROM…`, etc.). If Homebrew Launcher keeps spinning with a blank bottom screen for minutes, the build is too old or the `.3dsx`/`.smdh` pair is missing. If the bottom screen shows a ROM MD5/region error, replace the SD file with a verified US `.z64` (Azahar may be using a different host copy than the SD card).
+
+### Dual-screen UX (full game)
+
+- **Top (400×240):** gameplay + DJUI menus (compact logo/buttons, scrollable panel bodies via C-Stick Y / L+R)
+- **Bottom (320×240):** boot/runtime log viewer via PrintConsole (readable text; not a custom BGR8 blit)
+- **Touch:** maps to the top DJUI cursor (320→400 X scale)
+- **Default LAN port:** `1234` (host and join); use the on-screen DJUI keypad for port, IP, and password (native `swkbd` is disabled — it crashes with the bottom PrintConsole)
+- **Skip intro cutscene:** on by default (Host Settings still toggles it)
+- **Camera:** C-Stick drives free-cam / analog look when enabled; in menus C-Stick Y scrolls overflowing DJUI lists
+- PC and Switch builds are unchanged (code is `__3DS__` / Makefile-excluded)
+
+The full-game target defaults to `NEW3DS_COOPNET=1` for Android `sm64coop-android` lobbies. SOC init stays deferred until networking. Use `NEW3DS_COOPNET=0` for a smaller offline-first binary.
 
 ```sh
 make -f Makefile.new3ds-game NEW3DS_COOPNET=1 new3ds-integration-smoke -j2
@@ -182,18 +225,24 @@ bash tools/new3ds/build-coopnet.sh
 
 CoopNet uses game name `sm64coop-android` for lobby/server compatibility (same as Switch). The 3DS build is **client-only** (`NO_SERVER` libjuice). CI exposes a manual `build-new3ds-coopnet` workflow for compile-only validation.
 
+**Identity:** the client fingerprints `sdmc:/3ds/sm64coopdx/sm64coopdx.3dsx` (same murmur64a approach as the Switch NRO). Install both the `.3dsx` and `.smdh` under that path; a missing or unreadable binary yields a zero fingerprint and public join is blocked with an explicit reinstall message.
+
+**Lobbies UI (400×240):** Public/Private lists omit the desktop side description panel (~410px). Descriptions show in-panel when a lobby is highlighted; page size is 4; Back/Refresh are compact. Host → Network System → CoopNet and private passwords use the in-game DJUI keypad (same approach as Switch — native `swkbd` is off by default because it conflicts with the bottom-screen log console).
+
+**Menus:** Options includes a top-level **CoopNet** entry (Public / Private / Host CoopNet Lobby). Join labels CoopNet Public/Private separately from Direct Connection.
+
 ## UX direction
 
 The New 3DS port must not shrink desktop DJUI onto a 320x240 panel.
 
-- **Top screen = gameplay.** The 400x240 display is reserved for the world, short notifications, and essential connection state.
-- **Bottom screen = interaction.** Host/join, player list, chat entry, settings, diagnostics, and recovery actions belong here.
+- **Top screen = gameplay + menus.** The 400x240 display holds the world and compact, scrollable DJUI panels (Host/Join/Options/Quit).
+- **Bottom screen = logs.** PrintConsole boot/runtime/CoopNet diagnostics only (no interactive DJUI on bottom).
 - **Large touch targets.** Every touch action must remain usable with physical controls.
 - **A/touch = primary action. B = back.** Navigation should be predictable across every page.
-- **C-Stick = camera.** Avoid requiring touch for normal gameplay.
+- **C-Stick = camera in-game; scroll in menus.** Avoid requiring touch for normal gameplay.
 - **No silent networking states.** Connecting, authorization, timeout, retry, and failure must be visible.
 - **No fake readiness.** Unimplemented actions remain labeled/disabled until their backend exists.
-- **Readable at native resolution.** Avoid desktop-density sidebars, tiny controls, hover interactions, and long modal paragraphs.
+- **Readable at native resolution.** Avoid desktop-density sidebars, tiny controls, and long modal paragraphs.
 
 ### Intended in-game bottom-screen structure
 

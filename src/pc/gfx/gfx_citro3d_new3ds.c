@@ -25,6 +25,9 @@
 #include "gfx_cc.h"
 #include "pc/configfile.h"
 #include "pc/platform/new3ds/new3ds_log.h"
+#include "pc/platform/new3ds/new3ds_platform_ui.h"
+#include "pc/platform/new3ds/new3ds_bottom_ui.h"
+#include "pc/gfx/gfx_window_manager.h"
 
 /*
  * Citro3D backend for the New Nintendo 3DS port.
@@ -405,31 +408,101 @@ static void new3ds_apply_texture_parameters(uint32_t texture_id) {
         new3ds_wrap_mode(texture->cmt));
 }
 
+/* PICA200 max is 1024x1024. Oversized sources (e.g. coopdx logo 2048x1024)
+ * must be downsampled or upload is skipped and the previous bind (often sky)
+ * stays visible in DJUI. */
+static uint8_t *new3ds_downsample_rgba8(
+    const uint8_t *src,
+    int src_w,
+    int src_h,
+    int *out_w,
+    int *out_h) {
+    int dst_w = src_w;
+    int dst_h = src_h;
+    while (new3ds_next_pow2((uint32_t)dst_w) > 1024 || new3ds_next_pow2((uint32_t)dst_h) > 1024) {
+        dst_w = (dst_w + 1) / 2;
+        dst_h = (dst_h + 1) / 2;
+        if (dst_w < 1 || dst_h < 1) {
+            return NULL;
+        }
+    }
+
+    uint8_t *dst = (uint8_t *)malloc((size_t)dst_w * (size_t)dst_h * 4);
+    if (dst == NULL) {
+        return NULL;
+    }
+
+    for (int y = 0; y < dst_h; ++y) {
+        const int src_y = (y * src_h) / dst_h;
+        for (int x = 0; x < dst_w; ++x) {
+            const int src_x = (x * src_w) / dst_w;
+            const uint8_t *sp = src + (((size_t)src_y * (size_t)src_w + (size_t)src_x) * 4);
+            uint8_t *dp = dst + (((size_t)y * (size_t)dst_w + (size_t)x) * 4);
+            dp[0] = sp[0];
+            dp[1] = sp[1];
+            dp[2] = sp[2];
+            dp[3] = sp[3];
+        }
+    }
+
+    *out_w = dst_w;
+    *out_h = dst_h;
+    return dst;
+}
+
 static void new3ds_upload_texture(const uint8_t *rgba32, int width, int height) {
     if (sCurrentTexture == UINT32_MAX || sCurrentTexture >= sTextureCount) return;
     if (rgba32 == NULL || width <= 0 || height <= 0) return;
 
-    uint32_t padded_width = new3ds_next_pow2((uint32_t)width);
-    uint32_t padded_height = new3ds_next_pow2((uint32_t)height);
+    const uint8_t *upload_src = rgba32;
+    int upload_w = width;
+    int upload_h = height;
+    uint8_t *downscaled = NULL;
+
+    uint32_t padded_width = new3ds_next_pow2((uint32_t)upload_w);
+    uint32_t padded_height = new3ds_next_pow2((uint32_t)upload_h);
     if (padded_width > 1024 || padded_height > 1024) {
-        sDroppedDrawCount++;
-        return;
+        downscaled = new3ds_downsample_rgba8(rgba32, width, height, &upload_w, &upload_h);
+        if (downscaled == NULL) {
+            sDroppedDrawCount++;
+            NEW3DS_LOG_WARN_CAT(
+                NEW3DS_LOG_CAT_GFX,
+                "gfx",
+                "texture too large for PICA200 and downsample failed (%dx%d)",
+                width,
+                height);
+            return;
+        }
+        upload_src = downscaled;
+        padded_width = new3ds_next_pow2((uint32_t)upload_w);
+        padded_height = new3ds_next_pow2((uint32_t)upload_h);
+        NEW3DS_LOG_INFO_CAT(
+            NEW3DS_LOG_CAT_GFX,
+            "gfx",
+            "downsampled oversized texture %dx%d -> %dx%d",
+            width,
+            height,
+            upload_w,
+            upload_h);
     }
 
     const size_t bytes = (size_t)padded_width * (size_t)padded_height * 4;
     uint32_t *swizzled = (uint32_t *)linearAlloc(bytes);
     if (swizzled == NULL) {
+        free(downscaled);
         sDroppedDrawCount++;
         return;
     }
 
     new3ds_swizzle_rgba8(
-        rgba32,
+        upload_src,
         swizzled,
-        (uint32_t)width,
-        (uint32_t)height,
+        (uint32_t)upload_w,
+        (uint32_t)upload_h,
         padded_width,
         padded_height);
+    free(downscaled);
+    downscaled = NULL;
 
     New3dsTexture *texture = &sTextures[sCurrentTexture];
     if (texture->initialized) {
@@ -448,8 +521,8 @@ static void new3ds_upload_texture(const uint8_t *rgba32, int width, int height) 
     linearFree(swizzled);
 
     texture->initialized = true;
-    texture->scale_s = (float)width / (float)padded_width;
-    texture->scale_t = (float)height / (float)padded_height;
+    texture->scale_s = (float)upload_w / (float)padded_width;
+    texture->scale_t = (float)upload_h / (float)padded_height;
     new3ds_apply_texture_parameters(sCurrentTexture);
 
     for (int tile = 0; tile < 2; ++tile) {
@@ -488,11 +561,27 @@ static void new3ds_set_zmode_decal(bool enabled) {
 }
 
 static void new3ds_set_viewport(int x, int y, int width, int height) {
-    C3D_SetViewport(x, y, width, height);
+    /*
+     * Landscape gfx_pc (400x240, Y down) → Citro3D target 240x400.
+     * Vertices already rotate clip-space (x'=y, y'=-x). Swap axes here and
+     * flip the 240-tall axis so HUD scissors align with the top of the screen.
+     */
+    if (width <= 0 || height <= 0) {
+        return;
+    }
+    C3D_SetViewport(240 - (y + height), x, height, width);
 }
 
 static void new3ds_set_scissor(int x, int y, int width, int height) {
-    C3D_SetScissor(GPU_SCISSOR_NORMAL, y, x, y + height, x + width);
+    if (width <= 0 || height <= 0) {
+        C3D_SetScissor(GPU_SCISSOR_DISABLE, 0, 0, 0, 0);
+        return;
+    }
+    const int gx1 = 240 - (y + height);
+    const int gy1 = x;
+    const int gx2 = 240 - y;
+    const int gy2 = x + width;
+    C3D_SetScissor(GPU_SCISSOR_NORMAL, gx1, gy1, gx2, gy2);
 }
 
 static void new3ds_set_use_alpha(bool enabled) {
@@ -540,6 +629,12 @@ static New3dsDrawInfo new3ds_analyze_draw(
             program, buf, vertices, input, info.input_color[input]);
     }
 
+    /*
+     * Prefer SHADE as the interpolated primary even when the draw is flat.
+     * Dialog boxes use G_CC_FADE (SHADE*ENV). If every input is treated as a
+     * TEV constant, SHADE and ENV collide in one C3D_TexEnvColor and the box
+     * becomes opaque white with invisible text.
+     */
     for (int input = 0; input < program->num_inputs; ++input) {
         if (!info.input_constant[input] && program->input_mapping[input] == CC_SHADE) {
             info.primary_input = input;
@@ -561,6 +656,17 @@ static New3dsDrawInfo new3ds_analyze_draw(
                 break;
             }
         }
+    }
+    if (info.primary_input < 0) {
+        for (int input = 0; input < program->num_inputs; ++input) {
+            if (program->input_mapping[input] == CC_SHADE || program->input_mapping[input] == CC_SHADEA) {
+                info.primary_input = input;
+                break;
+            }
+        }
+    }
+    if (info.primary_input < 0 && program->num_inputs > 0) {
+        info.primary_input = 0;
     }
 
     if (info.primary_input >= 0) {
@@ -596,8 +702,9 @@ static bool new3ds_stage_set_alpha(New3dsStageConstant *constant, uint32_t packe
 }
 
 static void new3ds_apply_stage_constant(C3D_TexEnv *env, const New3dsStageConstant *constant) {
-    uint32_t color = constant->rgb_set ? constant->rgb24 : 0x00FFFFFFu;
-    color |= (uint32_t)(constant->alpha_set ? constant->alpha : 0xFFu) << 24;
+    /* Unset channels default to transparent black — never opaque white. */
+    uint32_t color = constant->rgb_set ? constant->rgb24 : 0x00000000u;
+    color |= (uint32_t)(constant->alpha_set ? constant->alpha : 0x00u) << 24;
     C3D_TexEnvColor(env, color);
 }
 
@@ -763,8 +870,16 @@ static void new3ds_set_alpha_formula(
     const bool mix = cmd[1] == cmd[3];
 
     if (single || multiply || mix) {
+        /*
+         * Do not seed alpha from PREVIOUS_BUFFER on cycle 0 — that leaves
+         * translucent DJUI/N64 boxes opaque white. Prefer primary/texture alpha.
+         */
         C3D_TexEnvFunc(stage_a, C3D_Alpha, GPU_REPLACE);
-        new3ds_texenv_src(stage_a, C3D_Alpha, cycle == 0 ? GPU_PREVIOUS_BUFFER : GPU_PREVIOUS);
+        if (cycle == 0) {
+            new3ds_texenv_src(stage_a, C3D_Alpha, GPU_PRIMARY_COLOR);
+        } else {
+            new3ds_texenv_src(stage_a, C3D_Alpha, GPU_PREVIOUS);
+        }
         new3ds_texenv_op_alpha(stage_a, GPU_TEVOP_A_SRC_ALPHA);
 
         if (single) {
@@ -776,7 +891,7 @@ static void new3ds_set_alpha_formula(
             New3dsSourceSpec a = new3ds_resolve_source(program, draw, cmd[0], cycle, true, constant_b);
             New3dsSourceSpec c = new3ds_resolve_source(program, draw, cmd[2], cycle, true, constant_b);
             C3D_TexEnvFunc(stage_b, C3D_Alpha, GPU_MODULATE);
-            C3D_TexEnvSrc(stage_b, C3D_Alpha, a.src, c.src, GPU_PREVIOUS_BUFFER);
+            C3D_TexEnvSrc(stage_b, C3D_Alpha, a.src, c.src, GPU_PRIMARY_COLOR);
             C3D_TexEnvOpAlpha(stage_b, a.alpha_op, c.alpha_op, GPU_TEVOP_A_SRC_ALPHA);
         } else {
             New3dsSourceSpec a = new3ds_resolve_source(program, draw, cmd[0], cycle, true, constant_b);
@@ -835,6 +950,7 @@ static void new3ds_configure_program(struct ShaderProgram *program, New3dsDrawIn
         new3ds_texenv_src(env, C3D_Both, GPU_PREVIOUS);
     }
 
+    /* Texture-edge (cutout) needs a higher threshold; translucent UI uses >0. */
     C3D_AlphaTest(true, GPU_GREATER, program->texture_edge && program->use_alpha ? 77 : 0);
 }
 
@@ -1033,13 +1149,18 @@ void new3ds_gfx_get_stats(New3dsGfxStats *out) {
     }
 }
 
+static void new3ds_gfx_show_fatal_and_exit(const char *message) {
+    NEW3DS_LOG_ERROR_CAT(NEW3DS_LOG_CAT_GFX, "gfx", "%s", message);
+    new3ds_platform_show_exit_message(message);
+    gfx_wm_shutdown();
+    new3ds_platform_quit();
+}
+
 static void new3ds_init(void) {
     if (sInitialized) return;
 
     if (!C3D_Init(C3D_DEFAULT_CMDBUF_SIZE)) {
-        NEW3DS_LOG_ERROR_CAT(NEW3DS_LOG_CAT_GFX, "gfx", "C3D_Init failed");
-        svcBreak(USERBREAK_PANIC);
-        return;
+        new3ds_gfx_show_fatal_and_exit("Graphics initialization failed.\nCitro3D could not start.");
     }
 
     const u32 transfer_flags =
@@ -1052,17 +1173,13 @@ static void new3ds_init(void) {
 
     sTopTarget = C3D_RenderTargetCreate(240, 400, GPU_RB_RGBA8, GPU_RB_DEPTH24_STENCIL8);
     if (sTopTarget == NULL) {
-        NEW3DS_LOG_ERROR_CAT(NEW3DS_LOG_CAT_GFX, "gfx", "top render target allocation failed");
-        svcBreak(USERBREAK_PANIC);
-        return;
+        new3ds_gfx_show_fatal_and_exit("Graphics initialization failed.\nCould not create the display.");
     }
     C3D_RenderTargetSetOutput(sTopTarget, GFX_TOP, GFX_LEFT, transfer_flags);
 
     sVertexShaderDvlb = DVLB_ParseFile((u32 *)new3ds_shader_shbin, new3ds_shader_shbin_size);
     if (sVertexShaderDvlb == NULL) {
-        NEW3DS_LOG_ERROR_CAT(NEW3DS_LOG_CAT_GFX, "gfx", "vertex shader parse failed");
-        svcBreak(USERBREAK_PANIC);
-        return;
+        new3ds_gfx_show_fatal_and_exit("Graphics initialization failed.\nCould not load the GPU shader.");
     }
 
     shaderProgramInit(&sVertexShaderProgram);
@@ -1078,9 +1195,7 @@ static void new3ds_init(void) {
 
     sGpuVbo = (float *)linearAlloc(NEW3DS_VBO_BYTES);
     if (sGpuVbo == NULL) {
-        NEW3DS_LOG_ERROR_CAT(NEW3DS_LOG_CAT_GFX, "gfx", "VBO allocation failed");
-        svcBreak(USERBREAK_PANIC);
-        return;
+        new3ds_gfx_show_fatal_and_exit("Graphics initialization failed.\nOut of video memory.");
     }
 
     C3D_BufInfo *buf_info = C3D_GetBufInfo();
@@ -1103,12 +1218,43 @@ static void new3ds_init(void) {
     NEW3DS_LOG_INFO_CAT(
         NEW3DS_LOG_CAT_GFX,
         "gfx",
-        "initialized tex_pool=%u vbo_bytes=%u",
+        "initialized logical=400x240 gpu=240x400 fb=BGR8 tex_pool=%u vbo_bytes=%u",
         NEW3DS_TEXTURE_POOL_SIZE,
         (unsigned)NEW3DS_VBO_BYTES);
 }
 
 static void new3ds_on_resize(void) {
+}
+
+static void new3ds_bind_3d_pipeline(void) {
+    C3D_BindProgram(&sVertexShaderProgram);
+
+    C3D_AttrInfo *attr_info = C3D_GetAttrInfo();
+    AttrInfo_Init(attr_info);
+    AttrInfo_AddLoader(attr_info, 0, GPU_FLOAT, 4);
+    AttrInfo_AddLoader(attr_info, 1, GPU_FLOAT, 2);
+    AttrInfo_AddLoader(attr_info, 2, GPU_FLOAT, 2);
+    AttrInfo_AddLoader(attr_info, 3, GPU_FLOAT, 4);
+
+    C3D_BufInfo *buf_info = C3D_GetBufInfo();
+    BufInfo_Init(buf_info);
+    BufInfo_Add(
+        buf_info,
+        sGpuVbo,
+        NEW3DS_GPU_VERTEX_FLOATS * sizeof(float),
+        4,
+        0x3210);
+
+    C3D_CullFace(GPU_CULL_NONE);
+    C3D_SetScissor(GPU_SCISSOR_DISABLE, 0, 0, 0, 0);
+    sBoundTextureApplied[0] = UINT32_MAX;
+    sBoundTextureApplied[1] = UINT32_MAX;
+    sDepthTestApplied = !sDepthTest;
+    sDepthWriteApplied = !sDepthWrite;
+    sDepthDecalApplied = !sDepthDecal;
+    sUseAlphaApplied = !sUseAlpha;
+    new3ds_apply_depth();
+    new3ds_apply_blend();
 }
 
 static void new3ds_start_frame(void) {
@@ -1120,6 +1266,7 @@ static void new3ds_start_frame(void) {
     C3D_FrameBegin(C3D_FRAME_SYNCDRAW);
     C3D_RenderTargetClear(sTopTarget, C3D_CLEAR_ALL, 0x000000FF, 0xFFFFFFFF);
     C3D_FrameDrawOn(sTopTarget);
+    new3ds_bind_3d_pipeline();
     sFrameOpen = true;
 }
 
@@ -1132,6 +1279,10 @@ static void new3ds_finish_render(void) {
     new3ds_update_gfx_stats(frame_ms);
     C3D_FrameEnd(0);
     sFrameOpen = false;
+    /* CPU-blit logs into the bottom backbuffer after Citro3D swaps. */
+    if (new3ds_bottom_ui_ready()) {
+        new3ds_bottom_ui_draw();
+    }
 }
 
 static const char *new3ds_get_name(void) {
@@ -1140,6 +1291,8 @@ static const char *new3ds_get_name(void) {
 
 static void new3ds_shutdown(void) {
     if (!sInitialized) return;
+
+    new3ds_bottom_ui_shutdown();
 
     if (sFrameOpen) {
         C3D_FrameEnd(0);

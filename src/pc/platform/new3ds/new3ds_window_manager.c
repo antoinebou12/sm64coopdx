@@ -12,11 +12,27 @@
 #include "pc/djui/djui_inputbox.h"
 #include "pc/djui/djui_interactable.h"
 #include "pc/platform/new3ds/new3ds_runtime.h"
+#include "pc/platform/new3ds/new3ds_platform_ui.h"
+#include "pc/platform/new3ds/new3ds_boot_progress.h"
+#ifdef NEW3DS_ENABLE_NATIVE_KEYBOARD
+#include "pc/platform/new3ds/new3ds_bottom_ui.h"
+#include "pc/platform/new3ds/new3ds_log.h"
+#endif
+
+/*
+ * Native swkbd uses the bottom screen as a system applet. That conflicts with
+ * PrintConsole (and Citro3D ownership) and has crashed CoopNet/chat text entry
+ * on hardware and Azahar. Match Switch: CoopNet uses in-game DJUI keypads.
+ * Define NEW3DS_ENABLE_NATIVE_KEYBOARD only for experimental builds.
+ */
 
 static New3dsRuntimeState sRuntime;
 static bool sRuntimeReady = false;
 static bool sGraphicsReady = false;
+static bool sForceExitOnStart = false;
 static bool sTextInputActive = false;
+static bool sNativeKeyboardPending = false;
+static struct DjuiInputbox *sNativeKeyboardTarget = NULL;
 static kb_callback_t sKeyDown = NULL;
 static kb_callback_t sKeyUp = NULL;
 static void (*sAllKeysUp)(void) = NULL;
@@ -24,6 +40,10 @@ static void (*sTextInput)(char *) = NULL;
 static void (*sTextEditing)(char *, int) = NULL;
 static void (*sScroll)(float, float) = NULL;
 static char sClipboard[WAPI_CLIPBOARD_BUFSIZ];
+
+#ifdef NEW3DS_ENABLE_NATIVE_KEYBOARD
+static void new3ds_show_native_keyboard(void);
+#endif
 
 void gfx_wm_set_window(SDL_Window *window) {
     (void)window;
@@ -37,16 +57,25 @@ void gfx_wm_init(const char *window_title) {
     (void)window_title;
 
     if (!sGraphicsReady) {
-        gfxInit(GSP_RGB565_OES, GSP_RGB565_OES, false);
-        gfxSet3D(false);
+        if (!new3ds_boot_progress_gfx_started()) {
+            gfxInit(GSP_BGR8_OES, GSP_BGR8_OES, false);
+            gfxSet3D(false);
+        }
         sGraphicsReady = true;
+        new3ds_boot_progress_set("Graphics runtime...");
     }
 
     if (!sRuntimeReady) {
         sRuntimeReady = new3ds_runtime_init(&sRuntime);
-        if (!sRuntimeReady || !sRuntime.is_new_3ds) {
-            game_exit();
-            return;
+        if (!sRuntimeReady) {
+            new3ds_platform_show_exit_message("Runtime initialization failed.");
+            gfx_wm_shutdown();
+            new3ds_platform_quit();
+        }
+        if (!sRuntime.is_new_3ds) {
+            new3ds_platform_show_exit_message(new3ds_platform_unsupported_hardware_message());
+            gfx_wm_shutdown();
+            new3ds_platform_quit();
         }
     }
 
@@ -56,6 +85,10 @@ void gfx_wm_init(const char *window_title) {
     configWindow.settings_changed = false;
     configWindow.reset = false;
     sClipboard[0] = '\0';
+}
+
+void gfx_wm_set_force_exit_on_start(bool enable) {
+    sForceExitOnStart = enable;
 }
 
 void gfx_wm_main_loop(void (*run_one_game_iter)(void)) {
@@ -68,6 +101,18 @@ void gfx_wm_main_loop(void (*run_one_game_iter)(void)) {
         game_exit();
         return;
     }
+
+    if (sForceExitOnStart && (sRuntime.input.down & KEY_START) != 0) {
+        game_exit();
+        return;
+    }
+
+#ifdef NEW3DS_ENABLE_NATIVE_KEYBOARD
+    /* Deferred: open swkbd outside of Djui focus begin, between frames. */
+    if (sNativeKeyboardPending && !sTextInputActive) {
+        new3ds_show_native_keyboard();
+    }
+#endif
 
     run_one_game_iter();
 }
@@ -140,6 +185,7 @@ bool gfx_wm_has_focus(void) {
     return sRuntimeReady && !sRuntime.exit_requested && !sTextInputActive;
 }
 
+#ifdef NEW3DS_ENABLE_NATIVE_KEYBOARD
 static void new3ds_send_virtual_key(int scancode) {
     if (sKeyDown != NULL) {
         sKeyDown(scancode);
@@ -149,15 +195,20 @@ static void new3ds_send_virtual_key(int scancode) {
     }
 }
 
-void gfx_wm_start_text_input(void) {
-    if (sTextInputActive || gInteractableFocus == NULL) return;
+static void new3ds_show_native_keyboard(void) {
+    struct DjuiInputbox *inputbox = sNativeKeyboardTarget;
+    sNativeKeyboardPending = false;
+    sNativeKeyboardTarget = NULL;
 
-    /*
-     * This function is entered by DjuiInputbox::on_focus_begin, therefore the
-     * focused base is an input box for the lifetime of the keyboard applet.
-     */
-    struct DjuiInputbox *inputbox = (struct DjuiInputbox *)gInteractableFocus;
-    if (inputbox->buffer == NULL || inputbox->bufferSize <= 1) return;
+    if (sTextInputActive || inputbox == NULL ||
+        gInteractableFocus != &inputbox->base ||
+        inputbox->base.interactable == NULL ||
+        inputbox->base.interactable->on_text_input != djui_inputbox_on_text_input) {
+        return;
+    }
+    if (inputbox->buffer == NULL || inputbox->bufferSize <= 1) {
+        return;
+    }
 
     enum { NEW3DS_SWKBD_BUFFER_SIZE = 512 };
     char text[NEW3DS_SWKBD_BUFFER_SIZE];
@@ -168,16 +219,26 @@ void gfx_wm_start_text_input(void) {
     if (max_text_length > (int)sizeof(text) - 1) {
         max_text_length = (int)sizeof(text) - 1;
     }
+    if (max_text_length < 1) {
+        return;
+    }
+
+    const bool password = inputbox->passwordChar[0] != '\0';
+
+    /* Pause PrintConsole so the swkbd applet can own the bottom screen. */
+    new3ds_bottom_ui_set_paused(true);
+    NEW3DS_LOG_INFO_CAT(NEW3DS_LOG_CAT_RUNTIME, "keyboard", "native swkbd begin");
 
     SwkbdState keyboard;
-    swkbdInit(&keyboard, SWKBD_TYPE_NORMAL, 2, max_text_length);
+    swkbdInit(&keyboard, SWKBD_TYPE_WESTERN, 2, max_text_length);
     swkbdSetValidation(&keyboard, SWKBD_ANYTHING, 0, 0);
-    swkbdSetFeatures(&keyboard, SWKBD_DARKEN_TOP_SCREEN | SWKBD_DEFAULT_QWERTY);
-    swkbdSetHintText(&keyboard, "Enter text");
+    /* Avoid DARKEN_TOP_SCREEN — it fights Citro3D top ownership. */
+    swkbdSetFeatures(&keyboard, SWKBD_ALLOW_HOME | SWKBD_ALLOW_RESET | SWKBD_ALLOW_POWER);
+    swkbdSetHintText(&keyboard, password ? "Enter password" : "Enter text");
     swkbdSetButton(&keyboard, SWKBD_BUTTON_LEFT, "Cancel", false);
     swkbdSetButton(&keyboard, SWKBD_BUTTON_RIGHT, "OK", true);
     swkbdSetInitialText(&keyboard, text);
-    if (inputbox->passwordChar[0] != '\0') {
+    if (password) {
         swkbdSetPasswordMode(&keyboard, SWKBD_PASSWORD_HIDE_DELAY);
     }
 
@@ -185,21 +246,44 @@ void gfx_wm_start_text_input(void) {
     const SwkbdButton button = swkbdInputText(&keyboard, text, sizeof(text));
     sTextInputActive = false;
 
-    if (button == SWKBD_BUTTON_RIGHT) {
-        /* Replace the whole focused field, including the valid empty-string case. */
+    /* Restore bottom log console after the applet returns. */
+    new3ds_bottom_ui_reinit_console();
+    new3ds_bottom_ui_set_paused(false);
+    NEW3DS_LOG_INFO_CAT(NEW3DS_LOG_CAT_RUNTIME, "keyboard", "native swkbd end button=%d", (int)button);
+
+    if (button == SWKBD_BUTTON_RIGHT && gInteractableFocus == &inputbox->base) {
         djui_inputbox_select_all(inputbox);
-        new3ds_send_virtual_key(SCANCODE_BACKSPACE);
-        if (text[0] != '\0' && sTextInput != NULL) {
-            sTextInput(text);
-        }
+        djui_inputbox_on_text_input(&inputbox->base, text);
         new3ds_send_virtual_key(SCANCODE_ENTER);
     } else {
         new3ds_send_virtual_key(SCANCODE_ESCAPE);
     }
 }
+#endif /* NEW3DS_ENABLE_NATIVE_KEYBOARD */
+
+void gfx_wm_start_text_input(void) {
+#ifdef NEW3DS_ENABLE_NATIVE_KEYBOARD
+    if (gInteractableFocus != NULL &&
+        gInteractableFocus->interactable != NULL &&
+        gInteractableFocus->interactable->on_text_input == djui_inputbox_on_text_input) {
+        sNativeKeyboardTarget = (struct DjuiInputbox *)gInteractableFocus;
+        sNativeKeyboardPending = true;
+    }
+#else
+    /*
+     * Intentionally a no-op: native swkbd crashes with PrintConsole on bottom.
+     * Host/Join/CoopNet password + IP use djui_panel_switch_text_entry / private keypad.
+     */
+    (void)sNativeKeyboardPending;
+    (void)sNativeKeyboardTarget;
+#endif
+}
 
 void gfx_wm_stop_text_input(void) {
-    /* swkbdInputText is modal and has already closed when focus ends. */
+    if (!sTextInputActive) {
+        sNativeKeyboardPending = false;
+        sNativeKeyboardTarget = NULL;
+    }
 }
 
 char *gfx_wm_get_clipboard_text(void) {
@@ -232,6 +316,8 @@ void gfx_wm_shutdown(void) {
     sTextEditing = NULL;
     sScroll = NULL;
     sTextInputActive = false;
+    sNativeKeyboardPending = false;
+    sNativeKeyboardTarget = NULL;
 
     if (sRuntimeReady) {
         new3ds_runtime_shutdown(&sRuntime);

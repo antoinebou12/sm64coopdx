@@ -27,6 +27,9 @@
 #include "bettercamera.h"
 #include "hud.h"
 #include "pc/controller/controller_mouse.h"
+#ifdef __3DS__
+#include "pc/platform/new3ds/new3ds_boot_trace.h"
+#endif
 
 // FIXME: I'm not sure all of these variables belong in this file, but I don't
 // know of a good way to split them
@@ -579,22 +582,52 @@ static struct LevelCommand *levelCommandAddr;
 // main game loop thread. runs forever as long as the game
 // continues.
 void thread5_game_loop(UNUSED void *arg) {
-
+#ifdef __3DS__
+    new3ds_boot_checkpoint("thread5: setup_game_memory begin");
+#endif
     setup_game_memory();
+#ifdef __3DS__
+    new3ds_boot_checkpoint("thread5: setup_game_memory ok");
+#endif
     init_rumble_pak_scheduler_queue();
+#ifdef __3DS__
+    new3ds_boot_checkpoint("thread5: controllers begin");
+#endif
     init_controllers();
     create_thread_6();
+#ifdef __3DS__
+    new3ds_boot_checkpoint("thread5: save_file begin");
+#endif
     save_file_load_all(FALSE);
 
+#ifdef __3DS__
+    new3ds_boot_checkpoint("thread5: vblank handler");
+#endif
     set_vblank_handler(2, &gGameVblankHandler, &gGameVblankQueue, (OSMesg) 1);
 
     // point levelCommandAddr to the entry point into the level script data.
+#ifdef __3DS__
+    new3ds_boot_checkpoint("thread5: level script");
+#endif
     levelCommandAddr = segmented_to_virtual(level_script_entry);
 
+#ifdef __3DS__
+    new3ds_boot_checkpoint("thread5: play_music begin");
+#endif
     play_music(SEQ_PLAYER_SFX, SEQUENCE_ARGS(0, SEQ_SOUND_PLAYER), 0);
+#ifdef __3DS__
+    new3ds_boot_checkpoint("thread5: play_music ok");
+    new3ds_boot_checkpoint("thread5: set_sound_mode begin");
+#endif
     set_sound_mode(save_file_get_sound_mode());
+#ifdef __3DS__
+    new3ds_boot_checkpoint("thread5: set_sound_mode ok");
+#endif
 
     gGlobalTimer++;
+#ifdef __3DS__
+    new3ds_boot_checkpoint("thread5: complete");
+#endif
 }
 
 void game_loop_one_iteration(void) {

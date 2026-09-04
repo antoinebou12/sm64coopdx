@@ -4,7 +4,7 @@
 
 #include <string.h>
 
-#define NEW3DS_THREAD_DEFAULT_STACK (128 * 1024)
+#define NEW3DS_THREAD_DEFAULT_STACK (512 * 1024)
 #define NEW3DS_THREAD_PRIORITY 0x30
 
 static void new3ds_thread_entry(void *arg) {

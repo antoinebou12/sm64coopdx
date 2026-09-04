@@ -68,14 +68,14 @@ void mod_cache_shutdown(void) {
     sModCacheEntries = NULL;
 }
 
-void mod_cache_md5(const char* inPath, u8* outDataPath) {
+bool mod_cache_md5(const char* inPath, u8* outDataPath) {
     if (outDataPath == NULL) {
         LOG_ERROR("Cannot hash mod file without an output hash buffer");
-        return;
+        return false;
     }
     if (inPath == NULL || inPath[0] == '\0') {
         LOG_ERROR("Cannot hash mod file without a path");
-        return;
+        return false;
     }
     char cpath[SYS_MAX_PATH] = { 0 };
     u8 buffer[MD5_BUFFER_SIZE] = { 0 };
@@ -91,7 +91,7 @@ void mod_cache_md5(const char* inPath, u8* outDataPath) {
 
     if (strlen(cpath) == 0) {
         LOG_ERROR("Failed to retrieve path");
-        return;
+        return false;
     }
 
     normalize_path(cpath);
@@ -100,21 +100,31 @@ void mod_cache_md5(const char* inPath, u8* outDataPath) {
     FILE* fp = fopen(cpath, "rb");
     if (fp == NULL) {
         LOG_ERROR("Failed to open filepointer for mod hashing: '%s'.", cpath);
-        return;
+        return false;
     }
 
     // read bytes and md5 them
     size_t readBytes = 0;
     do {
         readBytes = fread(buffer, sizeof(u8), MD5_BUFFER_SIZE, fp);
-        MD5_Update(&ctx, buffer, readBytes);
+        if (readBytes > 0) {
+            MD5_Update(&ctx, buffer, readBytes);
+        }
     } while (readBytes >= MD5_BUFFER_SIZE);
 
-    // close file pointer
+    const bool ioError = ferror(fp) != 0;
     fclose(fp);
+    if (ioError) {
+        LOG_ERROR("Failed while reading file for mod hashing: '%s'.", cpath);
+        for (u8 i = 0; i < 16; i++) {
+            outDataPath[i] = 0;
+        }
+        return false;
+    }
 
     // finish computing
     MD5_Final(outDataPath, &ctx);
+    return true;
 }
 
 static bool mod_cache_is_valid(struct ModCacheEntry* node) {

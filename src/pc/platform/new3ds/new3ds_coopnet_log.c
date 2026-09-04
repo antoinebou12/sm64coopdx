@@ -70,12 +70,11 @@ void new3ds_coopnet_log_flush(bool force) {
         return;
     }
 
-    (void)fsdevCommitDevice("sdmc");
     sPendingRecords = 0;
 }
 
 void new3ds_coopnet_log_printf(const char *fmt, ...) {
-    if (fmt == NULL || !new3ds_coopnet_prepare()) {
+    if (!configNew3dsLogs || fmt == NULL || !new3ds_coopnet_prepare()) {
         return;
     }
 
@@ -109,7 +108,7 @@ void new3ds_coopnet_log_printf(const char *fmt, ...) {
 }
 
 void new3ds_coopnet_log_init(void) {
-    if (!new3ds_coopnet_prepare() || sSessionStarted) {
+    if (!configNew3dsLogs || !new3ds_coopnet_prepare() || sSessionStarted) {
         return;
     }
 
@@ -119,7 +118,7 @@ void new3ds_coopnet_log_init(void) {
 }
 
 void new3ds_coopnet_log_checkpoint(const char *component, const char *operation, const char *phase) {
-    if (!new3ds_coopnet_prepare()) {
+    if (!configNew3dsLogs || !new3ds_coopnet_prepare()) {
         return;
     }
 

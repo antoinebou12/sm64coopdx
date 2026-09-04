@@ -11,14 +11,27 @@
 #include <sys/stat.h>
 
 #include "pc/platform.h"
+#include "pc/platform/new3ds/new3ds_platform_ui.h"
 
 #define NEW3DS_DATA_PARENT "sdmc:/3ds"
 #define NEW3DS_DATA_ROOT "sdmc:/3ds/sm64coopdx"
+#define NEW3DS_LOG_DIR NEW3DS_DATA_ROOT "/logs"
 #define NEW3DS_EXECUTABLE NEW3DS_DATA_ROOT "/sm64coopdx.3dsx"
+
+#ifndef NEW3DS_MAIN_STACK_SIZE
+#define NEW3DS_MAIN_STACK_SIZE (1024 * 1024)
+#endif
+
+/*
+ * libctru reads this from the 3dsx crt0. The weak default is 32KB, which is
+ * not enough for CoopDX's main-thread thread5_game_loop / asset setup.
+ */
+u32 __stacksize__ = NEW3DS_MAIN_STACK_SIZE;
 
 static void new3ds_ensure_data_root(void) {
     if (mkdir(NEW3DS_DATA_PARENT, 0777) != 0 && errno != EEXIST) return;
-    (void)mkdir(NEW3DS_DATA_ROOT, 0777);
+    if (mkdir(NEW3DS_DATA_ROOT, 0777) != 0 && errno != EEXIST) return;
+    (void)mkdir(NEW3DS_LOG_DIR, 0777);
 }
 
 char *sys_strlwr(char *src) {
@@ -112,12 +125,44 @@ void sys_fatal(const char *fmt, ...) {
     fprintf(stderr, "FATAL ERROR: %s\n", message);
     fflush(stderr);
 
-    /*
-     * svcBreak gives hbmenu/Luma a useful crash surface even if graphics are
-     * not initialized far enough to display an in-game dialog.
-     */
-    svcBreak(USERBREAK_PANIC);
-    exit(1);
+    new3ds_platform_show_exit_message(message);
+    new3ds_platform_quit();
+}
+
+const char *new3ds_platform_unsupported_hardware_message(void) {
+    return
+        "This app requires a New Nintendo 3DS\n"
+        "or New 2DS XL.\n\n"
+        "Original 3DS / 2DS models are not supported.";
+}
+
+void new3ds_platform_show_exit_message(const char *message) {
+    if (message == NULL) {
+        message = "The application cannot continue.";
+    }
+
+    /* Re-init even if boot progress already owns the bottom console. */
+    consoleInit(GFX_BOTTOM, NULL);
+    printf("\x1b[2J\x1b[1;1H");
+    printf("SM64CoopDX\n\n%s\n\nPress START or HOME to exit.\n", message);
+    fflush(stdout);
+    gfxFlushBuffers();
+    gfxSwapBuffers();
+    gspWaitForVBlank();
+
+    while (aptMainLoop()) {
+        hidScanInput();
+        if (hidKeysDown() & KEY_START) {
+            break;
+        }
+        gfxFlushBuffers();
+        gfxSwapBuffers();
+        gspWaitForVBlank();
+    }
+}
+
+void new3ds_platform_quit(void) {
+    svcExitProcess();
 }
 
 #endif /* __3DS__ */

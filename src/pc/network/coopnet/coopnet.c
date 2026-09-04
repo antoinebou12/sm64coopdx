@@ -18,6 +18,7 @@
 #endif
 #if defined(__3DS__) && defined(COOPNET)
 #include "pc/platform/new3ds/new3ds_coopnet_log.h"
+#include "pc/platform/new3ds/new3ds_runtime.h"
 #define switch_coopnet_log_init new3ds_coopnet_log_init
 #define switch_coopnet_log_printf new3ds_coopnet_log_printf
 #define switch_coopnet_log_checkpoint new3ds_coopnet_log_checkpoint
@@ -698,9 +699,15 @@ void ns_coopnet_update(void) {
                                           gCoopNetDesiredLobby, clientHash, clientHash);
                 if (clientHash == 0) {
                     switch_crash_log_checkpoint("network: public join identity unavailable");
+#if defined(__3DS__)
+                    coopnet_switch_return_from_public_join(
+                        "3DS build identity unavailable; reinstall sm64coopdx.3dsx at sdmc:/3ds/sm64coopdx/.",
+                        "public join blocked because client fingerprint is zero");
+#else
                     coopnet_switch_return_from_public_join(
                         "Switch build identity unavailable; reinstall sm64coopdx.nro at /switch/sm64coopdx/.",
                         "public join blocked because client fingerprint is zero");
+#endif
                     return;
                 }
             }
@@ -821,6 +828,16 @@ static void ns_coopnet_shutdown(bool reconnecting) {
 static CoopNetRc coopnet_initialize(void) {
 #if defined(__SWITCH__) || defined(__3DS__)
     switch_coopnet_log_init();
+#endif
+#if defined(__3DS__)
+    /* libjuice/CoopNet need sockets; SOC is deferred until multiplayer starts. */
+    if (!new3ds_runtime_ensure_network() || !new3ds_runtime_network_available()) {
+        switch_coopnet_log_printf("CoopNet blocked: SOC unavailable");
+        switch_crash_log_checkpoint("network: CoopNet SOC unavailable");
+        djui_popup_create(DLANG(NOTIF, COOPNET_CONNECTION_FAILED), 2);
+        return COOPNET_FAILED;
+    }
+    switch_coopnet_log_printf("CoopNet SOC ready before coopnet_begin");
 #endif
     gCoopNetCallbacks.OnConnected = coopnet_on_connected;
     gCoopNetCallbacks.OnDisconnected = coopnet_on_disconnected;

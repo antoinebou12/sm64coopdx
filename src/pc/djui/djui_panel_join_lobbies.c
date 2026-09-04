@@ -66,11 +66,13 @@ static void djui_panel_join_lobby_description_create(void) {
 }
 
 static void djui_lobby_on_hover(struct DjuiBase* base) {
+    if (sTooltip == NULL) { return; }
     struct DjuiLobbyEntry* entry = (struct DjuiLobbyEntry*)base;
     djui_text_set_text(sTooltip, entry->description);
 }
 
 static void djui_lobby_on_hover_end(UNUSED struct DjuiBase* base) {
+    if (sTooltip == NULL) { return; }
     djui_text_set_text(sTooltip, "");
 }
 
@@ -143,6 +145,7 @@ void djui_panel_join_lobbies_on_destroy(UNUSED struct DjuiBase* caller) {
     sRefreshButton = NULL;
     sLobbyLayout = NULL;
     sLobbyPaginated = NULL;
+    sTooltip = NULL;
 
     if (sDescriptionPanel != NULL) {
         djui_base_destroy(&sDescriptionPanel->base);
@@ -180,7 +183,13 @@ void djui_panel_join_lobbies_create(struct DjuiBase* caller, const char* passwor
         return;
     }
 
+#if defined(__3DS__)
+    /* 400x240 cannot fit the ~410px side description panel; use in-panel text instead. */
+    sDescriptionPanel = NULL;
+    sTooltip = NULL;
+#else
     djui_panel_join_lobby_description_create();
+#endif
 
     struct DjuiBase* defaultBase = NULL;
     struct DjuiThreePanel* panel = djui_panel_menu_create(
@@ -188,7 +197,11 @@ void djui_panel_join_lobbies_create(struct DjuiBase* caller, const char* passwor
         true);
     struct DjuiBase* body = djui_three_panel_get_body(panel);
     {
+#if defined(__3DS__)
+        sLobbyPaginated = djui_paginated_create(body, 4);
+#else
         sLobbyPaginated = djui_paginated_create(body, 10);
+#endif
         sLobbyLayout = sLobbyPaginated->layout;
         djui_flow_layout_set_margin(sLobbyLayout, 4);
 
@@ -200,16 +213,32 @@ void djui_panel_join_lobbies_create(struct DjuiBase* caller, const char* passwor
             djui_text_set_alignment(text, DJUI_HALIGN_CENTER, DJUI_VALIGN_CENTER);
         }
 
+#if defined(__3DS__)
+        {
+            struct DjuiText* tip = djui_text_create(body, "Highlight a lobby for details");
+            djui_base_set_size_type(&tip->base, DJUI_SVT_RELATIVE, DJUI_SVT_ABSOLUTE);
+            djui_base_set_size(&tip->base, 1.0f, 28);
+            djui_base_set_color(&tip->base, 200, 200, 200, 255);
+            djui_text_set_font_scale(tip, tip->font->defaultFontScale * 0.65f);
+            sTooltip = tip;
+        }
+#endif
+
         if (!private) { djui_button_create(body, DLANG(RULES, RULES), DJUI_BUTTON_STYLE_NORMAL, djui_panel_rules_create); }
 
-        struct DjuiRect* rect2 = djui_rect_container_create(body, 64);
+#if defined(__3DS__)
+        const f32 btnH = 40.0f;
+#else
+        const f32 btnH = 64.0f;
+#endif
+        struct DjuiRect* rect2 = djui_rect_container_create(body, btnH);
         {
             struct DjuiButton* button1 = djui_button_create(&rect2->base, DLANG(MENU, BACK), DJUI_BUTTON_STYLE_BACK, djui_panel_menu_back);
-            djui_base_set_size(&button1->base, 0.485f, 64);
+            djui_base_set_size(&button1->base, 0.485f, btnH);
             djui_base_set_alignment(&button1->base, DJUI_HALIGN_LEFT, DJUI_VALIGN_TOP);
 
             sRefreshButton = djui_button_create(&rect2->base, querying ? DLANG(LOBBIES, REFRESHING) : DLANG(LOBBIES, REFRESH), DJUI_BUTTON_STYLE_NORMAL, djui_panel_join_lobbies_refresh);
-            djui_base_set_size(&sRefreshButton->base, 0.485f, 64);
+            djui_base_set_size(&sRefreshButton->base, 0.485f, btnH);
             djui_base_set_alignment(&sRefreshButton->base, DJUI_HALIGN_RIGHT, DJUI_VALIGN_TOP);
             djui_base_set_enabled(&sRefreshButton->base, !querying);
             defaultBase = &sRefreshButton->base;

@@ -40,6 +40,24 @@ static bool resolve_domain(NetworkSocketAddr *addr) {
     // Horizon direct-connect deliberately stays on IPv4. This avoids the
     // IPv4-mapped IPv6/dual-stack path that proved unreliable on Switch.
     hints.ai_family = AF_INET;
+
+    /* Prefer numeric IPv4 — getaddrinfo DNS is unreliable/missing on 3DS. */
+    {
+        struct in_addr numeric;
+        memset(&numeric, 0, sizeof(numeric));
+        if (inet_pton(AF_INET, configJoinIp, &numeric) == 1
+            || inet_aton(configJoinIp, &numeric) != 0) {
+            if (numeric.s_addr != 0 && numeric.s_addr != 0xFFFFFFFFu) {
+                addr->sin_family = AF_INET;
+                addr->sin_addr = numeric;
+                if (gGetHostName[0] == '\0') {
+                    snprintf(gGetHostName, MAX_CONFIG_STRING, "%s", configJoinIp);
+                }
+                LOG_INFO("%s: numeric ipv4=%s", NET_PLATFORM_TAG, configJoinIp);
+                return true;
+            }
+        }
+    }
 #else
     hints.ai_family = AF_UNSPEC;
 
