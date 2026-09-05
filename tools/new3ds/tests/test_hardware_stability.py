@@ -220,6 +220,56 @@ def main() -> int:
         "new3ds_log_memory(\"pre-c3d\")" in renderer,
         "renderer must log memory before C3D_Init so a starved heap is diagnosable",
     )
+
+    # Stereoscopic 3D. The mono path must stay the default, and the replay pass
+    # is what makes the second eye cheap: the frame's clip-space vertices are
+    # already in the VBO, so only the shear uniform differs between eyes.
+    configfile_c = read("src/pc/configfile.c")
+    configfile_h = read("src/pc/configfile.h")
+    require(
+        "bool         configNew3dsStereo3d                 = false;" in configfile_c,
+        "stereoscopic 3D must default to off",
+    )
+    require(
+        '.name = "new3ds_stereo_3d"' in configfile_c,
+        "new3ds_stereo_3d is not registered in the config table",
+    )
+    require(
+        "extern bool         configNew3dsStereo3d;" in configfile_h,
+        "configNew3dsStereo3d is not declared",
+    )
+    shader = read("src/pc/platform/new3ds/new3ds_shader.v.pica")
+    require(".fvec uStereo" in shader, "vertex shader is missing the uStereo uniform")
+    require(
+        "mul r1, uStereo.xxxx, inpos.wwww" in shader,
+        "vertex shader does not apply the clip-space stereo shear",
+    )
+    require(
+        'shaderInstanceGetUniformLocation(sVertexShaderProgram.vertexShader, "uStereo")' in renderer,
+        "renderer never resolves the uStereo uniform location",
+    )
+    require(
+        "C3D_RenderTargetSetOutput(sRightTarget, GFX_TOP, GFX_RIGHT" in renderer,
+        "renderer does not create a right-eye output target",
+    )
+    require(
+        "static void new3ds_replay_commands(float shear)" in renderer,
+        "stereo replay pass is missing",
+    )
+    require(
+        "cmd->stereo_eligible = sDepthTest;" in renderer,
+        "HUD/DJUI draws must stay on the screen plane (parallax gated on depth test)",
+    )
+    display_panel = read("src/pc/djui/djui_panel_display.c")
+    require(
+        "DLANG(DISPLAY, NEW3DS_STEREO_3D), &configNew3dsStereo3d" in display_panel,
+        "Display options is missing the 3D depth checkbox",
+    )
+    for lang in sorted((ROOT / "lang").glob("*.ini")):
+        require(
+            "NEW3DS_STEREO_3D" in lang.read_text(encoding="utf-8"),
+            f"{lang.name} is missing the NEW3DS_STEREO_3D string",
+        )
     require(
         "new3ds_gfx_state_guard.o" in makefile,
         "hardware state guard is missing from the integration compile gate",

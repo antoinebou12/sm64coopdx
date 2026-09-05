@@ -12,7 +12,9 @@
 PYTHON ?= python3
 CONSOLE_VERSION ?= 1.5.1-console
 SWITCH_VERSION ?= 1.5.1-switch
-NEW3DS_VERSION ?= 1.5.1-new3ds
+# The dist prefix already says new3ds; a -new3ds suffix here produced
+# dist/sm64coopdx-new3ds-1.5.1-new3ds/.
+NEW3DS_VERSION ?= 1.5.1
 SWITCH_DIST_ROOT := dist/sm64coopdx-switch-$(SWITCH_VERSION)
 NEW3DS_DIST_ROOT := dist/sm64coopdx-new3ds-$(NEW3DS_VERSION)
 CONSOLE_DIST_ROOT := dist/sm64coopdx-console-$(CONSOLE_VERSION)

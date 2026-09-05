@@ -65,6 +65,27 @@ static inline void new3ds_texenv_op_alpha(C3D_TexEnv *env, GPU_TEVOP_A o1) {
 #define NEW3DS_GFX_STATS_FRAMES 60
 #define NEW3DS_PERF_LOG_INTERVAL_MS 5000
 
+/*
+ * Stereoscopic 3D.
+ *
+ * Parallax is a clip-space shear (see new3ds_shader.v.pica): after the
+ * perspective divide a vertex moves by shear * (1 - CONVERGENCE / w), so
+ * geometry at the convergence plane sits on the screen and everything beyond it
+ * recedes. MAX_SHEAR is in NDC half-widths at infinity and CONVERGENCE is in
+ * clip-space w, which for SM64 is view depth in world units. Both are first
+ * approximations and are meant to be retuned by eye on hardware.
+ *
+ * EYE_SIGN only swaps which eye gets which shear. The screen-horizontal axis is
+ * clip y here (the 90-degree panel rotation is baked into the vertices), so if
+ * depth reads inside-out on hardware, flip this to -1.0f rather than reworking
+ * the maths.
+ */
+#define NEW3DS_STEREO_MAX_SHEAR 0.03f
+#define NEW3DS_STEREO_CONVERGENCE 1000.0f
+#define NEW3DS_STEREO_EYE_SIGN 1.0f
+#define NEW3DS_STEREO_SLIDER_DEADZONE 0.02f
+#define NEW3DS_STEREO_MAX_COMMANDS 2048
+
 extern const u8 new3ds_shader_shbin[];
 extern const u32 new3ds_shader_shbin_size;
 
@@ -120,9 +141,48 @@ typedef struct New3dsDrawInfo {
     uint32_t input_color[NEW3DS_MAX_INPUTS];
 } New3dsDrawInfo;
 
+/*
+ * One recorded draw for the stereo replay. The frame's vertices already live in
+ * sGpuVbo in clip space and only x differs between eyes, so the second eye costs
+ * no CPU transform work: it replays these commands with the other shear.
+ */
+typedef enum New3dsCmdKind {
+    NEW3DS_CMD_DRAW = 0,
+    NEW3DS_CMD_FOG,
+} New3dsCmdKind;
+
+typedef struct New3dsDrawCmd {
+    struct ShaderProgram *program;
+    New3dsDrawInfo draw;
+    uint32_t tex[2];
+    uint32_t start;
+    uint32_t count;
+    int viewport[4];
+    int scissor[4];
+    bool scissor_on;
+    bool depth_test;
+    bool depth_write;
+    bool depth_decal;
+    bool use_alpha;
+    bool stereo_eligible;
+    uint8_t kind;
+} New3dsDrawCmd;
+
 static DVLB_s *sVertexShaderDvlb = NULL;
 static shaderProgram_s sVertexShaderProgram;
 static C3D_RenderTarget *sTopTarget = NULL;
+static C3D_RenderTarget *sRightTarget = NULL;
+static int sStereoLoc = -1;
+static bool sStereoEnabled = false;
+static bool sStereoFrame = false;
+static bool sStereoUnavailable = false;
+static float sStereoShear = 0.0f;
+static New3dsDrawCmd sDrawCommands[NEW3DS_STEREO_MAX_COMMANDS];
+static uint32_t sDrawCommandCount = 0;
+static bool sCommandOverflowWarned = false;
+static int sViewport[4] = { 0, 0, 400, 240 };
+static int sScissor[4] = { 0, 0, 0, 0 };
+static bool sScissorOn = false;
 static float *sGpuVbo = NULL;
 static size_t sGpuVertexIndex = 0;
 static bool sFrameOpen = false;
@@ -605,28 +665,53 @@ static void new3ds_set_zmode_decal(bool enabled) {
     new3ds_apply_depth();
 }
 
-static void new3ds_set_viewport(int x, int y, int width, int height) {
-    /*
-     * Landscape gfx_pc (400x240, Y down) → Citro3D target 240x400.
-     * Vertices already rotate clip-space (x'=y, y'=-x). Swap axes here and
-     * flip the 240-tall axis so HUD scissors align with the top of the screen.
-     */
-    if (width <= 0 || height <= 0) {
+/*
+ * Landscape gfx_pc (400x240, Y down) → Citro3D target 240x400.
+ * Vertices already rotate clip-space (x'=y, y'=-x). Swap axes here and
+ * flip the 240-tall axis so HUD scissors align with the top of the screen.
+ *
+ * Split from the API entry points so the stereo replay can restore the rect a
+ * recorded draw was issued under.
+ */
+static void new3ds_apply_viewport_rect(const int rect[4]) {
+    if (rect[2] <= 0 || rect[3] <= 0) {
         return;
     }
-    C3D_SetViewport(240 - (y + height), x, height, width);
+    C3D_SetViewport(240 - (rect[1] + rect[3]), rect[0], rect[3], rect[2]);
 }
 
-static void new3ds_set_scissor(int x, int y, int width, int height) {
-    if (width <= 0 || height <= 0) {
+static void new3ds_apply_scissor_rect(bool enabled, const int rect[4]) {
+    if (!enabled) {
         C3D_SetScissor(GPU_SCISSOR_DISABLE, 0, 0, 0, 0);
         return;
     }
-    const int gx1 = 240 - (y + height);
-    const int gy1 = x;
-    const int gx2 = 240 - y;
-    const int gy2 = x + width;
+    const int gx1 = 240 - (rect[1] + rect[3]);
+    const int gy1 = rect[0];
+    const int gx2 = 240 - rect[1];
+    const int gy2 = rect[0] + rect[2];
     C3D_SetScissor(GPU_SCISSOR_NORMAL, gx1, gy1, gx2, gy2);
+}
+
+static void new3ds_set_viewport(int x, int y, int width, int height) {
+    if (width <= 0 || height <= 0) {
+        return;
+    }
+    sViewport[0] = x;
+    sViewport[1] = y;
+    sViewport[2] = width;
+    sViewport[3] = height;
+    new3ds_apply_viewport_rect(sViewport);
+}
+
+static void new3ds_set_scissor(int x, int y, int width, int height) {
+    sScissorOn = (width > 0 && height > 0);
+    if (sScissorOn) {
+        sScissor[0] = x;
+        sScissor[1] = y;
+        sScissor[2] = width;
+        sScissor[3] = height;
+    }
+    new3ds_apply_scissor_rect(sScissorOn, sScissor);
 }
 
 static void new3ds_set_use_alpha(bool enabled) {
@@ -1069,12 +1154,19 @@ static bool new3ds_reserve_vertices(size_t vertices) {
     return true;
 }
 
-static void new3ds_render_fog(
-    const struct ShaderProgram *program,
-    const float *buf,
-    size_t vertices) {
-    if (!program->use_fog || program->fog_offset < 0 || !new3ds_reserve_vertices(vertices)) return;
+static void new3ds_set_stereo_uniform(float shear) {
+    if (sStereoLoc < 0) return;
+    /* uStereo = (shear, -shear * convergence, 0, 0); see new3ds_shader.v.pica. */
+    C3D_FVUnifSet(
+        GPU_VERTEX_SHADER,
+        sStereoLoc,
+        shear,
+        -shear * NEW3DS_STEREO_CONVERGENCE,
+        0.0f,
+        0.0f);
+}
 
+static void new3ds_apply_fog_state(bool depth_test) {
     for (int stage = 0; stage < 6; ++stage) C3D_TexEnvInit(C3D_GetTexEnv(stage));
     C3D_TexEnv *env = C3D_GetTexEnv(0);
     C3D_TexEnvFunc(env, C3D_Both, GPU_REPLACE);
@@ -1084,17 +1176,75 @@ static void new3ds_render_fog(
         GPU_BLEND_ADD, GPU_BLEND_ADD,
         GPU_SRC_ALPHA, GPU_ONE_MINUS_SRC_ALPHA,
         GPU_ZERO, GPU_DST_ALPHA);
-    C3D_DepthTest(sDepthTest, GPU_LEQUAL, GPU_WRITE_COLOR);
+    C3D_DepthTest(depth_test, GPU_LEQUAL, GPU_WRITE_COLOR);
 
     /*
      * Fog wrote depth/blend behind the state cache. Invalidate Applied so the
-     * restores below cannot early-out and leave PICA200 stuck in fog state
-     * (castle/window/ground flicker on real hardware).
+     * restores by the caller cannot early-out and leave PICA200 stuck in fog
+     * state (castle/window/ground flicker on real hardware).
      */
     sUseAlphaApplied = !sUseAlpha;
     sDepthTestApplied = !sDepthTest;
     sDepthWriteApplied = !sDepthWrite;
     sDepthDecalApplied = !sDepthDecal;
+}
+
+/*
+ * Defer a draw to the stereo replay. Returns false when the frame overran the
+ * command list, in which case the caller draws immediately and that batch shows
+ * up in the left eye only.
+ */
+static bool new3ds_record_command(
+    New3dsCmdKind kind,
+    struct ShaderProgram *program,
+    const New3dsDrawInfo *draw,
+    size_t start,
+    size_t count) {
+    if (sDrawCommandCount >= NEW3DS_STEREO_MAX_COMMANDS) {
+        if (!sCommandOverflowWarned) {
+            NEW3DS_LOG_WARN_CAT(
+                NEW3DS_LOG_CAT_GFX,
+                "gfx",
+                "stereo command list full at %u draws; extra batches are left-eye only",
+                (unsigned)NEW3DS_STEREO_MAX_COMMANDS);
+            sCommandOverflowWarned = true;
+        }
+        return false;
+    }
+
+    New3dsDrawCmd *cmd = &sDrawCommands[sDrawCommandCount++];
+    cmd->kind = (uint8_t)kind;
+    cmd->program = program;
+    if (draw != NULL) {
+        cmd->draw = *draw;
+    } else {
+        memset(&cmd->draw, 0, sizeof(cmd->draw));
+    }
+    cmd->tex[0] = sBoundTexture[0];
+    cmd->tex[1] = sBoundTexture[1];
+    cmd->start = (uint32_t)start;
+    cmd->count = (uint32_t)count;
+    memcpy(cmd->viewport, sViewport, sizeof(cmd->viewport));
+    memcpy(cmd->scissor, sScissor, sizeof(cmd->scissor));
+    cmd->scissor_on = sScissorOn;
+    cmd->depth_test = sDepthTest;
+    cmd->depth_write = sDepthWrite;
+    cmd->depth_decal = sDepthDecal;
+    cmd->use_alpha = sUseAlpha;
+    /*
+     * Only depth-tested geometry gets parallax. HUD and DJUI draw with depth
+     * off, so they stay on the screen plane, which is also where a 3DS title
+     * wants its interface.
+     */
+    cmd->stereo_eligible = sDepthTest;
+    return true;
+}
+
+static void new3ds_render_fog(
+    const struct ShaderProgram *program,
+    const float *buf,
+    size_t vertices) {
+    if (!program->use_fog || program->fog_offset < 0 || !new3ds_reserve_vertices(vertices)) return;
 
     const size_t start = sGpuVertexIndex;
     for (size_t vertex = 0; vertex < vertices; ++vertex) {
@@ -1112,6 +1262,12 @@ static void new3ds_render_fog(
         sGpuVertexIndex++;
     }
 
+    if (sStereoFrame &&
+        new3ds_record_command(NEW3DS_CMD_FOG, NULL, NULL, start, vertices)) {
+        return;
+    }
+
+    new3ds_apply_fog_state(sDepthTest);
     C3D_DrawArrays(GPU_TRIANGLES, (int)start, (int)vertices);
     new3ds_apply_blend();
     new3ds_apply_depth();
@@ -1125,7 +1281,6 @@ static void new3ds_draw_triangles(float buf_vbo[], size_t buf_vbo_len, size_t tr
     if (!new3ds_reserve_vertices(vertices)) return;
 
     New3dsDrawInfo draw = new3ds_analyze_draw(sCurrentProgram, buf_vbo, vertices);
-    new3ds_configure_program(sCurrentProgram, &draw);
 
     if (draw.degraded) {
         sDegradedDrawCount++;
@@ -1152,7 +1307,17 @@ static void new3ds_draw_triangles(float buf_vbo[], size_t buf_vbo_len, size_t tr
         sGpuVertexIndex++;
     }
 
-    C3D_DrawArrays(GPU_TRIANGLES, (int)start, (int)vertices);
+    /*
+     * configure_program only touches TEV state, so running it after the vertex
+     * write is equivalent for the immediate path and lets the stereo path skip
+     * it entirely until replay.
+     */
+    if (!sStereoFrame ||
+        !new3ds_record_command(NEW3DS_CMD_DRAW, sCurrentProgram, &draw, start, vertices)) {
+        new3ds_configure_program(sCurrentProgram, &draw);
+        C3D_DrawArrays(GPU_TRIANGLES, (int)start, (int)vertices);
+    }
+
     sFrameTriangles += (uint32_t)triangle_count;
     sFrameVertices += (uint32_t)vertices;
     new3ds_render_fog(sCurrentProgram, buf_vbo, vertices);
@@ -1193,7 +1358,7 @@ static void new3ds_update_gfx_stats(float frame_ms) {
         NEW3DS_LOG_INFO_CAT(
             NEW3DS_LOG_CAT_PERF,
             "gfx",
-            "frame_ms=%.2f avg_ms=%.2f tris=%u verts=%u tex=%u vbo=%u%% degraded=%u dropped=%u",
+            "frame_ms=%.2f avg_ms=%.2f tris=%u verts=%u tex=%u vbo=%u%% degraded=%u dropped=%u stereo=%u",
             sGfxStats.frame_ms,
             sGfxStats.avg_frame_ms,
             sGfxStats.triangle_count,
@@ -1201,7 +1366,8 @@ static void new3ds_update_gfx_stats(float frame_ms) {
             sGfxStats.texture_count,
             sGfxStats.vbo_fill_percent,
             sGfxStats.degraded_draws,
-            sGfxStats.dropped_draws);
+            sGfxStats.dropped_draws,
+            sStereoFrame ? 1u : 0u);
         sLastPerfLogMs = now_ms;
     }
 }
@@ -1234,6 +1400,16 @@ static void new3ds_gfx_show_fatal_and_exit(const char *message) {
     new3ds_platform_quit();
 }
 
+static u32 new3ds_transfer_flags(void) {
+    return
+        GX_TRANSFER_FLIP_VERT(0) |
+        GX_TRANSFER_OUT_TILED(0) |
+        GX_TRANSFER_RAW_COPY(0) |
+        GX_TRANSFER_IN_FORMAT(GX_TRANSFER_FMT_RGBA8) |
+        GX_TRANSFER_OUT_FORMAT(GX_TRANSFER_FMT_RGB8) |
+        GX_TRANSFER_SCALING(GX_TRANSFER_SCALE_NO);
+}
+
 static void new3ds_init(void) {
     if (sInitialized) return;
 
@@ -1262,13 +1438,7 @@ static void new3ds_init(void) {
         new3ds_gfx_show_fatal_and_exit(message);
     }
 
-    const u32 transfer_flags =
-        GX_TRANSFER_FLIP_VERT(0) |
-        GX_TRANSFER_OUT_TILED(0) |
-        GX_TRANSFER_RAW_COPY(0) |
-        GX_TRANSFER_IN_FORMAT(GX_TRANSFER_FMT_RGBA8) |
-        GX_TRANSFER_OUT_FORMAT(GX_TRANSFER_FMT_RGB8) |
-        GX_TRANSFER_SCALING(GX_TRANSFER_SCALE_NO);
+    const u32 transfer_flags = new3ds_transfer_flags();
 
     sTopTarget = C3D_RenderTargetCreate(240, 400, GPU_RB_RGBA8, GPU_RB_DEPTH24_STENCIL8);
     if (sTopTarget == NULL) {
@@ -1284,6 +1454,16 @@ static void new3ds_init(void) {
     shaderProgramInit(&sVertexShaderProgram);
     shaderProgramSetVsh(&sVertexShaderProgram, &sVertexShaderDvlb->DVLE[0]);
     C3D_BindProgram(&sVertexShaderProgram);
+
+    sStereoLoc = shaderInstanceGetUniformLocation(sVertexShaderProgram.vertexShader, "uStereo");
+    if (sStereoLoc < 0) {
+        sStereoUnavailable = true;
+        NEW3DS_LOG_WARN_CAT(
+            NEW3DS_LOG_CAT_GFX,
+            "gfx",
+            "uStereo uniform missing; stereoscopic 3D unavailable");
+    }
+    new3ds_set_stereo_uniform(0.0f);
 
     C3D_AttrInfo *attr_info = C3D_GetAttrInfo();
     AttrInfo_Init(attr_info);
@@ -1358,16 +1538,99 @@ static void new3ds_bind_3d_pipeline(void) {
     new3ds_apply_blend();
 }
 
+/*
+ * Decide whether this frame renders in stereo. The console's own 3D slider is
+ * the depth control, so a closed slider skips the second eye entirely and costs
+ * nothing beyond one read.
+ */
+static void new3ds_update_stereo_mode(void) {
+    sStereoFrame = false;
+    sStereoShear = 0.0f;
+
+    const bool want = configNew3dsStereo3d && !sStereoUnavailable;
+
+    if (want != sStereoEnabled) {
+        if (want && sRightTarget == NULL) {
+            sRightTarget = C3D_RenderTargetCreate(240, 400, GPU_RB_RGBA8, GPU_RB_DEPTH24_STENCIL8);
+            if (sRightTarget == NULL) {
+                sStereoUnavailable = true;
+                NEW3DS_LOG_ERROR_CAT(
+                    NEW3DS_LOG_CAT_GFX,
+                    "gfx",
+                    "right-eye target allocation failed; stereoscopic 3D disabled");
+                return;
+            }
+            C3D_RenderTargetSetOutput(sRightTarget, GFX_TOP, GFX_RIGHT, new3ds_transfer_flags());
+        }
+        gfxSet3D(want);
+        sStereoEnabled = want;
+        NEW3DS_LOG_INFO_CAT(NEW3DS_LOG_CAT_GFX, "gfx", "stereoscopic 3d %s", want ? "on" : "off");
+    }
+
+    if (!sStereoEnabled || sRightTarget == NULL) return;
+
+    const float slider = osGet3DSliderState();
+    if (slider <= NEW3DS_STEREO_SLIDER_DEADZONE) return;
+
+    sStereoShear = NEW3DS_STEREO_MAX_SHEAR * slider * NEW3DS_STEREO_EYE_SIGN;
+    sStereoFrame = true;
+}
+
+/* Re-issue the frame's recorded draws into whichever target is bound. */
+static void new3ds_replay_commands(float shear) {
+    for (uint32_t i = 0; i < sDrawCommandCount; ++i) {
+        New3dsDrawCmd *cmd = &sDrawCommands[i];
+
+        new3ds_apply_viewport_rect(cmd->viewport);
+        new3ds_apply_scissor_rect(cmd->scissor_on, cmd->scissor);
+        new3ds_set_stereo_uniform(cmd->stereo_eligible ? shear : 0.0f);
+
+        if (cmd->kind == (uint8_t)NEW3DS_CMD_FOG) {
+            new3ds_apply_fog_state(cmd->depth_test);
+        } else {
+            for (int tile = 0; tile < 2; ++tile) {
+                if (cmd->tex[tile] != UINT32_MAX) {
+                    new3ds_select_texture(tile, cmd->tex[tile]);
+                }
+            }
+            sDepthTest = cmd->depth_test;
+            sDepthWrite = cmd->depth_write;
+            sDepthDecal = cmd->depth_decal;
+            sUseAlpha = cmd->use_alpha;
+            /*
+             * Force a full re-apply rather than trusting the cache: fog writes
+             * depth/blend behind it, and the second pass starts from whatever
+             * the first pass left bound.
+             */
+            sDepthTestApplied = !sDepthTest;
+            sDepthWriteApplied = !sDepthWrite;
+            sDepthDecalApplied = !sDepthDecal;
+            sUseAlphaApplied = !sUseAlpha;
+            new3ds_apply_depth();
+            new3ds_apply_blend();
+            new3ds_configure_program(cmd->program, &cmd->draw);
+        }
+
+        C3D_DrawArrays(GPU_TRIANGLES, (int)cmd->start, (int)cmd->count);
+    }
+}
+
 static void new3ds_start_frame(void) {
     if (!sInitialized || sFrameOpen) return;
     sGpuVertexIndex = 0;
     sFrameTriangles = 0;
     sFrameVertices = 0;
     sFrameStartMs = osGetTime();
+    new3ds_update_stereo_mode();
+    sDrawCommandCount = 0;
     C3D_FrameBegin(C3D_FRAME_SYNCDRAW);
     C3D_RenderTargetClear(sTopTarget, C3D_CLEAR_ALL, 0x000000FF, 0xFFFFFFFF);
+    if (sStereoFrame) {
+        C3D_RenderTargetClear(sRightTarget, C3D_CLEAR_ALL, 0x000000FF, 0xFFFFFFFF);
+    }
     C3D_FrameDrawOn(sTopTarget);
     new3ds_bind_3d_pipeline();
+    new3ds_set_stereo_uniform(0.0f);
     sFrameOpen = true;
 }
 
@@ -1376,6 +1639,36 @@ static void new3ds_end_frame(void) {
 
 static void new3ds_finish_render(void) {
     if (!sFrameOpen) return;
+
+    if (sStereoFrame) {
+        /*
+         * gfx_pc caches the state it last pushed, so the replay must hand back
+         * exactly what it found or the next frame can skip a setter it needs.
+         */
+        const bool depth_test = sDepthTest;
+        const bool depth_write = sDepthWrite;
+        const bool depth_decal = sDepthDecal;
+        const bool use_alpha = sUseAlpha;
+
+        new3ds_replay_commands(-sStereoShear);
+        C3D_FrameDrawOn(sRightTarget);
+        new3ds_replay_commands(sStereoShear);
+
+        sDepthTest = depth_test;
+        sDepthWrite = depth_write;
+        sDepthDecal = depth_decal;
+        sUseAlpha = use_alpha;
+        sDepthTestApplied = !sDepthTest;
+        sDepthWriteApplied = !sDepthWrite;
+        sDepthDecalApplied = !sDepthDecal;
+        sUseAlphaApplied = !sUseAlpha;
+        new3ds_apply_depth();
+        new3ds_apply_blend();
+        new3ds_apply_viewport_rect(sViewport);
+        new3ds_apply_scissor_rect(sScissorOn, sScissor);
+        new3ds_set_stereo_uniform(0.0f);
+    }
+
     const float frame_ms = (float)(osGetTime() - sFrameStartMs);
     new3ds_update_gfx_stats(frame_ms);
     C3D_FrameEnd(0);
@@ -1421,6 +1714,16 @@ static void new3ds_shutdown(void) {
         C3D_RenderTargetDelete(sTopTarget);
         sTopTarget = NULL;
     }
+    if (sRightTarget != NULL) {
+        C3D_RenderTargetDelete(sRightTarget);
+        sRightTarget = NULL;
+    }
+    if (sStereoEnabled) {
+        gfxSet3D(false);
+        sStereoEnabled = false;
+    }
+    sStereoFrame = false;
+    sDrawCommandCount = 0;
 
     shaderProgramFree(&sVertexShaderProgram);
     if (sVertexShaderDvlb != NULL) {

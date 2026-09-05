@@ -133,6 +133,7 @@ extern bool         configDebugPrint;
 extern bool         configDebugInfo;
 extern bool         configDebugError;
 #ifdef __3DS__
+extern bool         configNew3dsStereo3d;
 extern bool         configNew3dsLogs;
 extern bool         configNew3dsLogNet;
 extern bool         configNew3dsLogGfx;

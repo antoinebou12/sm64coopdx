@@ -203,6 +203,7 @@ bool         configDebugPrint                     = false;
 bool         configDebugInfo                      = false;
 bool         configDebugError                     = false;
 #ifdef __3DS__
+bool         configNew3dsStereo3d                 = false;
 bool         configNew3dsLogs                     = false;
 bool         configNew3dsLogNet                   = false;
 bool         configNew3dsLogGfx                   = false;
@@ -381,6 +382,7 @@ static const struct ConfigOption options[] = {
     {.name = "debug_info",                     .type = CONFIG_TYPE_BOOL, .boolValue   = &configDebugInfo},
     {.name = "debug_error",                    .type = CONFIG_TYPE_BOOL, .boolValue   = &configDebugError},
 #ifdef __3DS__
+    {.name = "new3ds_stereo_3d",               .type = CONFIG_TYPE_BOOL, .boolValue   = &configNew3dsStereo3d},
     {.name = "new3ds_logs",                    .type = CONFIG_TYPE_BOOL, .boolValue   = &configNew3dsLogs},
     {.name = "new3ds_log_net",                 .type = CONFIG_TYPE_BOOL, .boolValue   = &configNew3dsLogNet},
     {.name = "new3ds_log_gfx",                 .type = CONFIG_TYPE_BOOL, .boolValue   = &configNew3dsLogGfx},

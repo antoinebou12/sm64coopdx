@@ -184,6 +184,33 @@ overwrites the RSF's `AccessControlInfo` with an Old 3DS descriptor and silently
 reintroduces this failure. `tools/new3ds/tests/test_hardware_stability.py`
 guards both the preset and the RSF memory settings.
 
+### Stereoscopic 3D
+
+**Options → Display → 3D Depth Effect** (New 3DS builds only, off by default).
+With it on, the console's own 3D slider sets the depth: a closed slider renders
+exactly as before, so the feature costs nothing until you open it.
+
+How it works, and why it is cheap: `gfx_pc` hands the backend clip-space
+vertices, so the two eyes differ only in one coordinate. The frame's draws are
+recorded (`New3dsDrawCmd`, capacity 2048) and replayed once per eye out of the
+same VBO — the second eye adds GPU submission, never CPU transform work.
+Parallax is a clip-space shear in `new3ds_shader.v.pica`
+(`uStereo = (shear, -shear * convergence, 0, 0)`), applied to clip **y**, which
+is the horizontal screen axis after the 90° panel rotation baked into the
+vertices. Only depth-tested geometry is sheared, so the HUD and DJUI stay on the
+screen plane.
+
+Three `#define`s in `src/pc/gfx/gfx_citro3d_new3ds.c` are the tuning surface:
+
+| Define | Meaning |
+| --- | --- |
+| `NEW3DS_STEREO_MAX_SHEAR` | parallax at infinity, in NDC half-widths |
+| `NEW3DS_STEREO_CONVERGENCE` | clip-space `w` that sits on the screen plane |
+| `NEW3DS_STEREO_EYE_SIGN` | flip to `-1.0f` if depth reads inside-out |
+
+`runtime.log` perf lines carry `stereo=0/1` next to `frame_ms`, so the cost of
+the second pass can be measured directly against a mono capture.
+
 ### Dual-screen UX (full game)
 
 - **Top (400×240):** gameplay + DJUI menus (compact logo/buttons, scrollable panel bodies via C-Stick Y / L+R)

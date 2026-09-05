@@ -4,6 +4,18 @@
 ; v1 = texture coordinate 0
 ; v2 = texture coordinate 1 / light-map coordinate
 ; v3 = primary combiner color
+;
+; uStereo = (shear, -shear * convergence, 0, 0)
+;
+; Stereoscopic parallax is a clip-space shear applied to the component that ends
+; up horizontal on the physical screen. gfx_pc hands this backend clip-space
+; vertices and new3ds_write_gpu_vertex() bakes the 90-degree screen rotation into
+; them (dst[0] = src[1], dst[1] = -src[0]), so the horizontal axis here is y, not
+; x. After the perspective divide the offset is shear * (1 - convergence/w):
+; zero parallax at the convergence plane, approaching shear at infinity.
+;
+; With uStereo = (0, 0, 0, 0) the added term is exactly zero, so the monoscopic
+; path produces bit-identical positions.
 
 .out outpos position
 .out outtc0 texcoord0
@@ -15,8 +27,15 @@
 .alias intex1 v2
 .alias inclr v3
 
+.fvec uStereo
+
 .proc main
-    mov outpos, inpos
+    mov r0, inpos
+    mul r1, uStereo.xxxx, inpos.wwww
+    ; PICA only accepts a uniform as source1, so the uniform leads here.
+    add r1, uStereo.yyyy, r1
+    add r0.y, r0, r1
+    mov outpos, r0
     mov outtc0, intex0
     mov outtc1, intex1
     mov outclr, inclr

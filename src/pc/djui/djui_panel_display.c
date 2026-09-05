@@ -39,6 +39,7 @@ static void djui_panel_display_frame_limit_text_change(struct DjuiBase* caller) 
 }
 
 static void djui_panel_display_update_restart_text(UNUSED struct DjuiBase* caller) {
+    if (sRestartText == NULL) { return; }
     if (sMsaaOriginal != configWindow.msaa || sGfxWindowBackendOriginal != configGraphicsBackend) {
         djui_text_set_text(sRestartText, DLANG(DISPLAY, MUST_RESTART));
     } else {
@@ -67,10 +68,27 @@ void djui_panel_display_create(struct DjuiBase* caller) {
     if (sGfxWindowBackendOriginal == OPTION_ORIGINAL_UNSET) { sGfxWindowBackendOriginal = configGraphicsBackend; }
 
     {
+        /*
+         * Trimmed for the 400x240 top screen: only rows that actually do
+         * something on hardware. gfx_wm_init()/gfx_wm_handle_events() pin
+         * fullscreen on, and C3D_FrameBegin(C3D_FRAME_SYNCDRAW) means the
+         * console is always vsynced, so both toggles would be inert. The
+         * graphics-backend and anti-aliasing rows already drop out on their own
+         * (GFX_WINDOW_BACKEND_MAX == 1, gfx_wm_get_max_msaa() == 0), which in
+         * turn leaves nothing on 3DS that can ask for a restart.
+         */
+#ifndef __3DS__
         djui_checkbox_create(body, DLANG(DISPLAY, FULLSCREEN), &configWindow.fullscreen, djui_panel_display_apply);
+#endif
         djui_checkbox_create(body, DLANG(DISPLAY, FORCE_4BY3), &configForce4By3, djui_panel_display_apply);
         djui_checkbox_create(body, DLANG(DISPLAY, SHOW_FPS), &configShowFPS, NULL);
+#ifdef __3DS__
+        /* Stereoscopic depth; the console's own 3D slider sets the amount. */
+        djui_checkbox_create(body, DLANG(DISPLAY, NEW3DS_STEREO_3D), &configNew3dsStereo3d, NULL);
+#endif
+#ifndef __3DS__
         djui_checkbox_create(body, DLANG(DISPLAY, VSYNC), &configWindow.vsync, djui_panel_display_apply);
+#endif
 
         if (GFX_WINDOW_BACKEND_MAX > 1) {
             char* gfxBackendChoices[GFX_WINDOW_BACKEND_MAX] = {
@@ -146,11 +164,13 @@ void djui_panel_display_create(struct DjuiBase* caller) {
 
         djui_button_create(body, DLANG(MENU, BACK), DJUI_BUTTON_STYLE_BACK, djui_panel_menu_back);
 
+#ifndef __3DS__
         sRestartText = djui_text_create(body, "");
         djui_text_set_alignment(sRestartText, DJUI_HALIGN_CENTER, DJUI_VALIGN_TOP);
         djui_base_set_color(&sRestartText->base, 255, 100, 100, 255);
         djui_base_set_size_type(&sRestartText->base, DJUI_SVT_RELATIVE, DJUI_SVT_ABSOLUTE);
         djui_base_set_size(&sRestartText->base, 1.0f, 64);
+#endif
     }
 
     // force the restart text to update
